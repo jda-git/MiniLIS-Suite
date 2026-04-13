@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MiniLIS.Application/MiniLIS.Application.csproj" />
+  <Project Path="MiniLIS.Domain/MiniLIS.Domain.csproj" />
+  <Project Path="MiniLIS.Infrastructure/MiniLIS.Infrastructure.csproj" />
+  <Project Path="MiniLIS.Web/MiniLIS.Web.csproj" />
+</Solution>

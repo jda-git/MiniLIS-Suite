@@ -1,0 +1,271 @@
+@page "/informes/editar/{SampleId:int}"
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@using Microsoft.AspNetCore.Authorization
+@using MiniLIS.Domain.Identity
+@attribute [Authorize]
+@inject IReportService ReportService
+@inject IMasterDataService MasterService
+@inject IDocumentService DocumentService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Editor de Informe - MiniLIS Suite</PageTitle>
+
+<div class="container-fluid py-4">
+    @if (report == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2">Cargando datos del informe...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <!-- Sidebar: Info y Firmas -->
+            <div class="col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <small class="text-uppercase text-muted fw-bold mb-2 d-block">Muestra @report.Sample?.SampleNumber</small>
+                        <h4 class="fw-bold mb-3">@report.Sample?.ClinicalRequest?.Patient?.FullName</h4>
+                        <div class="d-flex flex-column gap-2 small">
+                            <span><i class="bi bi-person-vcard text-muted me-2"></i> <strong>NHC:</strong> @report.Sample?.ClinicalRequest?.Patient?.NHC</span>
+                            <span><i class="bi bi-hospital text-muted me-2"></i> <strong>Origen:</strong> @report.Sample?.ClinicalRequest?.OriginService</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h6 class="fw-bold mb-3 border-bottom pb-2">Plantilla de Estudio</h6>
+                        <select class="form-select form-select-sm mb-3" @onchange="OnTemplateSelected">
+                            <option value="">-- Seleccionar --</option>
+                            @foreach (var t in availableTemplates)
+                            {
+                                <option value="@t.Id" selected="@(report.TemplateId == t.Id)">@t.Name</option>
+                            }
+                        </select>
+                        <button class="btn btn-outline-info btn-sm w-100 mb-2" @onclick="ShowAdHocMarkerDialog">
+                            <i class="bi bi-plus-circle me-1"></i> Marcador Extra
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body p-4">
+                        <h6 class="fw-bold mb-3 border-bottom pb-2">Firmantes (Facultativos)</h6>
+                        <div class="signatory-list" style="max-height: 200px; overflow-y: auto;">
+                            @foreach (var user in availableSignatories)
+                            {
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="user-@user.Id" 
+                                           checked="@selectedSignatoryIds.Contains(user.Id)"
+                                           @onchange="@(e => ToggleSignatory(user.Id, e.Value))" />
+                                    <label class="form-check-label small" for="user-@user.Id">
+                                        @user.FullName
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Editor Principal -->
+            <div class="col-xl-9">
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+                        <h5 class="fw-bold mb-0">Análisis Inmunofenotípico</h5>
+                        <div class="badge bg-primary px-3">@(report.MarkerValues.Count) Marcadores</div>
+                    </div>
+                    <div class="card-body p-4">
+                        <MarkerGrid MarkerValues="report.MarkerValues.ToList()" 
+                                  IntensityOptions="intensityOptions" 
+                                  OnMarkerChanged="RecalculateSummary" />
+                        
+                        <div class="mt-4">
+                            <label class="form-label fw-bold text-primary small">TEXTO GENERADO AUTOMÁTICAMENTE:</label>
+                            <div class="p-3 bg-light rounded border fst-italic shadow-inner" style="min-height: 60px;">
+                                @(string.IsNullOrWhiteSpace(report.MarkersSummary) ? "Seleccione intensidades para generar el texto..." : report.MarkersSummary)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <div class="row g-4">
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold"><i class="bi bi-pencil-square me-2"></i>Comentario del Informe</label>
+                                <textarea @bind="report.ReportBody" class="form-control" rows="5"></textarea>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold"><i class="bi bi-lightbulb me-2"></i>Conclusiones</label>
+                                <textarea @bind="report.Conclusions" class="form-control" rows="4"></textarea>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold text-danger"><i class="bi bi-clipboard-check me-2"></i>DIAGNÓSTICO / COMPATIBLE CON</label>
+                                <input type="text" @bind="report.Diagnosis" class="form-control fw-bold border-danger" placeholder="Ej: Infiltración por LNH de célula B..." />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-3 mb-5">
+                    <button class="btn btn-light px-4" @onclick='() => Nav.NavigateTo("/muestras")'>Descartar</button>
+                    
+                    <div class="dropdown">
+                        <button class="btn btn-secondary dropdown-toggle px-4" type="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-download me-2"></i> Descargar
+                        </button>
+                        <ul class="dropdown-menu shadow">
+                            <li><button class="dropdown-item" @onclick="DownloadPdf"><i class="bi bi-file-pdf text-danger me-2"></i> Informe PDF</button></li>
+                            <li><button class="dropdown-item" @onclick="DownloadOdt"><i class="bi bi-file-earmark-word text-info me-2"></i> Informe Editable (ODT)</button></li>
+                        </ul>
+                    </div>
+
+                    <button class="btn btn-primary px-5 shadow" disabled="@isSaving" @onclick="SaveAndNotify">
+                        @if (isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                        <i class="bi bi-check-lg me-2"></i> Guardar Informe
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int SampleId { get; set; }
+
+    private SampleReport? report;
+    private List<ReportTemplate> availableTemplates = new();
+    private List<ApplicationUser> availableSignatories = new();
+    private List<int> selectedSignatoryIds = new();
+    private List<string> intensityOptions = new();
+    private bool isSaving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        report = await ReportService.GetOrCreateReportAsync(SampleId);
+        availableTemplates = await MasterService.GetAllTemplatesAsync();
+        availableSignatories = await ReportService.GetAvailableSignatoriesAsync();
+        
+        var intensities = await MasterService.GetIntensitySettingsAsync();
+        intensityOptions = intensities.Select(i => i.Value).ToList();
+
+        if (report.Signatories.Any())
+        {
+            selectedSignatoryIds = report.Signatories.Select(s => s.UserId).ToList();
+        }
+    }
+
+    private async Task OnTemplateSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int templateId))
+        {
+            var template = await MasterService.GetTemplateWithMarkersAsync(templateId);
+            if (template != null)
+            {
+                report!.TemplateId = templateId;
+                report.ReportBody = template.HeaderText;
+                report.Conclusions = template.DefaultConclusion;
+
+                // Load markets from template
+                report.MarkerValues.Clear();
+                foreach (var tm in template.Markers.OrderBy(m => m.DisplayOrder))
+                {
+                    report.MarkerValues.Add(new ReportMarkerValue
+                    {
+                        MarkerId = tm.MarkerId,
+                        Marker = tm.Marker,
+                        DisplayOrder = tm.DisplayOrder
+                    });
+                }
+                RecalculateSummary();
+            }
+        }
+    }
+
+    private void ToggleSignatory(int userId, object? isChecked)
+    {
+        if (isChecked is bool checkedValue && checkedValue)
+        {
+            if (!selectedSignatoryIds.Contains(userId)) selectedSignatoryIds.Add(userId);
+        }
+        else
+        {
+            selectedSignatoryIds.Remove(userId);
+        }
+    }
+
+    private void RecalculateSummary()
+    {
+        if (report != null)
+        {
+            report.MarkersSummary = ReportService.GenerateMarkersSummary(report.MarkerValues);
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadPdf()
+    {
+        await Save(); 
+        try
+        {
+            var pdfBytes = await DocumentService.GeneratePdfAsync(report!);
+            var fileName = $"Informe_{report!.Sample?.SampleNumber}_{DateTime.Now:yyyyMMdd}.pdf";
+            await StreamFileToBrowser(fileName, pdfBytes);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al generar PDF: " + ex.Message);
+        }
+    }
+
+    private async Task DownloadOdt()
+    {
+        await Save();
+        try
+        {
+            var odtBytes = await DocumentService.GenerateOdtAsync(report!);
+            var fileName = $"Informe_{report!.Sample?.SampleNumber}_{DateTime.Now:yyyyMMdd}.odt";
+            await StreamFileToBrowser(fileName, odtBytes);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al generar ODT: " + ex.Message);
+        }
+    }
+
+    private async Task StreamFileToBrowser(string fileName, byte[] content)
+    {
+        using var stream = new MemoryStream(content);
+        using var dotNetStreamReference = new DotNetStreamReference(stream: stream);
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, dotNetStreamReference);
+    }
+
+    private async Task SaveAndNotify()
+    {
+        await Save();
+        await JS.InvokeVoidAsync("alert", "Informe guardado correctamente.");
+    }
+
+    private async Task Save()
+    {
+        isSaving = true;
+        try
+        {
+            await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), selectedSignatoryIds);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ShowAdHocMarkerDialog()
+    {
+        // Simple stub: Inject a fake marker for now or implement a modal
+    }
+}

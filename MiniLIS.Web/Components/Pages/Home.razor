@@ -1,0 +1,255 @@
+@page "/"
+@using MiniLIS.Application.DTOs
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@implements IDisposable
+@inject IDashboardService DashService
+
+<PageTitle>Dashboard - MiniLIS Suite</PageTitle>
+
+<div class="dashboard-wrapper">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold text-dark">Panel de Control</h1>
+            <p class="text-muted mb-0">Estado actual del laboratorio de Citometría</p>
+        </div>
+        <div class="text-end">
+            <span class="badge bg-light text-dark border p-2 mb-1">
+                <i class="bi bi-clock me-1"></i> Actualizado: @lastUpdate.ToString("HH:mm:ss")
+            </span>
+            <div class="text-muted small">Próximo refresco en @refreshMinutes min</div>
+        </div>
+    </div>
+
+    <!-- Quick Access Actions -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 col-lg-3">
+            <a href="muestras/nueva" class="card action-card bg-primary text-white text-decoration-none">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-plus-circle-fill h2 mb-0 me-3"></i>
+                        <div>
+                            <div class="fw-bold">Nueva Muestra</div>
+                            <div class="small opacity-75">Registrar recepción</div>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <a href="muestras" class="card action-card bg-success text-white text-decoration-none">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-file-earmark-medical h2 mb-0 me-3"></i>
+                        <div>
+                            <div class="fw-bold">Dictar Informes</div>
+                            <div class="small opacity-75">Bandeja de trabajo</div>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    @if (stats == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Cargando métricas...</p>
+        </div>
+    }
+    else
+    {
+        <!-- Stats Row -->
+        <div class="row g-4 mb-5">
+            <div class="col-6 col-md-3">
+                <div class="stat-card p-4 rounded-4 shadow-sm bg-white h-100">
+                    <div class="d-flex justify-content-between mb-3">
+                        <div class="stat-icon bg-blue-light text-primary rounded-3 p-2">
+                            <i class="bi bi-box-arrow-in-right h4 mb-0"></i>
+                        </div>
+                    </div>
+                    <div class="h2 fw-bold mb-1">@stats.SamplesReceivedToday</div>
+                    <div class="text-muted small">Muestras Hoy</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card p-4 rounded-4 shadow-sm bg-white h-100">
+                    <div class="d-flex justify-content-between mb-3">
+                        <div class="stat-icon bg-info-light text-info rounded-3 p-2">
+                            <i class="bi bi-gear-wide-connected h4 mb-0"></i>
+                        </div>
+                    </div>
+                    <div class="h2 fw-bold mb-1">@stats.SamplesInProcess</div>
+                    <div class="text-muted small">En Proceso</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card p-4 rounded-4 shadow-sm bg-white h-100">
+                    <div class="d-flex justify-content-between mb-3">
+                        <div class="stat-icon bg-warning-light text-warning rounded-3 p-2">
+                            <i class="bi bi-file-earmark-text h4 mb-0"></i>
+                        </div>
+                    </div>
+                    <div class="h2 fw-bold mb-1">@stats.PendingReports</div>
+                    <div class="text-muted small">Informes Pendientes</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card p-4 rounded-4 shadow-sm bg-white h-100">
+                    <div class="d-flex justify-content-between mb-3">
+                        <div class="stat-icon bg-danger-light text-danger rounded-3 p-2">
+                            <i class="bi bi-exclamation-triangle h4 mb-0"></i>
+                        </div>
+                    </div>
+                    <div class="h2 fw-bold mb-1 text-danger">@stats.ActiveIncidents</div>
+                    <div class="text-muted small">Incidencias Activas</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <!-- Recent Activity -->
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-header bg-white border-0 py-3">
+                        <h5 class="card-title fw-bold mb-0">Actividad Reciente</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light">
+                                    <tr>
+                                        <th class="ps-4">Nº Muestra</th>
+                                        <th>Paciente</th>
+                                        <th>Estado/Acción</th>
+                                        <th class="text-end pe-4">Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if(recentActivity == null || !recentActivity.Any())
+                                    {
+                                        <tr>
+                                            <td colspan="4" class="text-center py-4 text-muted small">No hay actividad reciente.</td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var act in recentActivity)
+                                        {
+                                            <tr>
+                                                <td class="ps-4 fw-bold">@act.SampleNumber</td>
+                                                <td>@act.PatientName</td>
+                                                <td>
+                                                    <span class="badge rounded-pill @GetStatusBadge(act.Status)">
+                                                        @act.ActionType
+                                                    </span>
+                                                </td>
+                                                <td class="text-end pe-4 small text-muted">@act.ActionDate.ToLocalTime().ToString("g")</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Side Widgets -->
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm rounded-4 bg-dark text-white p-4">
+                    <h5 class="fw-bold mb-3">Estado del Servidor</h5>
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="status-dot online me-2"></span>
+                        <span class="small opacity-75">Conectado a Red Local</span>
+                    </div>
+                    <div class="small opacity-50 mb-4">
+                        MiniLIS Suite v1.0.0
+                    </div>
+                    <button @onclick="LoadData" class="btn btn-outline-light btn-sm w-100">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Forzar Actualización
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .stat-card {
+        transition: transform 0.2s ease-in-out;
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    .bg-blue-light { background-color: #e7f1ff; }
+    .bg-info-light { background-color: #e1f5fe; }
+    .bg-warning-light { background-color: #fff9c4; }
+    .bg-danger-light { background-color: #ffebee; }
+    
+    .status-dot {
+        height: 10px;
+        width: 10px;
+        background-color: #bbb;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .status-dot.online { background-color: #28a745; }
+    
+    .action-card {
+        border-radius: 1rem;
+        border: none;
+        transition: opacity 0.2s;
+    }
+    .action-card:hover {
+        opacity: 0.9;
+    }
+</style>
+
+@code {
+    private DashboardStatsDto? stats;
+    private List<RecentActivityDto>? recentActivity;
+    private DateTime lastUpdate;
+    private int refreshMinutes = 5;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        
+        // Timer for auto-refresh: Every 5 minutes
+        timer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadData();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMinutes(refreshMinutes), TimeSpan.FromMinutes(refreshMinutes));
+    }
+
+    private async Task LoadData()
+    {
+        stats = await DashService.GetStatsAsync();
+        recentActivity = await DashService.GetRecentActivityAsync(5);
+        lastUpdate = DateTime.Now;
+    }
+
+    private string GetStatusBadge(SampleStatus status) => status switch
+    {
+        SampleStatus.Recibida => "bg-primary text-white",
+        SampleStatus.EnProceso => "bg-info text-dark",
+        SampleStatus.ReportadaParcial => "bg-warning text-dark",
+        SampleStatus.Finalizada => "bg-success text-white",
+        SampleStatus.Rechazada => "bg-danger text-white",
+        _ => "bg-secondary text-white"
+    };
+
+    public void Dispose()
+    {
+        timer?.Dispose();
+    }
+}

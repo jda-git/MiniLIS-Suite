@@ -1,0 +1,87 @@
+@using MiniLIS.Domain.Entities
+@using MiniLIS.Application.Interfaces
+
+<div class="marker-grid-container border rounded bg-white shadow-sm overflow-hidden">
+    <table class="table table-hover mb-0 align-middle">
+        <thead class="bg-light">
+            <tr>
+                <th style="width: 150px;">Marcador</th>
+                <th class="text-center">Intensidad</th>
+                <th style="width: 120px;" class="text-center">%</th>
+                <th style="width: 50px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var val in MarkerValues.OrderBy(v => v.DisplayOrder))
+            {
+                <tr>
+                    <td class="fw-bold text-dark">@val.Marker.Name</td>
+                    <td>
+                        <div class="d-flex flex-wrap justify-content-center gap-1">
+                            <!-- Botón Blanco (Sin informar) -->
+                            <button type="button" 
+                                    class="btn btn-sm @(string.IsNullOrEmpty(val.IntensityValue) ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SetIntensity(val, null)"
+                                    style="min-width: 35px;">
+                                <i class="bi bi-eraser"></i>
+                            </button>
+
+                            @foreach (var intensity in IntensityOptions)
+                            {
+                                <button type="button" 
+                                        class="btn btn-sm @(val.IntensityValue == intensity ? "btn-primary active" : "btn-outline-primary")"
+                                        @onclick="() => SetIntensity(val, intensity)"
+                                        style="min-width: 40px; font-weight: 500;">
+                                    @intensity
+                                </button>
+                            }
+                        </div>
+                    </td>
+                    <td>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control text-center" 
+                                   @bind="val.Percentage" 
+                                   @bind:event="oninput"
+                                   @onkeyup="NotifyChange"
+                                   placeholder="-" />
+                        </div>
+                    </td>
+                    <td>
+                        @if (val.IsAdHoc)
+                        {
+                            <button type="button" class="btn btn-sm btn-link text-danger" @onclick="() => RemoveMarker(val)">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter] public List<ReportMarkerValue> MarkerValues { get; set; } = new();
+    [Parameter] public List<string> IntensityOptions { get; set; } = new();
+    [Parameter] public EventCallback OnMarkerChanged { get; set; }
+
+    private async Task SetIntensity(ReportMarkerValue val, string? intensity)
+    {
+        val.IntensityValue = intensity;
+        await NotifyChange();
+    }
+
+    private async Task RemoveMarker(ReportMarkerValue val)
+    {
+        MarkerValues.Remove(val);
+        await NotifyChange();
+    }
+
+    private async Task NotifyChange()
+    {
+        if (OnMarkerChanged.HasDelegate)
+        {
+            await OnMarkerChanged.InvokeAsync();
+        }
+    }
+}

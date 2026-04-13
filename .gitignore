@@ -1,0 +1,45 @@
+## [Visual Studio]
+bin/
+obj/
+*.user
+*.userosscache
+*.sln.doccache
+*.suo
+*.userprefs
+*.vs/
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+bld/
+[Bb]in/
+[Oo]bj/
+
+## [Visual Studio Code]
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+## [User Secrets]
+secrets.json
+
+## [EF Core]
+*.db
+*.sqlite
+
+## [OS specific]
+.DS_Store
+Thumbs.db
+
+## [Project specific]
+C:\Users\josea\.gemini\antigravity\brain\
+C:\Users\josea\.gemini\antigravity\scratch\
+**/bin/
+**/obj/
+**/App_Data/
+node_modules/
+dist/
+.env

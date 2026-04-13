@@ -1,0 +1,59 @@
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">MiniLIS.Web</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Inicio
+            </NavLink>
+        </div>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <hr class="text-white opacity-25" />
+                    <span class="nav-link text-white-50 small">LABORATORIO</span>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="muestras/nueva">
+                        <span class="bi bi-plus-circle-nav-menu" aria-hidden="true"></span> Registro de Entrada
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="muestras">
+                        <span class="bi bi-list-columns-reverse" aria-hidden="true"></span> Bandeja de Trabajo
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="configuracion">
+                        <span class="bi bi-gear-fill" aria-hidden="true"></span> Configuración
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3 mt-4">
+                    <hr class="text-white opacity-25" />
+                    <div class="d-flex align-items-center text-white px-3 mb-2 small">
+                        <span class="bi bi-person-circle me-2"></span> @context.User.Identity?.Name
+                    </div>
+                    <a class="nav-link text-danger" href="/account/logout">
+                        <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Cerrar Sesión
+                    </a>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="login">
+                         Iniciar Sesión
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </nav>
+</div>
+

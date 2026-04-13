@@ -1,0 +1,314 @@
+@page "/configuracion"
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+@inject IMasterDataService MasterService
+
+<PageTitle>Configuración - MiniLIS Suite</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold text-dark">Maestros y Configuración</h1>
+            <p class="text-muted">Gestión técnica del laboratorio</p>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-header bg-white border-bottom-0 pt-3">
+            <ul class="nav nav-pills nav-fill" id="configTabs" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "markers" ? "active" : "")" @onclick='() => SetTab("markers")'>
+                        <i class="bi bi-tag me-2"></i> Marcadores
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "templates" ? "active" : "")" @onclick='() => SetTab("templates")'>
+                        <i class="bi bi-file-earmark-medical me-2"></i> Plantillas de Informe
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "system" ? "active" : "")" @onclick='() => SetTab("system")'>
+                        <i class="bi bi-sliders me-2"></i> Ajustes
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "header" ? "active" : "")" @onclick='() => SetTab("header")'>
+                        <i class="bi bi-image me-2"></i> Cabecera Informe
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body p-4">
+            @if (activeTab == "markers")
+            {
+                <div class="tab-pane fade show active">
+                    <div class="d-flex justify-content-between mb-3">
+                        <h5 class="fw-bold">Catálogo de Marcadores</h5>
+                        <button class="btn btn-primary btn-sm" @onclick="ShowNewMarkerModal">
+                            <i class="bi bi-plus"></i> Nuevo Marcador
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                       <table class="table table-hover align-middle">
+                           <thead>
+                               <tr>
+                                   <th>Nombre</th>
+                                   <th>Descripción</th>
+                                   <th class="text-end">Acciones</th>
+                               </tr>
+                           </thead>
+                           <tbody>
+                               @foreach (var m in markers)
+                               {
+                                   <tr>
+                                       <td class="fw-bold text-primary">@m.Name</td>
+                                       <td class="text-muted small">@(string.IsNullOrEmpty(m.Description) ? "-" : m.Description)</td>
+                                       <td class="text-end">
+                                           <button class="btn btn-outline-secondary btn-sm" @onclick="() => EditMarker(m)">
+                                               <i class="bi bi-pencil"></i>
+                                           </button>
+                                       </td>
+                                   </tr>
+                               }
+                           </tbody>
+                       </table>
+                    </div>
+                </div>
+            }
+            else if (activeTab == "templates")
+            {
+               <div class="tab-pane fade show active">
+                    <div class="d-flex justify-content-between mb-3">
+                        <h5 class="fw-bold">Plantillas de Resultado</h5>
+                        <button class="btn btn-primary btn-sm" @onclick="ShowNewTemplateModal">
+                            <i class="bi bi-plus"></i> Nueva Plantilla
+                        </button>
+                    </div>
+                    <div class="row g-4">
+                        @foreach (var t in templates)
+                        {
+                            <div class="col-md-6 col-lg-4">
+                                <div class="card border h-100 template-card">
+                                    <div class="card-body">
+                                        <h6 class="fw-bold text-dark">@t.Name</h6>
+                                        <p class="text-muted small mb-3">
+                                            @(string.IsNullOrEmpty(t.HeaderText) ? "Sin texto predefinido" : (t.HeaderText.Length > 60 ? t.HeaderText.Substring(0, 57) + "..." : t.HeaderText))
+                                        </p>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-light text-dark border">
+                                                <i class="bi bi-list-check me-1"></i> Marcadores: @(templateMarkerCounts.GetValueOrDefault(t.Id, 0))
+                                            </span>
+                                            <div class="btn-group">
+                                                <button class="btn btn-outline-primary btn-sm" @onclick="() => EditTemplate(t)">
+                                                    <i class="bi bi-gear"></i> Editar
+                                                </button>
+                                                <button class="btn btn-outline-info btn-sm" title="Clonar" @onclick="() => CloneTemplate(t)">
+                                                    <i class="bi bi-copy"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+               </div>
+            }
+            else if (activeTab == "system")
+            {
+                <div class="tab-pane fade show active">
+                    <h5 class="fw-bold mb-4">Configuración de Intensidades</h5>
+                    <p class="text-muted small">Define los niveles que aparecerán como radio-buttons en los informes.</p>
+                    <div class="row g-3">
+                        @foreach (var setting in intensitySettings)
+                        {
+                            <div class="col-md-4 col-lg-3">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white">@setting.Key.Split(':').Last()</span>
+                                    <input type="text" @bind="setting.Value" class="form-control" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="mt-4">
+                        <button class="btn btn-success" @onclick="SaveIntensities">
+                            <i class="bi bi-save me-1"></i> Guardar Intensidades
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (activeTab == "header")
+            {
+                <div class="tab-pane fade show active">
+                    <h5 class="fw-bold mb-4">Configuración de Cabecera de Informes</h5>
+                    <div class="row g-4">
+                        <div class="col-md-6 border-end">
+                            <h6 class="fw-bold small text-muted text-uppercase mb-3">Diseño del Logotipo</h6>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Subir Imagen (Logo)</label>
+                                <InputFile OnChange="HandleLogoUpload" class="form-control" accept="image/png, image/jpeg" />
+                            </div>
+                            <div class="row">
+                                <div class="col-6 mb-3">
+                                    <label class="form-label small fw-bold">Posición</label>
+                                    <select class="form-select select-sm" @bind="logoAlignment">
+                                        <option value="Left">Izquierda</option>
+                                        <option value="Center">Centro</option>
+                                        <option value="Right">Derecha</option>
+                                    </select>
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <label class="form-label small fw-bold">Ancho (px)</label>
+                                    <input type="number" class="form-control" @bind="logoWidth" />
+                                </div>
+                            </div>
+                            <h6 class="fw-bold small text-muted text-uppercase mb-3 mt-4">Texto de Cabecera</h6>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Línea 1 (Nombre Centro)</label>
+                                <input type="text" class="form-control" @bind="headerLine1" placeholder="Ej: Laboratorio Central de Citometría" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Línea 2 (Dirección/Contacto)</label>
+                                <input type="text" class="form-control" @bind="headerLine2" placeholder="Ej: Calle Médica 123, Madrid - Tel: 910 000 000" />
+                            </div>
+                        </div>
+                        <div class="col-md-6 bg-light p-4 rounded-3 d-flex flex-column align-items-center">
+                            <h6 class="fw-bold small text-muted text-uppercase mb-4">Previsualización Cabecera (A4)</h6>
+                            <div class="preview-page border bg-white shadow-sm p-3 w-100" style="min-height: 200px;">
+                                <div class="header-preview-container d-flex flex-column" style="text-align: @(logoAlignment.ToLower())">
+                                    @if (!string.IsNullOrEmpty(logoBase64))
+                                    {
+                                        <div class="mb-2" style="text-align: @(logoAlignment.ToLower())">
+                                            <img src="data:image/png;base64,@logoBase64" style="width: @(logoWidth)px; height: auto;" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="mb-2 text-center text-muted border py-4 bg-light small">Sin Logotipo</div>
+                                    }
+                                    <div class="header-text-lines">
+                                        <div class="fw-bold" style="font-size: 14px;">@(string.IsNullOrEmpty(headerLine1) ? "NOMBRE DEL CENTRO" : headerLine1)</div>
+                                        <div class="text-muted" style="font-size: 11px;">@(string.IsNullOrEmpty(headerLine2) ? "DIRECCIÓN Y CONTACTO" : headerLine2)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 border-top pt-4">
+                        <button class="btn btn-primary px-4 fw-bold" @onclick="SaveHeaderConfig">
+                            <i class="bi bi-save me-2"></i> Guardar Cabecera Médica
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .nav-pills .nav-link {
+        color: #6c757d;
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+    }
+    .nav-pills .nav-link.active {
+        background-color: #0d6efd15;
+        color: #0d6efd;
+        font-weight: bold;
+        border: 1px solid #0d6efd;
+    }
+    .template-card {
+        transition: all 0.2s;
+        border-radius: 1rem;
+    }
+    .template-card:hover {
+        border-color: #0d6efd !important;
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.05);
+    }
+</style>
+
+@code {
+    private string activeTab = "markers";
+    private List<Marker> markers = new();
+    private List<ReportTemplate> templates = new();
+    private List<SystemSetting> intensitySettings = new();
+    private Dictionary<int, int> templateMarkerCounts = new();
+
+    // Header Settings
+    private string logoBase64 = "";
+    private string logoAlignment = "Left";
+    private int logoWidth = 150;
+    private string headerLine1 = "";
+    private string headerLine2 = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        await LoadHeaderSettings();
+    }
+
+    private async Task LoadData()
+    {
+        markers = await MasterService.GetAllMarkersAsync();
+        templates = await MasterService.GetAllTemplatesAsync();
+        intensitySettings = await MasterService.GetIntensitySettingsAsync();
+
+        // Count markers per template for the UI
+        templateMarkerCounts.Clear();
+        foreach (var t in templates)
+        {
+            var detail = await MasterService.GetTemplateWithMarkersAsync(t.Id);
+            templateMarkerCounts[t.Id] = detail?.Markers.Count ?? 0;
+        }
+    }
+
+    private async Task LoadHeaderSettings()
+    {
+        logoBase64 = await MasterService.GetSettingAsync("Header:LogoBase64") ?? "";
+        logoAlignment = await MasterService.GetSettingAsync("Header:LogoAlignment") ?? "Left";
+        var widthStr = await MasterService.GetSettingAsync("Header:LogoWidth");
+        if (int.TryParse(widthStr, out int w)) logoWidth = w;
+        headerLine1 = await MasterService.GetSettingAsync("Header:Line1") ?? "";
+        headerLine2 = await MasterService.GetSettingAsync("Header:Line2") ?? "";
+    }
+
+    private void SetTab(string tab) => activeTab = tab;
+
+    private async Task SaveIntensities()
+    {
+        await MasterService.UpdateIntensitySettingsAsync(intensitySettings);
+        StateHasChanged();
+    }
+
+    private async Task HandleLogoUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        var buffer = new byte[file.Size];
+        await file.OpenReadStream(2 * 1024 * 1024).ReadAsync(buffer); // max 2MB
+        logoBase64 = Convert.ToBase64String(buffer);
+    }
+
+    private async Task SaveHeaderConfig()
+    {
+        await MasterService.SaveSettingAsync("Header:LogoBase64", logoBase64, "Logotipo en Base64");
+        await MasterService.SaveSettingAsync("Header:LogoAlignment", logoAlignment, "Alineación del Logo");
+        await MasterService.SaveSettingAsync("Header:LogoWidth", logoWidth.ToString(), "Ancho del Logo");
+        await MasterService.SaveSettingAsync("Header:Line1", headerLine1, "Cabecera Línea 1");
+        await MasterService.SaveSettingAsync("Header:Line2", headerLine2, "Cabecera Línea 2");
+        // Notify success? (Skip for now, or use JS alert)
+    }
+
+    // Modal Handlers (Stubs for now, will implement dialogs in next step)
+    private void ShowNewMarkerModal() { }
+    private void EditMarker(Marker m) { }
+    private void ShowNewTemplateModal() { }
+    private void EditTemplate(ReportTemplate t) { }
+    
+    private async Task CloneTemplate(ReportTemplate t)
+    {
+        await MasterService.CloneTemplateAsync(t.Id, t.Name + " (Copia)");
+        await LoadData();
+    }
+}
