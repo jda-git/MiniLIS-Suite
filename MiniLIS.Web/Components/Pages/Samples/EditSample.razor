@@ -117,15 +117,25 @@
                 </div>
             </div>
 
-            <!-- Fila 4: Servicio + Médico -->
+            <!-- Fila 4: Servicio + Médico + Estado -->
             <div class="clin-row mt-3">
-                <div class="clin-field" style="width: 45%;">
+                <div class="clin-field" style="width: 35%;">
                     <label>SERVICIO</label>
                     <InputText @bind-Value="model.OriginService" class="clin-input" />
                 </div>
-                <div class="clin-field flex-grow-1">
+                <div class="clin-field" style="width: 35%;">
                     <label>MÉDICO</label>
                     <InputText @bind-Value="model.DoctorName" class="clin-input" />
+                </div>
+                <div class="clin-field flex-grow-1">
+                    <label>ESTADO</label>
+                    <InputSelect @bind-Value="model.Status" class="clin-input border-0">
+                        <option value="@SampleStatus.Recibida">Recibida</option>
+                        <option value="@SampleStatus.EnProceso">En Proceso</option>
+                        <option value="@SampleStatus.ReportadaParcial">Reportada Parcial</option>
+                        <option value="@SampleStatus.Finalizada">Finalizada</option>
+                        <option value="@SampleStatus.Rechazada">Rechazada</option>
+                    </InputSelect>
                 </div>
             </div>
 
@@ -216,6 +226,7 @@
         model.StudyPanel = originalSample.StudyPanel;
         model.HasIncident = originalSample.HasIncident;
         model.IncidentNotes = originalSample.IncidentsNotes;
+        model.Status = originalSample.Status;
 
         // Parse Diagnosis to extract TIPO prefix
         var diag = originalSample.Diagnosis ?? "";
@@ -297,6 +308,7 @@
             originalSample.StudyPanel = model.StudyPanel ?? string.Empty;
             originalSample.HasIncident = model.HasIncident;
             originalSample.IncidentsNotes = model.IncidentNotes ?? string.Empty;
+            originalSample.Status = model.Status;
 
             await SampleService.UpdateSampleAsync(originalSample);
 
@@ -344,5 +356,6 @@
         public string? StudyPanel { get; set; }
         public bool HasIncident { get; set; } = false;
         public string? IncidentNotes { get; set; }
+        public SampleStatus Status { get; set; }
     }
 }

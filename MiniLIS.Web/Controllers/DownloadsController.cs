@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MiniLIS.Application.Interfaces;
+using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -35,6 +36,14 @@ namespace MiniLIS.Web.Controllers
                 if (report == null) return NotFound("Informe no encontrado");
 
                 var bytes = await _documentService.GeneratePdfAsync(report);
+                
+                // Actualizar estado a Finalizada
+                if (report.Sample != null)
+                {
+                    report.Sample.Status = SampleStatus.Finalizada;
+                    await _db.SaveChangesAsync();
+                }
+
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
                 var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? id.ToString();
                 var fileName = $"Informe_{safeSampleName}_{timestamp}.pdf";
@@ -65,6 +74,14 @@ namespace MiniLIS.Web.Controllers
                 if (report == null) return NotFound("Informe no encontrado");
 
                 var bytes = await _documentService.GenerateOdtAsync(report);
+                
+                // Actualizar estado a Finalizada
+                if (report.Sample != null)
+                {
+                    report.Sample.Status = SampleStatus.Finalizada;
+                    await _db.SaveChangesAsync();
+                }
+
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
                 var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? id.ToString();
                 var fileName = $"Informe_{safeSampleName}_{timestamp}.odt";

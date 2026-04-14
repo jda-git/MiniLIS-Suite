@@ -11,7 +11,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace MiniLIS.Infrastructure.Services
@@ -54,149 +56,151 @@ namespace MiniLIS.Infrastructure.Services
                     page.Size(PageSizes.A4);
                     page.Margin(1.5f, Unit.Centimetre);
                     page.PageColor(Colors.White);
-                    page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Verdana));
+                    page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Arial));
 
-                    // --- CABECERA ---
-                    page.Header().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingBottom(10).Row(row =>
+                    // --- CABECERA (Repetida en cada página) ---
+                    page.Header().Column(headerCol =>
                     {
-                        row.RelativeItem().Column(col =>
+                        var patient = fullReport.Sample?.ClinicalRequest?.Patient;
+                        var request = fullReport.Sample?.ClinicalRequest;
+                        var sample = fullReport.Sample;
+
+                        // Logo and Configured Texts
+                        headerCol.Item().PaddingBottom(10).Column(topCol =>
                         {
                             if (!string.IsNullOrEmpty(logoBase64))
                             {
                                 try {
                                     var bytes = Convert.FromBase64String(logoBase64);
-                                    var img = col.Item();
+                                    var img = topCol.Item();
                                     if (logoAlignment == "Center") img = img.AlignCenter();
                                     else if (logoAlignment == "Right") img = img.AlignRight();
                                     img.Width(logoWidth).Image(bytes);
                                 } catch { }
                             }
 
-                            var txtCol = col.Item();
+                            var txtCol = topCol.Item().PaddingTop(5);
                             if (logoAlignment == "Center") txtCol = txtCol.AlignCenter();
                             else if (logoAlignment == "Right") txtCol = txtCol.AlignRight();
                             
-                            txtCol.PaddingTop(5).Column(c => {
-                                c.Item().Text(headerLine1).FontSize(14).SemiBold().FontColor(Colors.Blue.Medium);
-                                c.Item().Text(headerLine2).FontSize(9).Italic().FontColor(Colors.Grey.Medium);
+                            txtCol.Column(c => {
+                                c.Item().Text(headerLine1).FontSize(11).FontColor(Colors.Grey.Medium);
+                                c.Item().Text(headerLine2).FontSize(11).FontColor(Colors.Grey.Medium);
+                            });
+                        });
+
+                        // Diagnosis parsing logic for Tipo and Motivo
+                        var rawDiag = sample?.Diagnosis ?? "";
+                        var finalTipoMuestra = sample?.StudyPanel ?? "MO";
+                        var finalMotivo = rawDiag;
+                        
+                        var typeMatch = Regex.Match(rawDiag, @"^\[TIPO:\s*(.+?)\]\s*");
+                        if (typeMatch.Success)
+                        {
+                            finalTipoMuestra = typeMatch.Groups[1].Value.Trim();
+                            finalMotivo = rawDiag.Replace(typeMatch.Value, "").Trim();
+                        }
+
+                        // Black divider
+                        headerCol.Item().BorderTop(1.5f).BorderBottom(1.5f).BorderColor(Colors.Black).PaddingVertical(8).Column(dataCol =>
+                        {
+                            dataCol.Item().PaddingBottom(4).Row(r =>
+                            {
+                                r.RelativeItem(5).Text(t => { t.Span("NOMBRE: ").Bold(); t.Span(patient?.FullName ?? "").FontSize(10); });
+                                r.RelativeItem(3).Text(t => { t.Span("NHC: ").Bold(); t.Span(patient?.NHC ?? "").FontSize(10); });
+                                r.RelativeItem(2).Text(t => { t.Span("NASI: ").Bold(); t.Span(patient?.NASI ?? "").FontSize(10); });
+                            });
+
+                            dataCol.Item().PaddingBottom(4).Row(r =>
+                            {
+                                r.RelativeItem(5).Text(t => { t.Span("FECHA DE MUESTRA: ").Bold(); t.Span(sample != null ? sample.ReceptionDate.ToString("dd/MM/yyyy") : "").FontSize(10); });
+                                r.RelativeItem(5).Text(t => { t.Span("FECHA INFORME: ").Bold(); t.Span(fullReport.ReportDate?.ToString("dd/MM/yyyy") ?? DateTime.Now.ToString("dd/MM/yyyy")).FontSize(10); });
+                            });
+
+                            dataCol.Item().PaddingBottom(4).Row(r =>
+                            {
+                                r.RelativeItem(4).Text(t => { t.Span("Nº MUESTRA: ").Bold(); t.Span(sample?.SampleNumber ?? "").FontSize(10); });
+                                r.RelativeItem(3).Text(t => { t.Span("TIPO DE MUESTRA: ").Bold(); t.Span(finalTipoMuestra).FontSize(10); });
+                                r.RelativeItem(3).Text(t => { t.Span("Nº PETICIÓN: ").Bold(); t.Span(request?.RequestNumber ?? "").FontSize(10); });
+                            });
+
+                            dataCol.Item().PaddingBottom(4).Row(r =>
+                            {
+                                r.RelativeItem(5).Text(t => { t.Span("SERVICIO: ").Bold(); t.Span(request?.OriginService ?? "").FontSize(10); });
+                                r.RelativeItem(5).Text(t => { t.Span("SOLICITANTE: ").Bold(); t.Span(request?.DoctorName ?? "").FontSize(10); });
+                            });
+
+                            dataCol.Item().Row(r =>
+                            {
+                                r.RelativeItem().Text(t => { t.Span("MOTIVO: ").Bold(); t.Span(finalMotivo).FontSize(10); });
                             });
                         });
                     });
 
-                    // --- CONTENIDO ---
-                    page.Content().PaddingVertical(20).Column(col =>
+                    // --- CONTENIDO PRINCIPAL ---
+                    page.Content().PaddingVertical(15).Column(col =>
                     {
-                        // Patient Box (Top Right-ish for medical style)
-                        col.Item().Row(row =>
-                        {
-                            row.RelativeItem(); // Space
-                            row.ConstantItem(300).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(c =>
-                            {
-                                c.Item().Text("DATOS DEL PACIENTE").FontSize(7).SemiBold().FontColor(Colors.Grey.Medium);
-                                c.Item().PaddingTop(2).Text(fullReport.Sample?.ClinicalRequest?.Patient?.FullName ?? "N/A").FontSize(11).Bold();
-                                c.Item().Row(r => {
-                                    r.RelativeItem().Text($"NHC: {fullReport.Sample?.ClinicalRequest?.Patient?.NHC ?? "-"}").FontSize(9);
-                                    r.RelativeItem().AlignRight().Text($"DN: {fullReport.Sample?.ClinicalRequest?.Patient?.BirthDate?.ToString("dd/MM/yyyy") ?? "-"}").FontSize(9);
-                                });
-                            });
-                        });
+                        var titleColor = "#6D9EEB";
+                        var monoFont = Fonts.CourierNew;
 
-                        col.Item().PaddingTop(10).Text("INFORME DE INMUNOFENOTIPO").FontSize(15).ExtraBold().FontColor(Colors.Grey.Darken3).Underline();
-                        col.Item().PaddingTop(5).Row(r => {
-                            r.RelativeItem().Text($"Nº Muestra: {fullReport.Sample?.SampleNumber ?? "-"}").FontSize(9).Italic();
-                            r.RelativeItem().AlignRight().Text($"Fecha: {DateTime.Now:dd/MM/yyyy}").FontSize(9).Italic();
-                        });
+                        col.Item().PaddingBottom(10).Text("INFORME").FontSize(14).Bold().FontColor(titleColor);
 
-                        // Report Body
                         if (!string.IsNullOrWhiteSpace(fullReport.ReportBody))
                         {
-                            col.Item().PaddingTop(20).Text("DESCRIPCIÓN / MOTIVO").FontSize(11).SemiBold().FontColor(Colors.Blue.Medium);
-                            col.Item().PaddingTop(2).Text(fullReport.ReportBody).LineHeight(1.2f);
+                            // Using Monospaced font for the body to preserve tabular alignment from web editor
+                            col.Item().PaddingBottom(15).Text(fullReport.ReportBody).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
                         }
 
-                        // Markers Table (QuestPDF native table)
-                        if (fullReport.MarkerValues.Any(v => !string.IsNullOrEmpty(v.IntensityValue)))
-                        {
-                            col.Item().PaddingTop(20).Text("INMUNOFENOTIPO (MARCADORES)").FontSize(11).SemiBold().FontColor(Colors.Blue.Medium);
-                            col.Item().PaddingTop(5).Table(table =>
-                            {
-                                table.ColumnsDefinition(columns =>
-                                {
-                                    columns.RelativeColumn(3); // Marker
-                                    columns.RelativeColumn(3); // Intensity
-                                    columns.RelativeColumn(2); // %
-                                });
-
-                                table.Header(header =>
-                                {
-                                    header.Cell().Background(Colors.Grey.Lighten4).Padding(5).Text("Marcador").SemiBold();
-                                    header.Cell().Background(Colors.Grey.Lighten4).Padding(5).Text("Intensidad").SemiBold();
-                                    header.Cell().Background(Colors.Grey.Lighten4).Padding(5).Text("%").SemiBold();
-                                });
-
-                                foreach (var val in fullReport.MarkerValues.OrderBy(v => v.DisplayOrder))
-                                {
-                                    if (string.IsNullOrEmpty(val.IntensityValue)) continue;
-                                    
-                                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten3).Padding(5).Text(val.Marker?.Name ?? "-");
-                                    
-                                    var cell = table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten3).Padding(5);
-                                    if (val.IntensityValue == "+") cell.Text(val.IntensityValue).Bold().FontColor(Colors.Green.Medium);
-                                    else if (val.IntensityValue == "++") cell.Text(val.IntensityValue).Bold().FontColor(Colors.Green.Darken2);
-                                    else if (val.IntensityValue == "-") cell.Text(val.IntensityValue).FontColor(Colors.Red.Medium);
-                                    else cell.Text(val.IntensityValue);
-
-                                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten3).Padding(5).Text(val.Percentage ?? "");
-                                }
-                            });
-                        }
-
-                        // Summary Text (under table)
+                        // Marcadores (as string text)
                         if (!string.IsNullOrWhiteSpace(fullReport.MarkersSummary))
                         {
-                            col.Item().PaddingTop(10).Background(Colors.Grey.Lighten5).Padding(10).Text(fullReport.MarkersSummary).FontSize(9).Italic();
+                            col.Item().PaddingBottom(5).Text("MARCADORES").FontSize(11).FontColor(titleColor);
+                            col.Item().PaddingBottom(4).Text(fullReport.MarkersSummary).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
                         }
 
-                        // Additionals / Conclusion
+                        // Texto Adicional (sin título explícito, debajo de marcadores según solicitud)
+                        if (!string.IsNullOrWhiteSpace(fullReport.AdditionalText))
+                        {
+                            col.Item().PaddingBottom(15).Text(fullReport.AdditionalText).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                        }
+                        else
+                        {
+                            // Expand the padding if there is no AdditionalText, so Panels Used isn't cramped
+                            if (!string.IsNullOrWhiteSpace(fullReport.MarkersSummary))
+                                col.Item().PaddingBottom(11); 
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(fullReport.PanelsUsedText))
+                        {
+                            col.Item().PaddingBottom(5).Text("PANELES EMPLEADOS").FontSize(11).FontColor(titleColor);
+                            col.Item().PaddingBottom(15).Text(fullReport.PanelsUsedText).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                        }
+
                         if (!string.IsNullOrWhiteSpace(fullReport.Conclusions))
                         {
-                            col.Item().PaddingTop(20).Text("JUICIO DIAGNÓSTICO / COMENTARIOS").FontSize(11).SemiBold().FontColor(Colors.Blue.Medium);
-                            col.Item().PaddingTop(2).Text(fullReport.Conclusions).LineHeight(1.2f);
-                        }
-
-                        // Diagnosis Highlight
-                        if (!string.IsNullOrWhiteSpace(fullReport.Diagnosis))
-                        {
-                            col.Item().PaddingTop(25).Border(1).BorderColor(Colors.Blue.Lighten4).Background(Colors.Blue.Lighten5).Padding(10).Column(c =>
-                            {
-                                c.Item().Text("DIAGNÓSTICO COMPATIBLE CON:").FontSize(8).Bold().FontColor(Colors.Blue.Medium);
-                                c.Item().Text(fullReport.Diagnosis).FontSize(13).ExtraBold();
-                            });
+                            col.Item().PaddingBottom(5).Text("CONCLUSIÓN").FontSize(11).FontColor(titleColor);
+                            col.Item().PaddingBottom(15).Text(fullReport.Conclusions).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
                         }
                     });
 
                     // --- PIE DE PÁGINA ---
-                    page.Footer().PaddingTop(20).Column(fcol =>
+                    page.Footer().PaddingTop(10).Row(r =>
                     {
-                        fcol.Item().Row(row =>
+                        r.RelativeItem().Column(c =>
                         {
-                            row.RelativeItem().Column(c =>
+                            foreach (var sig in fullReport.Signatories)
                             {
-                                c.Item().Text("Documento validado por:").FontSize(8).Italic().FontColor(Colors.Grey.Medium);
-                                foreach (var sig in fullReport.Signatories)
-                                {
-                                    c.Item().Text(sig.User?.FullName ?? "Firmante Autorizado").FontSize(10).SemiBold();
-                                }
-                            });
-                            row.RelativeItem().AlignRight().Text(x =>
-                            {
-                                x.Span("Página ");
-                                x.CurrentPageNumber();
-                                x.Span(" de ");
-                                x.TotalPages();
-                            });
+                                c.Item().Text($"Dr. {sig.User?.FullName ?? "Firmante"}").FontSize(10);
+                            }
                         });
-                        fcol.Item().PaddingTop(10).AlignCenter().Text("Generado por MiniLIS Suite — Confidencial").FontSize(7).FontColor(Colors.Grey.Lighten1);
+                        
+                        r.RelativeItem().AlignRight().Text(x =>
+                        {
+                            x.Span("Página ").FontSize(8).FontColor(Colors.Grey.Medium);
+                            x.CurrentPageNumber().FontSize(8).FontColor(Colors.Grey.Medium);
+                            x.Span(" / ").FontSize(8).FontColor(Colors.Grey.Medium);
+                            x.TotalPages().FontSize(8).FontColor(Colors.Grey.Medium);
+                        });
                     });
                 });
             });
@@ -214,6 +218,11 @@ namespace MiniLIS.Infrastructure.Services
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
+            var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
+            var logoAlignment = await _masterService.GetSettingAsync("Header:LogoAlignment") ?? "Left";
+            var headerLine1 = await _masterService.GetSettingAsync("Header:Line1") ?? "LABORATORIO DE HEMATOLOGÍA";
+            var headerLine2 = await _masterService.GetSettingAsync("Header:Line2") ?? "CITOMETRÍA DE FLUJO";
+
             using var ms = new MemoryStream();
             using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, true))
             {
@@ -225,11 +234,37 @@ namespace MiniLIS.Infrastructure.Services
                     stream.Write(mimetypeBytes, 0, mimetypeBytes.Length);
                 }
 
+                bool hasLogo = !string.IsNullOrEmpty(logoBase64);
+                byte[]? logoBytes = null;
+                if (hasLogo)
+                {
+                    try {
+                        logoBytes = Convert.FromBase64String(logoBase64!);
+                        var logoEntry = archive.CreateEntry("Pictures/logo.png");
+                        using (var stream = logoEntry.Open())
+                        {
+                            stream.Write(logoBytes, 0, logoBytes.Length);
+                        }
+                    } catch { hasLogo = false; }
+                }
+
                 // 2. META-INF/manifest.xml
                 var manifestEntry = archive.CreateEntry("META-INF/manifest.xml");
                 using (var writer = new StreamWriter(manifestEntry.Open()))
                 {
-                    writer.Write("<?xml version=\"1.0\" encoding=\"UTF-8\"?><manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\"><manifest:file-entry manifest:full-path=\"/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.text\"/><manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/></manifest:manifest>");
+                    var manifest = new StringBuilder();
+                    manifest.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+                    manifest.Append("<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">");
+                    manifest.Append("<manifest:file-entry manifest:full-path=\"/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>");
+                    manifest.Append("<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>");
+                    manifest.Append("<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>");
+                    manifest.Append("<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>");
+                    if (hasLogo)
+                    {
+                        manifest.Append("<manifest:file-entry manifest:full-path=\"Pictures/logo.png\" manifest:media-type=\"image/png\"/>");
+                    }
+                    manifest.Append("</manifest:manifest>");
+                    writer.Write(manifest.ToString());
                 }
 
                 // 3. meta.xml
@@ -243,67 +278,244 @@ namespace MiniLIS.Infrastructure.Services
                 var stylesEntry = archive.CreateEntry("styles.xml");
                 using (var writer = new StreamWriter(stylesEntry.Open()))
                 {
-                    writer.Write(@"<?xml version=""1.0"" encoding=""UTF-8""?><office:document-styles xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" office:version=""1.2""><office:styles><style:style style:name=""Standard"" style:family=""paragraph""/><style:style style:name=""Bold"" style:family=""text""><style:text-properties fo:font-weight=""bold"" style:font-weight-asian=""bold"" style:font-weight-complex=""bold""/></style:style><style:style style:name=""Italic"" style:family=""text""><style:text-properties fo:font-style=""italic""/></style:style></office:styles></office:document-styles>");
+                    var stylesText = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<office:document-styles xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"" office:version=""1.2"">
+  <office:styles>
+    <style:style style:name=""Standard"" style:family=""paragraph""/>
+    <style:style style:name=""Bold"" style:family=""text"">
+      <style:text-properties fo:font-weight=""bold"" style:font-weight-asian=""bold"" style:font-weight-complex=""bold""/>
+    </style:style>
+    <style:style style:name=""Italic"" style:family=""text"">
+      <style:text-properties fo:font-style=""italic""/>
+    </style:style>
+    <style:style style:name=""GreyText"" style:family=""text"">
+      <style:text-properties fo:color=""#808080"" fo:font-size=""11pt""/>
+    </style:style>
+    
+    <!-- Mono Font for Tabular Data -->
+    <style:style style:name=""MonoText"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0.05in"" fo:margin-bottom=""0.05in""/>
+      <style:text-properties style:font-name=""Courier New"" fo:font-size=""9pt""/>
+    </style:style>
+
+    <!-- Alignment styles -->
+    <style:style style:name=""AlignLeft"" style:family=""paragraph"">
+      <style:paragraph-properties fo:text-align=""start""/>
+    </style:style>
+    <style:style style:name=""AlignCenter"" style:family=""paragraph"">
+      <style:paragraph-properties fo:text-align=""center""/>
+    </style:style>
+    <style:style style:name=""AlignRight"" style:family=""paragraph"">
+      <style:paragraph-properties fo:text-align=""end""/>
+    </style:style>
+
+    <!-- Table styles for borders -->
+    <style:style style:name=""CellTopBorder"" style:family=""table-cell"">
+      <style:table-cell-properties fo:border-top=""1.5pt solid #000000"" fo:padding-top=""0.05in"" fo:padding-bottom=""0.05in""/>
+    </style:style>
+    <style:style style:name=""CellBottomBorder"" style:family=""table-cell"">
+      <style:table-cell-properties fo:border-bottom=""1.5pt solid #000000"" fo:padding-top=""0.05in"" fo:padding-bottom=""0.05in""/>
+    </style:style>
+    <style:style style:name=""CellNoBorder"" style:family=""table-cell"">
+      <style:table-cell-properties fo:padding-top=""0.05in"" fo:padding-bottom=""0.05in""/>
+    </style:style>
+
+    <style:style style:name=""TitleBlue"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0.2in"" fo:margin-bottom=""0.1in""/>
+      <style:text-properties fo:color=""#6d9eeb"" fo:font-size=""14pt"" fo:font-weight=""bold""/>
+    </style:style>
+    <style:style style:name=""SectionBlue"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0.1in"" fo:margin-bottom=""0.05in""/>
+      <style:text-properties fo:color=""#6d9eeb"" fo:font-size=""11pt"" fo:font-weight=""bold""/>
+    </style:style>
+  </office:styles>
+</office:document-styles>";
+                    writer.Write(stylesText);
                 }
 
                 // 5. content.xml
                 var contentEntry = archive.CreateEntry("content.xml");
                 using (var writer = new StreamWriter(contentEntry.Open()))
                 {
-                    writer.Write(GenerateOdtContentXml(fullReport));
+                    writer.Write(GenerateOdtContentXml(fullReport, hasLogo, headerLine1, headerLine2, logoAlignment));
                 }
             }
 
             return ms.ToArray();
         }
 
-        private string GenerateOdtContentXml(SampleReport report)
+        private string GenerateOdtContentXml(SampleReport report, bool hasLogo, string headerLine1, string headerLine2, string logoAlignment)
         {
-            var sb = new StringBuilder();
-            sb.Append(@"<?xml version=""1.0"" encoding=""UTF-8""?><office:document-content xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" xmlns:text=""urn:oasis:names:tc:opendocument:xmlns:text:1.0"" xmlns:table=""urn:oasis:names:tc:opendocument:xmlns:table:1.0"" xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"" office:version=""1.2"">");
-            sb.Append("<office:body><office:text>");
-            
-            sb.Append("<text:h text:outline-level=\"1\">INFORME DE INMUNOFENOTIPO</text:h>");
-            sb.Append($"<text:p>Muestra: {report.Sample?.SampleNumber ?? "-"}</text:p>");
-            sb.Append($"<text:p>Paciente: {report.Sample?.ClinicalRequest?.Patient?.FullName ?? "N/A"}</text:p>");
-            sb.Append($"<text:p>NHC: {report.Sample?.ClinicalRequest?.Patient?.NHC ?? "-"}</text:p>");
-            sb.Append("<text:p />");
+            var patient = report.Sample?.ClinicalRequest?.Patient;
+            var request = report.Sample?.ClinicalRequest;
+            var sample = report.Sample;
 
+            // Use the same logic as PDF to extract Tipo and Motivo
+            var rawDiag = sample?.Diagnosis ?? "";
+            var finalTipoMuestra = sample?.StudyPanel ?? "MO";
+            var finalMotivo = rawDiag;
+            var typeMatch = Regex.Match(rawDiag, @"^\[TIPO:\s*(.+?)\]\s*");
+            if (typeMatch.Success)
+            {
+                finalTipoMuestra = typeMatch.Groups[1].Value.Trim();
+                finalMotivo = rawDiag.Replace(typeMatch.Value, "").Trim();
+            }
+
+            var alignStyle = "AlignLeft";
+            if (logoAlignment == "Center") alignStyle = "AlignCenter";
+            else if (logoAlignment == "Right") alignStyle = "AlignRight";
+
+            var sb = new StringBuilder();
+            sb.Append(@"<?xml version=""1.0"" encoding=""UTF-8""?>");
+            sb.Append(@"<office:document-content ");
+            sb.Append(@"xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" ");
+            sb.Append(@"xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" ");
+            sb.Append(@"xmlns:text=""urn:oasis:names:tc:opendocument:xmlns:text:1.0"" ");
+            sb.Append(@"xmlns:table=""urn:oasis:names:tc:opendocument:xmlns:table:1.0"" ");
+            sb.Append(@"xmlns:draw=""urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"" ");
+            sb.Append(@"xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"" ");
+            sb.Append(@"xmlns:xlink=""http://www.w3.org/1999/xlink"" ");
+            sb.Append(@"xmlns:svg=""urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"" ");
+            sb.Append(@"office:version=""1.2"">");
+            
+            sb.Append("<office:body><office:text>");
+
+            // Limpiamos los textos para evitar espacios introducidos manualmente por el usuario
+            var safeLine1 = headerLine1?.Trim() ?? "";
+            var safeLine2 = headerLine2?.Trim() ?? "";
+
+            // --- TABLA UNIFICADA (CABECERA + DATOS PACIENTE) ---
+            // Integrar la cabecera dentro de esta tabla garantiza que Word la parsee estrictamente en filas
+            sb.Append(@"<table:table table:name=""UnifiedLayout"">");
+            
+            // --- BLOQUE CABECERA ---
+            if (hasLogo)
+            {
+                sb.Append(@"<table:table-row>");
+                sb.Append($@"<table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p text:style-name=""{alignStyle}""><draw:frame draw:name=""logo"" text:anchor-type=""as-char"" svg:width=""4cm"" svg:height=""1.5cm"" draw:z-index=""0""><draw:image xlink:href=""Pictures/logo.png"" xlink:type=""simple"" xlink:show=""embed"" xlink:actuate=""onLoad""/></draw:frame></text:p></table:table-cell>");
+                sb.Append(@"</table:table-row>");
+                
+                // Fila vacía de separación logo - texto clínico
+                sb.Append(@"<table:table-row><table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p /></table:table-cell></table:table-row>");
+            }
+            sb.Append(@"<table:table-row>");
+            sb.Append($@"<table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{WebUtility.HtmlEncode(safeLine1)}</text:span></text:p></table:table-cell>");
+            sb.Append(@"</table:table-row>");
+            
+            sb.Append(@"<table:table-row>");
+            sb.Append($@"<table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{WebUtility.HtmlEncode(safeLine2)}</text:span></text:p></table:table-cell>");
+            sb.Append(@"</table:table-row>");
+            
+            // Espacio entre cabecera y datos de paciente
+            sb.Append(@"<table:table-row><table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p /></table:table-cell></table:table-row>");
+            
+            // Row 1: NOMBRE, NHC, NASI (Borde Superior)
+            sb.Append("<table:table-row>");
+            sb.Append($@"<table:table-cell table:style-name=""CellTopBorder""><text:p><text:span text:style-name=""Bold"">NOMBRE: </text:span>{WebUtility.HtmlEncode(patient?.FullName ?? "")}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""CellTopBorder""><text:p><text:span text:style-name=""Bold"">NHC: </text:span>{WebUtility.HtmlEncode(patient?.NHC ?? "")}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""CellTopBorder""><text:p><text:span text:style-name=""Bold"">NASI: </text:span>{WebUtility.HtmlEncode(patient?.NASI ?? "")}</text:p></table:table-cell>");
+            sb.Append("</table:table-row>");
+
+            // Row 2: FECHA MUESTRA, FECHA INFORME
+            sb.Append("<table:table-row>");
+            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">FECHA DE MUESTRA: </text:span>{(sample != null ? sample.ReceptionDate.ToString("dd/MM/yyyy") : "")}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">FECHA INFORME: </text:span>{(report.ReportDate?.ToString("dd/MM/yyyy") ?? DateTime.Now.ToString("dd/MM/yyyy"))}</text:p></table:table-cell>");
+            sb.Append("<table:table-cell table:style-name=\"CellNoBorder\"><text:p /></table:table-cell>");
+            sb.Append("</table:table-row>");
+
+            // Row 3: Nº MUESTRA, TIPO, Nº PETICIÓN
+            sb.Append("<table:table-row>");
+            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">Nº MUESTRA: </text:span>{WebUtility.HtmlEncode(sample?.SampleNumber ?? "")}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">TIPO DE MUESTRA: </text:span>{WebUtility.HtmlEncode(finalTipoMuestra)}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">Nº PETICIÓN: </text:span>{WebUtility.HtmlEncode(request?.RequestNumber ?? "")}</text:p></table:table-cell>");
+            sb.Append("</table:table-row>");
+
+            // Row 4: SERVICIO, SOLICITANTE
+            sb.Append("<table:table-row>");
+            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">SERVICIO: </text:span>{WebUtility.HtmlEncode(request?.OriginService ?? "")}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">SOLICITANTE: </text:span>{WebUtility.HtmlEncode(request?.DoctorName ?? "")}</text:p></table:table-cell>");
+            sb.Append("<table:table-cell table:style-name=\"CellNoBorder\"><text:p /></table:table-cell>");
+            sb.Append("</table:table-row>");
+
+            // Row 5: MOTIVO (Borde Inferior)
+            sb.Append("<table:table-row>");
+            sb.Append($@"<table:table-cell table:style-name=""CellBottomBorder""><text:p><text:span text:style-name=""Bold"">MOTIVO: </text:span>{WebUtility.HtmlEncode(finalMotivo)}</text:p></table:table-cell>");
+            sb.Append("<table:table-cell table:style-name=\"CellBottomBorder\"><text:p /></table:table-cell>");
+            sb.Append("<table:table-cell table:style-name=\"CellBottomBorder\"><text:p /></table:table-cell>");
+            sb.Append("</table:table-row>");
+
+            sb.Append("</table:table>");
+            sb.Append(@"<text:p />");
+
+            // --- CONTENIDO ---
+            
+            // INFORME
+            sb.Append($@"<text:p text:style-name=""TitleBlue"">INFORME</text:p>");
             if (!string.IsNullOrWhiteSpace(report.ReportBody))
             {
-                sb.Append("<text:h text:outline-level=\"2\">DESCRIPCIÓN</text:h>");
-                sb.Append($"<text:p>{report.ReportBody}</text:p>");
+                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.ReportBody)}</text:p>");
             }
 
-            sb.Append("<text:h text:outline-level=\"2\">RESULTADOS</text:h>");
-            sb.Append($"<text:p>{report.MarkersSummary}</text:p>");
+            // MARCADORES
+            if (!string.IsNullOrWhiteSpace(report.MarkersSummary))
+            {
+                sb.Append($@"<text:p text:style-name=""SectionBlue"">MARCADORES</text:p>");
+                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.MarkersSummary)}</text:p>");
+            }
             
+            // Texto Adicional (sin título)
             if (!string.IsNullOrWhiteSpace(report.AdditionalText))
             {
-                sb.Append($@"<text:p text:style-name=""Italic"">{report.AdditionalText}</text:p>");
+                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.AdditionalText)}</text:p>");
             }
 
+            // PANELES EMPLEADOS
+            if (!string.IsNullOrWhiteSpace(report.PanelsUsedText))
+            {
+                sb.Append($@"<text:p text:style-name=""SectionBlue"">PANELES EMPLEADOS</text:p>");
+                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.PanelsUsedText)}</text:p>");
+            }
+
+            // CONCLUSIÓN
             if (!string.IsNullOrWhiteSpace(report.Conclusions))
             {
-                sb.Append("<text:h text:outline-level=\"2\">CONCLUSIONES</text:h>");
-                sb.Append($"<text:p>{report.Conclusions}</text:p>");
-            }
-
-            if (!string.IsNullOrWhiteSpace(report.Diagnosis))
-            {
-                sb.Append("<text:p />");
-                sb.Append($"<text:p><text:span text:style-name=\"Bold\">DIAGNÓSTICO: {report.Diagnosis}</text:span></text:p>");
+                sb.Append($@"<text:p text:style-name=""SectionBlue"">CONCLUSIÓN</text:p>");
+                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.Conclusions)}</text:p>");
             }
 
             sb.Append("<text:p />");
             sb.Append("<text:p>Validado por:</text:p>");
             foreach (var sig in report.Signatories)
             {
-                sb.Append($"<text:p>{sig.User?.FullName ?? "Firmante Autorizado"}</text:p>");
+                sb.Append($@"<text:p><text:span text:style-name=""Bold"">Dr. {WebUtility.HtmlEncode(sig.User?.FullName ?? "Firmante")}</text:span></text:p>");
             }
             
             sb.Append("</office:text></office:body></office:document-content>");
             return sb.ToString();
+        }
+
+        private string EncodeForOdt(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "";
+
+            // 1. Basic HTML Encoding
+            string encoded = WebUtility.HtmlEncode(input);
+
+            // 2. Handle NewLines
+            encoded = encoded.Replace("\n", "<text:line-break />");
+
+            // 3. Handle Tabs
+            encoded = encoded.Replace("\t", "<text:tab />");
+
+            // 4. Handle multiple spaces (ODT requires <text:s text:c="count" /> for more than 1 space)
+            // We find any sequence of 2 or more spaces
+            encoded = Regex.Replace(encoded, @"  +", match => 
+            {
+                int count = match.Length - 1; 
+                return " <text:s text:c=\"" + count + "\" />";
+            });
+
+            return encoded;
         }
     }
 }

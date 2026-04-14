@@ -57,6 +57,13 @@ namespace MiniLIS.Infrastructure.Services
         {
             _db.SampleReports.Update(report);
 
+            // Actualizar estado de muestra si está en Recibida o Procesando
+            var sample = await _db.Samples.FindAsync(report.SampleId);
+            if (sample != null && (sample.Status == SampleStatus.Recibida || sample.Status == SampleStatus.EnProceso))
+            {
+                sample.Status = SampleStatus.ReportadaParcial;
+            }
+
             // Sync Markers
             var existingValues = _db.ReportMarkerValues.Where(mv => mv.SampleReportId == report.Id);
             _db.ReportMarkerValues.RemoveRange(existingValues);

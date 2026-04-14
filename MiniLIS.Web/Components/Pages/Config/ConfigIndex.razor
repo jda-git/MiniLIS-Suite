@@ -8,89 +8,93 @@
 
 <PageTitle>Configuración - MiniLIS Suite</PageTitle>
 
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="config-page">
+
+    <!-- Header -->
+    <div class="config-header">
         <div>
-            <h1 class="h3 fw-bold text-dark">Maestros y Configuración</h1>
-            <p class="text-muted">Gestión técnica del laboratorio</p>
+            <h1 class="config-title">
+                <i class="bi bi-gear"></i> Maestros y Configuración
+            </h1>
+            <p class="config-subtitle">Gestión técnica del laboratorio</p>
         </div>
     </div>
 
-    <div class="card border-0 shadow-sm rounded-4">
-        <div class="card-header bg-white border-bottom-0 pt-3">
-            <ul class="nav nav-pills nav-fill" id="configTabs" role="tablist">
-                <li class="nav-item">
-                    <button class="nav-link @(activeTab == "markers" ? "active" : "")" @onclick='() => SetTab("markers")'>
-                        <i class="bi bi-tag me-2"></i> Marcadores
-                    </button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link @(activeTab == "templates" ? "active" : "")" @onclick='() => SetTab("templates")'>
-                        <i class="bi bi-file-earmark-medical me-2"></i> Plantillas
-                    </button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link @(activeTab == "panels" ? "active" : "")" @onclick='() => SetTab("panels")'>
-                        <i class="bi bi-grid-3x3 me-2"></i> Paneles
-                    </button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link @(activeTab == "system" ? "active" : "")" @onclick='() => SetTab("system")'>
-                        <i class="bi bi-sliders me-2"></i> Ajustes
-                    </button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link @(activeTab == "header" ? "active" : "")" @onclick='() => SetTab("header")'>
-                        <i class="bi bi-image me-2"></i> Cabecera Informe
-                    </button>
-                </li>
-            </ul>
-        </div>
-        <div class="card-body p-4">
+    <!-- Tab Navigation -->
+    <div class="config-tabs-strip">
+        <button class="config-tab @(activeTab == "markers" ? "active" : "")" @onclick='() => SetTab("markers")'>
+            <i class="bi bi-tag"></i> Marcadores
+        </button>
+        <button class="config-tab @(activeTab == "templates" ? "active" : "")" @onclick='() => SetTab("templates")'>
+            <i class="bi bi-file-earmark-medical"></i> Plantillas
+        </button>
+        <button class="config-tab @(activeTab == "panels" ? "active" : "")" @onclick='() => SetTab("panels")'>
+            <i class="bi bi-grid-3x3"></i> Paneles
+        </button>
+        <button class="config-tab @(activeTab == "system" ? "active" : "")" @onclick='() => SetTab("system")'>
+            <i class="bi bi-sliders"></i> Ajustes
+        </button>
+        <button class="config-tab @(activeTab == "header" ? "active" : "")" @onclick='() => SetTab("header")'>
+            <i class="bi bi-image"></i> Cabecera Informe
+        </button>
+    </div>
 
-            @* ════════ TAB: MARCADORES ════════ *@
-            @if (activeTab == "markers")
-            {
-                <div class="d-flex justify-content-between mb-3">
-                    <h5 class="fw-bold">Catálogo de Marcadores</h5>
-                    <button class="btn btn-primary btn-sm" @onclick="() => { editingMarker = new Marker(); showMarkerForm = true; }">
-                        <i class="bi bi-plus"></i> Nuevo Marcador
-                    </button>
+    <!-- Content Area -->
+    <div class="config-content-wrap">
+
+        @* ════════ TAB: MARCADORES ════════ *@
+        @if (activeTab == "markers")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Catálogo de Marcadores</h2>
+                    <p class="section-subtitle">@markers.Count marcadores registrados</p>
                 </div>
+                <button class="btn-config btn-config-primary" @onclick="() => { editingMarker = new Marker(); showMarkerForm = true; }">
+                    <i class="bi bi-plus-lg"></i> Nuevo Marcador
+                </button>
+            </div>
 
-                @if (showMarkerForm)
-                {
-                    <div class="card mb-3 border-primary">
-                        <div class="card-body p-3">
-                            <div class="row g-2">
-                                <div class="col-md-4">
-                                    <input type="text" class="form-control form-control-sm" placeholder="Nombre (ej: CD34)" @bind="editingMarker.Name" />
-                                </div>
-                                <div class="col-md-5">
-                                    <input type="text" class="form-control form-control-sm" placeholder="Descripción" @bind="editingMarker.Description" />
-                                </div>
-                                <div class="col-md-3 d-flex gap-2">
-                                    <button class="btn btn-success btn-sm" @onclick="SaveMarker"><i class="bi bi-check-lg"></i> Guardar</button>
-                                    <button class="btn btn-light btn-sm" @onclick="() => showMarkerForm = false">Cancelar</button>
-                                </div>
-                            </div>
+            @if (showMarkerForm)
+            {
+                <div class="inline-form">
+                    <div class="inline-form-grid">
+                        <div class="form-field">
+                            <label class="field-label">Nombre</label>
+                            <input type="text" class="field-input" placeholder="Ej: CD34" @bind="editingMarker.Name" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Descripción</label>
+                            <input type="text" class="field-input" placeholder="Descripción del marcador" @bind="editingMarker.Description" />
+                        </div>
+                        <div class="form-field form-actions-inline">
+                            <button class="btn-config btn-config-success" @onclick="SaveMarker"><i class="bi bi-check-lg"></i> Guardar</button>
+                            <button class="btn-config btn-config-ghost" @onclick="() => showMarkerForm = false">Cancelar</button>
                         </div>
                     </div>
-                }
+                </div>
+            }
 
-                <table class="table table-hover align-middle">
-                    <thead><tr><th>Nombre</th><th>Descripción</th><th class="text-end">Acciones</th></tr></thead>
+            <div class="config-table-wrap">
+                <table class="config-table">
+                    <thead>
+                        <tr>
+                            <th class="col-marker-name">Nombre</th>
+                            <th>Descripción</th>
+                            <th class="col-actions">Acciones</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var m in markers)
                         {
                             <tr>
-                                <td class="fw-bold text-primary">@m.Name</td>
-                                <td class="text-muted small">@(string.IsNullOrEmpty(m.Description) ? "-" : m.Description)</td>
-                                <td class="text-end">
-                                    <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => { editingMarker = m; showMarkerForm = true; }">
+                                <td><span class="marker-chip">@m.Name</span></td>
+                                <td class="cell-desc">@(string.IsNullOrEmpty(m.Description) ? "—" : m.Description)</td>
+                                <td class="cell-actions">
+                                    <button class="action-icon action-edit" title="Editar" @onclick="() => { editingMarker = m; showMarkerForm = true; }">
                                         <i class="bi bi-pencil"></i>
                                     </button>
-                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteMarker(m.Id)">
+                                    <button class="action-icon action-delete" title="Eliminar" @onclick="() => DeleteMarker(m.Id)">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </td>
@@ -98,100 +102,118 @@
                         }
                     </tbody>
                 </table>
-            }
+            </div>
+        }
 
-            @* ════════ TAB: PLANTILLAS ════════ *@
-            else if (activeTab == "templates")
-            {
-                <div class="d-flex justify-content-between mb-3">
-                    <h5 class="fw-bold">Plantillas de Resultado</h5>
-                    <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("/configuracion/plantilla/nueva")'>
-                        <i class="bi bi-plus"></i> Nueva Plantilla
-                    </button>
+        @* ════════ TAB: PLANTILLAS ════════ *@
+        else if (activeTab == "templates")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Plantillas de Resultado</h2>
+                    <p class="section-subtitle">@templates.Count plantillas disponibles</p>
                 </div>
-                <div class="row g-4">
-                    @foreach (var t in templates)
-                    {
-                        <div class="col-md-6 col-lg-4">
-                            <div class="card border h-100 template-card">
-                                <div class="card-body">
-                                    <h6 class="fw-bold text-dark">@t.Name</h6>
-                                    <p class="text-muted small mb-3">
-                                        @(string.IsNullOrEmpty(t.HeaderText) ? "Sin texto predefinido" : (t.HeaderText.Length > 60 ? t.HeaderText.Substring(0, 57) + "..." : t.HeaderText))
-                                    </p>
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <span class="badge bg-light text-dark border">
-                                            <i class="bi bi-list-check me-1"></i> Marcadores: @(templateMarkerCounts.GetValueOrDefault(t.Id, 0))
-                                        </span>
-                                        <div class="btn-group">
-                                            <button class="btn btn-outline-primary btn-sm" @onclick="() => EditTemplate(t)">
-                                                <i class="bi bi-gear"></i> Editar
-                                            </button>
-                                            <button class="btn btn-outline-info btn-sm" title="Clonar" @onclick="() => CloneTemplate(t)">
-                                                <i class="bi bi-copy"></i>
-                                            </button>
-                                            <button class="btn btn-outline-danger btn-sm" title="Eliminar" @onclick="() => DeleteTemplate(t.Id)">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
+                <button class="btn-config btn-config-primary" @onclick='() => Nav.NavigateTo("/configuracion/plantilla/nueva")'>
+                    <i class="bi bi-plus-lg"></i> Nueva Plantilla
+                </button>
+            </div>
 
-            @* ════════ TAB: PANELES ════════ *@
-            else if (activeTab == "panels")
-            {
-                <div class="d-flex justify-content-between mb-3">
-                    <h5 class="fw-bold">Paneles de Tubos</h5>
-                    <button class="btn btn-primary btn-sm" @onclick="() => { editingPanel = new Panel(); showPanelForm = true; }">
-                        <i class="bi bi-plus"></i> Nuevo Panel
-                    </button>
-                </div>
-
-                @if (showPanelForm)
+            <div class="template-grid">
+                @foreach (var t in templates)
                 {
-                    <div class="card mb-3 border-primary">
-                        <div class="card-body p-3">
-                            <div class="row g-2 mb-2">
-                                <div class="col-md-4">
-                                    <label class="form-label small fw-bold">Nombre del Panel</label>
-                                    <input type="text" class="form-control form-control-sm" placeholder="Ej: SLPC + 23" @bind="editingPanel.Name" />
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label small fw-bold">Descripción</label>
-                                    <input type="text" class="form-control form-control-sm" placeholder="Descripción" @bind="editingPanel.Description" />
-                                </div>
+                    <div class="template-card">
+                        <div class="template-card-accent"></div>
+                        <div class="template-card-body">
+                            <div class="template-icon-wrap">
+                                <i class="bi bi-file-earmark-medical"></i>
                             </div>
-                            <div class="mb-2">
-                                <label class="form-label small fw-bold">Listado de Tubos</label>
-                                <textarea class="form-control form-control-sm" rows="4" @bind="editingPanel.TubeListText" placeholder="8+lambda/56+kappa/5/3/19/20+4/45/38&#10;23/10/79b/200/19/20/45/43"></textarea>
+                            <h3 class="template-name">@t.Name</h3>
+                            <p class="template-desc">
+                                @(string.IsNullOrEmpty(t.HeaderText) ? "Sin texto predefinido" : (t.HeaderText.Length > 60 ? t.HeaderText.Substring(0, 57) + "..." : t.HeaderText))
+                            </p>
+                            <div class="template-meta">
+                                <span class="template-badge">
+                                    <i class="bi bi-list-check"></i> @(templateMarkerCounts.GetValueOrDefault(t.Id, 0)) marcadores
+                                </span>
                             </div>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-success btn-sm" @onclick="SavePanel"><i class="bi bi-check-lg"></i> Guardar</button>
-                                <button class="btn btn-light btn-sm" @onclick="() => showPanelForm = false">Cancelar</button>
+                            <div class="template-actions">
+                                <button class="btn-config btn-config-outline" @onclick="() => EditTemplate(t)">
+                                    <i class="bi bi-gear"></i> Editar
+                                </button>
+                                <button class="action-icon action-clone" title="Clonar" @onclick="() => CloneTemplate(t)">
+                                    <i class="bi bi-copy"></i>
+                                </button>
+                                <button class="action-icon action-delete" title="Eliminar" @onclick="() => DeleteTemplate(t.Id)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
                 }
+            </div>
+        }
 
-                <table class="table table-hover align-middle">
-                    <thead><tr><th>Nombre</th><th>Descripción</th><th>Tubos</th><th class="text-end">Acciones</th></tr></thead>
+        @* ════════ TAB: PANELES ════════ *@
+        else if (activeTab == "panels")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Paneles de Tubos</h2>
+                    <p class="section-subtitle">@panels.Count paneles configurados</p>
+                </div>
+                <button class="btn-config btn-config-primary" @onclick="() => { editingPanel = new Panel(); showPanelForm = true; }">
+                    <i class="bi bi-plus-lg"></i> Nuevo Panel
+                </button>
+            </div>
+
+            @if (showPanelForm)
+            {
+                <div class="inline-form">
+                    <div class="inline-form-rows">
+                        <div class="inline-form-grid">
+                            <div class="form-field">
+                                <label class="field-label">Nombre del Panel</label>
+                                <input type="text" class="field-input" placeholder="Ej: SLPC + 23" @bind="editingPanel.Name" />
+                            </div>
+                            <div class="form-field">
+                                <label class="field-label">Descripción</label>
+                                <input type="text" class="field-input" placeholder="Descripción" @bind="editingPanel.Description" />
+                            </div>
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Listado de Tubos</label>
+                            <textarea class="field-input field-textarea" rows="3" @bind="editingPanel.TubeListText" placeholder="8+lambda/56+kappa/5/3/19/20+4/45/38&#10;23/10/79b/200/19/20/45/43"></textarea>
+                        </div>
+                        <div class="form-actions-inline">
+                            <button class="btn-config btn-config-success" @onclick="SavePanel"><i class="bi bi-check-lg"></i> Guardar</button>
+                            <button class="btn-config btn-config-ghost" @onclick="() => showPanelForm = false">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="config-table-wrap">
+                <table class="config-table">
+                    <thead>
+                        <tr>
+                            <th class="col-panel-name">Nombre</th>
+                            <th>Descripción</th>
+                            <th>Tubos</th>
+                            <th class="col-actions">Acciones</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var p in panels)
                         {
                             <tr>
-                                <td class="fw-bold text-primary">@p.Name</td>
-                                <td class="text-muted small">@(p.Description ?? "-")</td>
-                                <td class="text-muted small" style="max-width: 300px; white-space: pre-wrap;">@(string.IsNullOrEmpty(p.TubeListText) ? "-" : (p.TubeListText.Length > 80 ? p.TubeListText.Substring(0, 77) + "..." : p.TubeListText))</td>
-                                <td class="text-end">
-                                    <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => { editingPanel = p; showPanelForm = true; }">
+                                <td><span class="panel-chip">@p.Name</span></td>
+                                <td class="cell-desc">@(p.Description ?? "—")</td>
+                                <td class="cell-tubes">@(string.IsNullOrEmpty(p.TubeListText) ? "—" : (p.TubeListText.Length > 80 ? p.TubeListText.Substring(0, 77) + "..." : p.TubeListText))</td>
+                                <td class="cell-actions">
+                                    <button class="action-icon action-edit" title="Editar" @onclick="() => { editingPanel = p; showPanelForm = true; }">
                                         <i class="bi bi-pencil"></i>
                                     </button>
-                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => DeletePanel(p.Id)">
+                                    <button class="action-icon action-delete" title="Eliminar" @onclick="() => DeletePanel(p.Id)">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </td>
@@ -199,131 +221,598 @@
                         }
                     </tbody>
                 </table>
-            }
+            </div>
+        }
 
-            @* ════════ TAB: AJUSTES (Intensidades) ════════ *@
-            else if (activeTab == "system")
-            {
-                <h5 class="fw-bold mb-4">Configuración de Intensidades</h5>
-                <p class="text-muted small">Define los niveles que aparecerán como radio-buttons en los informes. Puedes añadir o quitar valores.</p>
-                <div class="row g-3 mb-3">
-                    @for (int i = 0; i < intensitySettings.Count; i++)
-                    {
-                        var setting = intensitySettings[i];
-                        <div class="col-md-4 col-lg-3">
-                            <div class="input-group">
-                                <span class="input-group-text bg-white small">@(i + 1)</span>
-                                <input type="text" @bind="setting.Value" class="form-control" />
-                                <button class="btn btn-outline-danger btn-sm" @onclick="() => RemoveIntensity(setting)"><i class="bi bi-x"></i></button>
-                            </div>
-                        </div>
-                    }
+        @* ════════ TAB: AJUSTES (Intensidades) ════════ *@
+        else if (activeTab == "system")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Configuración de Intensidades</h2>
+                    <p class="section-subtitle">Define los niveles que aparecerán como radio-buttons en los informes</p>
                 </div>
-                <div class="d-flex gap-2 mb-3">
-                    <button class="btn btn-outline-primary btn-sm" @onclick="AddIntensity">
-                        <i class="bi bi-plus me-1"></i>Añadir Intensidad
-                    </button>
-                </div>
-                <button class="btn btn-success" @onclick="SaveIntensities">
-                    <i class="bi bi-save me-1"></i> Guardar Intensidades
+                <button class="btn-config btn-config-success" @onclick="SaveIntensities">
+                    <i class="bi bi-save"></i> Guardar Intensidades
                 </button>
+            </div>
+
+            <div class="intensity-grid">
+                @for (int i = 0; i < intensitySettings.Count; i++)
+                {
+                    var setting = intensitySettings[i];
+                    var colorIndex = i % 5;
+                    <div class="intensity-card">
+                        <div class="intensity-number" style="background: @GetIntensityColor(colorIndex)">@(i + 1)</div>
+                        <input type="text" class="intensity-input" @bind="setting.Value" placeholder="Valor..." />
+                        <button class="intensity-remove" @onclick="() => RemoveIntensity(setting)" title="Eliminar">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                }
+                <div class="intensity-add" @onclick="AddIntensity">
+                    <i class="bi bi-plus-lg"></i>
+                    <span>Añadir</span>
+                </div>
+            </div>
+        }
+
+        @* ════════ TAB: CABECERA ════════ *@
+        else if (activeTab == "header")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Cabecera de Informes</h2>
+                    <p class="section-subtitle">Configura el logotipo y texto que aparecerá en cada informe generado</p>
+                </div>
+                <button class="btn-config btn-config-primary" @onclick="SaveHeaderConfig">
+                    <i class="bi bi-save"></i> Guardar Cabecera
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div class="status-banner @(isError ? "status-error" : "status-ok")">
+                    <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle")"></i>
+                    <span>@statusMessage</span>
+                    <button class="status-close" @onclick="() => statusMessage = null"><i class="bi bi-x"></i></button>
+                </div>
             }
 
-            @* ════════ TAB: CABECERA ════════ *@
-            else if (activeTab == "header")
-            {
-                <h5 class="fw-bold mb-4">Configuración de Cabecera de Informes</h5>
-                <div class="row g-4">
-                    <div class="col-md-6 border-end">
-                        <h6 class="fw-bold small text-muted text-uppercase mb-3">Diseño del Logotipo</h6>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Subir Imagen (Logo)</label>
-                            <InputFile OnChange="HandleLogoUpload" class="form-control" accept="image/png, image/jpeg" />
+            <div class="header-layout">
+                <!-- Settings Panel -->
+                <div class="header-settings-panel">
+                    <div class="settings-section">
+                        <h3 class="settings-section-title"><i class="bi bi-image"></i> Logotipo</h3>
+                        <div class="form-field">
+                            <label class="field-label">Subir Imagen</label>
+                            <InputFile OnChange="HandleLogoUpload" class="field-input" accept="image/png, image/jpeg" />
                         </div>
-                        <div class="row">
-                            <div class="col-6 mb-3">
-                                <label class="form-label small fw-bold">Posición</label>
-                                <select class="form-select select-sm" @bind="logoAlignment">
+                        <div class="settings-row">
+                            <div class="form-field">
+                                <label class="field-label">Posición</label>
+                                <select class="field-input" @bind="logoAlignment">
                                     <option value="Left">Izquierda</option>
                                     <option value="Center">Centro</option>
                                     <option value="Right">Derecha</option>
                                 </select>
                             </div>
-                            <div class="col-6 mb-3">
-                                <label class="form-label small fw-bold">Ancho (px)</label>
-                                <input type="number" class="form-control" @bind="logoWidth" />
+                            <div class="form-field">
+                                <label class="field-label">Ancho (px)</label>
+                                <input type="number" class="field-input" @bind="logoWidth" />
                             </div>
                         </div>
-                        <h6 class="fw-bold small text-muted text-uppercase mb-3 mt-4">Texto de Cabecera</h6>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Línea 1 (Nombre Centro)</label>
-                            <input type="text" class="form-control" @bind="headerLine1" placeholder="Ej: Laboratorio Central de Citometría" />
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <div class="settings-section">
+                        <h3 class="settings-section-title"><i class="bi bi-type"></i> Texto de Cabecera</h3>
+                        <div class="form-field">
+                            <label class="field-label">Línea 1 (Nombre Centro)</label>
+                            <input type="text" class="field-input" @bind="headerLine1" placeholder="Ej: Laboratorio Central de Citometría" />
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Línea 2 (Dirección/Contacto)</label>
-                            <input type="text" class="form-control" @bind="headerLine2" placeholder="Ej: Calle Médica 123, Madrid" />
+                        <div class="form-field">
+                            <label class="field-label">Línea 2 (Dirección/Contacto)</label>
+                            <input type="text" class="field-input" @bind="headerLine2" placeholder="Ej: Calle Médica 123, Madrid" />
                         </div>
                     </div>
-                    <div class="col-md-6 bg-light p-4 rounded-3 d-flex flex-column align-items-center">
-                        <h6 class="fw-bold small text-muted text-uppercase mb-4">Previsualización Cabecera (A4)</h6>
-                        <div class="preview-page border bg-white shadow-sm p-3 w-100" style="min-height: 200px;">
-                            <div class="header-preview-container d-flex flex-column" style="text-align: @(logoAlignment.ToLower())">
-                                @if (!string.IsNullOrEmpty(logoBase64))
-                                {
-                                    <div class="mb-2" style="text-align: @(logoAlignment.ToLower())">
-                                        <img src="data:image/png;base64,@logoBase64" style="width: @(logoWidth)px; height: auto;" />
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="mb-2 text-center text-muted border py-4 bg-light small">Sin Logotipo</div>
-                                }
-                                <div class="header-text-lines">
-                                    <div class="fw-bold" style="font-size: 14px;">@(string.IsNullOrEmpty(headerLine1) ? "NOMBRE DEL CENTRO" : headerLine1)</div>
-                                    <div class="text-muted" style="font-size: 11px;">@(string.IsNullOrEmpty(headerLine2) ? "DIRECCIÓN Y CONTACTO" : headerLine2)</div>
+                </div>
+
+                <!-- Preview Panel -->
+                <div class="header-preview-panel">
+                    <div class="preview-label"><i class="bi bi-eye"></i> Previsualización</div>
+                    <div class="preview-page-container">
+                        <div class="preview-page" style="text-align: @(logoAlignment.ToLower())">
+                            @if (!string.IsNullOrEmpty(logoBase64))
+                            {
+                                <div class="preview-logo-wrap">
+                                    <img src="data:image/png;base64,@logoBase64" style="width: @(logoWidth)px; height: auto;" />
                                 </div>
+                            }
+                            else
+                            {
+                                <div class="preview-logo-placeholder">
+                                    <i class="bi bi-image"></i>
+                                    <span>Sin Logotipo</span>
+                                </div>
+                            }
+                            <div class="preview-text-lines">
+                                <div class="preview-line1">@(string.IsNullOrEmpty(headerLine1) ? "NOMBRE DEL CENTRO" : headerLine1)</div>
+                                <div class="preview-line2">@(string.IsNullOrEmpty(headerLine2) ? "DIRECCIÓN Y CONTACTO" : headerLine2)</div>
+                            </div>
+                            <div class="preview-separator"></div>
+                            <div class="preview-patient-area">
+                                <span class="preview-field"><strong>NOMBRE:</strong> EJEMPLO, PACIENTE</span>
+                                <span class="preview-field"><strong>NHC:</strong> 000000</span>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="mt-4 border-top pt-4">
-                    @if (!string.IsNullOrEmpty(statusMessage))
-                    {
-                        <div class="alert @(isError ? "alert-danger" : "alert-success") alert-dismissible fade show mb-3" role="alert">
-                            <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
-                            @statusMessage
-                            <button type="button" class="btn-close" @onclick="() => statusMessage = null"></button>
-                        </div>
-                    }
-                    <button class="btn btn-primary px-4 fw-bold" @onclick="SaveHeaderConfig">
-                        <i class="bi bi-save me-2"></i> Guardar Cabecera Médica
-                    </button>
-                </div>
-            }
-        </div>
+            </div>
+        }
+
     </div>
 </div>
 
 <style>
-    .nav-pills .nav-link {
-        color: #6c757d;
-        border-radius: 0.5rem;
-        padding: 0.75rem;
+    /* ── Page ─────────────────────────────────────────────── */
+    .config-page {
+        padding: 28px 32px;
+        background: #f4f6f9;
+        min-height: calc(100vh - 56px);
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
     }
-    .nav-pills .nav-link.active {
-        background-color: #0d6efd15;
-        color: #0d6efd;
-        font-weight: bold;
-        border: 1px solid #0d6efd;
+
+    /* ── Header ──────────────────────────────────────────── */
+    .config-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .config-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: #1e293b;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .config-title i { color: #3b82f6; font-size: 24px; }
+    .config-subtitle { color: #64748b; font-size: 14px; margin: 4px 0 0; }
+
+    /* ── Tab Strip ────────────────────────────────────────── */
+    .config-tabs-strip {
+        display: flex;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 4px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        gap: 2px;
+        overflow-x: auto;
+    }
+    .config-tab {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 16px;
+        border: none;
+        background: transparent;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+    .config-tab:hover { background: #f1f5f9; color: #334155; }
+    .config-tab.active {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+    .config-tab i { font-size: 15px; }
+
+    /* ── Content Wrap ─────────────────────────────────────── */
+    .config-content-wrap {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 28px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+
+    /* ── Section Header ──────────────────────────────────── */
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .section-title { font-size: 18px; font-weight: 700; color: #1e293b; margin: 0; }
+    .section-subtitle { font-size: 13px; color: #94a3b8; margin: 4px 0 0; }
+
+    /* ── Buttons ──────────────────────────────────────────── */
+    .btn-config {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 20px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .btn-config-primary {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+    .btn-config-primary:hover { box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35); transform: translateY(-1px); }
+    .btn-config-success {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(22, 163, 74, 0.25);
+    }
+    .btn-config-success:hover { box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35); transform: translateY(-1px); }
+    .btn-config-outline {
+        background: #fff;
+        color: #3b82f6;
+        border: 1.5px solid #bfdbfe;
+    }
+    .btn-config-outline:hover { background: #eff6ff; border-color: #3b82f6; }
+    .btn-config-ghost {
+        background: #f1f5f9;
+        color: #64748b;
+        border: 1px solid #e2e8f0;
+    }
+    .btn-config-ghost:hover { background: #e2e8f0; color: #334155; }
+
+    /* ── Inline Form ─────────────────────────────────────── */
+    .inline-form {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-left: 3px solid #3b82f6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .inline-form-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: end; }
+    .inline-form-rows { display: flex; flex-direction: column; gap: 16px; }
+    .form-field { display: flex; flex-direction: column; gap: 6px; }
+    .field-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .field-input {
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+        color: #334155;
+        transition: border-color 0.15s;
+        outline: none;
+    }
+    .field-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    .field-textarea { resize: vertical; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px; }
+    .form-actions-inline { display: flex; gap: 8px; align-items: flex-end; padding-bottom: 1px; }
+
+    /* ── Config Table ────────────────────────────────────── */
+    .config-table-wrap {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .config-table { width: 100%; border-collapse: collapse; }
+    .config-table thead tr { background: #f8fafc; }
+    .config-table th {
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        padding: 14px 16px;
+        border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .config-table td {
+        font-size: 13px;
+        color: #334155;
+        padding: 12px 16px;
+        border-bottom: 1px solid #f1f5f9;
+        vertical-align: middle;
+    }
+    .config-table tbody tr { transition: background 0.1s; }
+    .config-table tbody tr:hover { background: #f8fafc; }
+    .config-table tbody tr:last-child td { border-bottom: none; }
+
+    .col-marker-name, .col-panel-name { padding-left: 20px !important; width: 150px; }
+    .col-actions { text-align: center; width: 100px; }
+    .cell-desc { color: #94a3b8; }
+    .cell-tubes { color: #6366f1; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px; max-width: 300px; white-space: pre-wrap; }
+    .cell-actions { text-align: center; white-space: nowrap; }
+
+    /* ── Chips ────────────────────────────────────────────── */
+    .marker-chip {
+        background: #eff6ff;
+        color: #2563eb;
+        border: 1px solid #bfdbfe;
+        padding: 3px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', 'Consolas', monospace;
+    }
+    .panel-chip {
+        background: #eef2ff;
+        color: #4f46e5;
+        border: 1px solid #c7d2fe;
+        padding: 3px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    /* ── Action Icons ────────────────────────────────────── */
+    .action-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        margin: 0 2px;
+        font-size: 14px;
+    }
+    .action-edit { color: #2563eb; }
+    .action-edit:hover { background: #eff6ff; border-color: #93c5fd; box-shadow: 0 2px 6px rgba(37,99,235,0.15); }
+    .action-clone { color: #0891b2; }
+    .action-clone:hover { background: #ecfeff; border-color: #67e8f9; box-shadow: 0 2px 6px rgba(8,145,178,0.15); }
+    .action-delete { color: #ef4444; }
+    .action-delete:hover { background: #fef2f2; border-color: #fca5a5; box-shadow: 0 2px 6px rgba(239,68,68,0.15); }
+
+    /* ── Template Cards ──────────────────────────────────── */
+    .template-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
     }
     .template-card {
-        transition: all 0.2s;
-        border-radius: 1rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        transition: all 0.2s ease;
+        position: relative;
     }
     .template-card:hover {
-        border-color: #0d6efd !important;
-        box-shadow: 0 .5rem 1rem rgba(0,0,0,.05);
+        border-color: #93c5fd;
+        box-shadow: 0 8px 25px rgba(37, 99, 235, 0.08);
+        transform: translateY(-2px);
     }
+    .template-card-accent {
+        height: 3px;
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    }
+    .template-card-body { padding: 20px; }
+    .template-icon-wrap {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: #eff6ff;
+        color: #3b82f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        margin-bottom: 14px;
+    }
+    .template-name { font-size: 15px; font-weight: 700; color: #1e293b; margin: 0 0 8px; }
+    .template-desc { font-size: 12px; color: #94a3b8; margin: 0 0 14px; line-height: 1.5; min-height: 36px; }
+    .template-meta { margin-bottom: 16px; }
+    .template-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        color: #475569;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 6px;
+    }
+    .template-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-top: 14px;
+        border-top: 1px solid #f1f5f9;
+    }
+    .template-actions .btn-config-outline { flex: 1; justify-content: center; font-size: 12px; padding: 6px 12px; }
+
+    /* ── Intensity Cards ─────────────────────────────────── */
+    .intensity-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+    }
+    .intensity-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 8px 12px;
+        transition: all 0.15s;
+    }
+    .intensity-card:hover { border-color: #93c5fd; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .intensity-number {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 800;
+        color: #fff;
+        flex-shrink: 0;
+    }
+    .intensity-input {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 14px;
+        font-weight: 600;
+        color: #1e293b;
+        outline: none;
+        padding: 4px 0;
+    }
+    .intensity-input::placeholder { color: #cbd5e1; font-weight: 400; }
+    .intensity-remove {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background: transparent;
+        border: none;
+        color: #cbd5e1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+    }
+    .intensity-remove:hover { background: #fef2f2; color: #ef4444; }
+    .intensity-add {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: #f8fafc;
+        border: 2px dashed #cbd5e1;
+        border-radius: 10px;
+        padding: 16px;
+        color: #94a3b8;
+        cursor: pointer;
+        transition: all 0.15s;
+        font-size: 12px;
+        font-weight: 600;
+        min-height: 50px;
+    }
+    .intensity-add:hover { border-color: #3b82f6; color: #3b82f6; background: #eff6ff; }
+
+    /* ── Header Config ───────────────────────────────────── */
+    .header-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .header-settings-panel {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+    }
+    .settings-section { margin-bottom: 0; }
+    .settings-section-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .settings-section-title i { color: #3b82f6; }
+    .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .settings-divider { height: 1px; background: #f1f5f9; margin: 20px 0; }
+    .header-settings-panel .form-field { margin-bottom: 12px; }
+
+    .header-preview-panel {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+    }
+    .preview-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 16px;
+    }
+    .preview-page-container { flex: 1; display: flex; align-items: flex-start; justify-content: center; }
+    .preview-page {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        padding: 24px;
+        width: 100%;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .preview-logo-wrap { margin-bottom: 12px; }
+    .preview-logo-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 20px;
+        background: #f1f5f9;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
+        color: #94a3b8;
+        font-size: 13px;
+        margin-bottom: 12px;
+    }
+    .preview-logo-placeholder i { font-size: 20px; }
+    .preview-text-lines { margin-bottom: 12px; }
+    .preview-line1 { font-size: 14px; font-weight: 700; color: #64748b; }
+    .preview-line2 { font-size: 11px; color: #94a3b8; }
+    .preview-separator { height: 2px; background: #1e293b; margin: 10px 0; }
+    .preview-patient-area { display: flex; gap: 24px; font-size: 11px; color: #475569; }
+
+    /* ── Status Banner ───────────────────────────────────── */
+    .status-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .status-ok { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .status-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .status-close {
+        margin-left: auto;
+        background: none;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        opacity: 0.6;
+        font-size: 16px;
+    }
+    .status-close:hover { opacity: 1; }
 </style>
 
 @code {
@@ -450,6 +939,16 @@
     {
         intensitySettings.Remove(setting);
     }
+
+    private string GetIntensityColor(int index) => index switch
+    {
+        0 => "#3b82f6",
+        1 => "#8b5cf6",
+        2 => "#06b6d4",
+        3 => "#f59e0b",
+        4 => "#ef4444",
+        _ => "#64748b"
+    };
 
     private string? statusMessage;
     private bool isError = false;

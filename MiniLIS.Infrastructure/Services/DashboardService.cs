@@ -22,45 +22,103 @@ namespace MiniLIS.Infrastructure.Services
         public async Task<DashboardStatsDto> GetStatsAsync()
         {
             var today = DateTime.UtcNow.Date;
+            var weekStart = today.AddDays(-(int)today.DayOfWeek + 1); // Monday
+            if (today.DayOfWeek == DayOfWeek.Sunday) weekStart = weekStart.AddDays(-7);
+            var monthStart = new DateTime(today.Year, today.Month, 1);
             var last30Days = today.AddDays(-30);
 
-            // Fetch samples for logic that requires historical analysis
-            var historicalSamples = await _db.Samples
-                .Where(s => s.ReceptionDate >= last30Days)
-                .Select(s => new { s.ReceptionDate, s.HasIncident, s.Status })
+            // ── Status counters ──
+            var statusCounts = await _db.Samples
+                .GroupBy(s => s.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
                 .ToListAsync();
 
-            // Logic for active days averages
-            var lastWeek = today.AddDays(-7);
-            
-            var weeklySamples = historicalSamples.Where(s => s.ReceptionDate >= lastWeek).ToList();
-            var activeDaysWeekly = weeklySamples.Select(s => s.ReceptionDate.Date).Distinct().Count();
-            
-            var monthlySamples = historicalSamples; // Already 30 days
-            var activeDaysMonthly = monthlySamples.Select(s => s.ReceptionDate.Date).Distinct().Count();
+            int total = statusCounts.Sum(x => x.Count);
+            int recibidas = statusCounts.FirstOrDefault(x => x.Status == SampleStatus.Recibida)?.Count ?? 0;
+            int enProceso = statusCounts.FirstOrDefault(x => x.Status == SampleStatus.EnProceso)?.Count ?? 0;
+            int reportadaParcial = statusCounts.FirstOrDefault(x => x.Status == SampleStatus.ReportadaParcial)?.Count ?? 0;
+            int finalizada = statusCounts.FirstOrDefault(x => x.Status == SampleStatus.Finalizada)?.Count ?? 0;
+            int rechazada = statusCounts.FirstOrDefault(x => x.Status == SampleStatus.Rechazada)?.Count ?? 0;
 
-            // Reported vs Pending counts
-            var reportedCount = await _db.Samples.CountAsync(s => s.Status == SampleStatus.Finalizada);
-            var pendingCount = await _db.Samples.CountAsync(s => s.Status != SampleStatus.Finalizada && s.Status != SampleStatus.Rechazada);
+            // ── Volume ──
+            int todayCount = await _db.Samples.CountAsync(s => s.ReceptionDate >= today);
+            int weekCount = await _db.Samples.CountAsync(s => s.ReceptionDate >= weekStart);
+            int monthCount = await _db.Samples.CountAsync(s => s.ReceptionDate >= monthStart);
 
-            // Incident Rate Last 30 Days
-            double totalLast30 = historicalSamples.Count;
-            double incidentsLast30 = historicalSamples.Count(s => s.HasIncident);
-            double incidentRate = totalLast30 > 0 ? (incidentsLast30 / totalLast30) * 100 : 0;
+            // Avg samples per active day (last 30 days)
+            var last30Samples = await _db.Samples
+                .Where(s => s.ReceptionDate >= last30Days)
+                .Select(s => s.ReceptionDate.Date)
+                .ToListAsync();
+            var activeDays = last30Samples.Distinct().Count();
+            double avgPerDay = activeDays > 0 ? (double)last30Samples.Count / activeDays : 0;
+
+            // ── TAT (Turnaround Time) ──
+            // For finalized samples in the last 30 days, compute ReportDate - ReceptionDate
+            var tatData = await _db.SampleReports
+                .Where(r => r.ReportDate.HasValue && r.Sample.Status == SampleStatus.Finalizada
+                         && r.Sample.ReceptionDate >= last30Days)
+                .Select(r => new { r.Sample.ReceptionDate, ReportDate = r.ReportDate!.Value })
+                .ToListAsync();
+
+            var tatDays = tatData.Select(r => (r.ReportDate - r.ReceptionDate).TotalDays).OrderBy(d => d).ToList();
+
+            double tatAvg = tatDays.Any() ? tatDays.Average() : 0;
+            double tatMedian = 0;
+            if (tatDays.Any())
+            {
+                int mid = tatDays.Count / 2;
+                tatMedian = tatDays.Count % 2 == 0 ? (tatDays[mid - 1] + tatDays[mid]) / 2 : tatDays[mid];
+            }
+            double tatMin = tatDays.Any() ? tatDays.First() : 0;
+            double tatMax = tatDays.Any() ? tatDays.Last() : 0;
+
+            // ── Quality ──
+            int totalLast30 = last30Samples.Count;
+            int incidentsLast30 = await _db.Samples.CountAsync(s => s.HasIncident && s.ReceptionDate >= last30Days);
+            int totalIncidents = await _db.Samples.CountAsync(s => s.HasIncident);
+            double incidentRate = totalLast30 > 0 ? (double)incidentsLast30 / totalLast30 * 100 : 0;
+
+            // ── Panel distribution (last 30 days) ──
+            var panelGroups = await _db.Samples
+                .Where(s => s.ReceptionDate >= last30Days && !string.IsNullOrEmpty(s.StudyPanel))
+                .GroupBy(s => s.StudyPanel)
+                .Select(g => new { Panel = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Count)
+                .Take(8)
+                .ToListAsync();
+
+            int panelTotal = panelGroups.Sum(g => g.Count);
+            var panelDist = panelGroups.Select(g => new PanelUsageDto
+            {
+                PanelName = g.Panel,
+                Count = g.Count,
+                Percentage = panelTotal > 0 ? Math.Round((double)g.Count / panelTotal * 100, 1) : 0
+            }).ToList();
 
             return new DashboardStatsDto
             {
-                SamplesReceivedToday = await _db.Samples.CountAsync(s => s.ReceptionDate >= today),
-                SamplesInProcess = await _db.Samples.CountAsync(s => s.Status == SampleStatus.EnProceso),
-                PendingReports = await _db.Samples.CountAsync(s => s.Status == SampleStatus.ReportadaParcial),
-                ActiveIncidents = await _db.Samples.CountAsync(s => s.HasIncident),
-                
-                // Analytics
-                SamplesLastWeekAverage = activeDaysWeekly > 0 ? (double)weeklySamples.Count / activeDaysWeekly : 0,
-                SamplesLastMonthAverage = activeDaysMonthly > 0 ? (double)monthlySamples.Count / activeDaysMonthly : 0,
-                ReportedCount = reportedCount,
-                PendingCount = pendingCount,
-                IncidentRateLast30Days = incidentRate
+                TotalSamples = total,
+                SamplesRecibidas = recibidas,
+                SamplesEnProceso = enProceso,
+                SamplesReportadaParcial = reportadaParcial,
+                SamplesFinalizada = finalizada,
+                SamplesRechazada = rechazada,
+
+                TatAvgDays = Math.Round(tatAvg, 1),
+                TatMedianDays = Math.Round(tatMedian, 1),
+                TatMinDays = Math.Round(tatMin, 1),
+                TatMaxDays = Math.Round(tatMax, 1),
+
+                SamplesReceivedToday = todayCount,
+                SamplesReceivedThisWeek = weekCount,
+                SamplesReceivedThisMonth = monthCount,
+                AvgSamplesPerDay = Math.Round(avgPerDay, 1),
+
+                TotalIncidents = totalIncidents,
+                IncidentRateLast30Days = Math.Round(incidentRate, 1),
+
+                PanelDistribution = panelDist
             };
         }
 
