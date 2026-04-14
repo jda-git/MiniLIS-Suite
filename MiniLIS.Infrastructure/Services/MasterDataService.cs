@@ -77,23 +77,37 @@ namespace MiniLIS.Infrastructure.Services
             if (template.Id == 0)
             {
                 _db.ReportTemplates.Add(template);
-                await _db.SaveChangesAsync(); // Get Id
+                await _db.SaveChangesAsync(); // Set Id
             }
             else
             {
                 _db.ReportTemplates.Update(template);
-                // Sync markers (delete old, add new for simplicity in this version)
-                var oldMarkers = _db.TemplateMarkers.Where(tm => tm.ReportTemplateId == template.Id);
+                
+                // Remove previously linked markers first to avoid state conflicts when
+                // the incoming list contains tracked entities from the same DbContext.
+                var oldMarkers = await _db.TemplateMarkers
+                    .Where(tm => tm.ReportTemplateId == template.Id)
+                    .ToListAsync();
+
                 _db.TemplateMarkers.RemoveRange(oldMarkers);
+                await _db.SaveChangesAsync();
             }
 
-            foreach (var m in markers)
-            {
-                m.ReportTemplateId = template.Id;
-                _db.TemplateMarkers.Add(m);
-            }
+            // Always create fresh join entities. Reusing existing instances can leave EF in
+            // an inconsistent Added/Deleted state and crash Blazor circuit on save.
+            var normalizedMarkers = markers
+                .OrderBy(m => m.DisplayOrder)
+                .Select((m, index) => new TemplateMarker
+                {
+                    ReportTemplateId = template.Id,
+                    MarkerId = m.MarkerId,
+                    DisplayOrder = index + 1
+                })
+                .ToList();
 
+            _db.TemplateMarkers.AddRange(normalizedMarkers);
             await _db.SaveChangesAsync();
+            
             return template;
         }
 
