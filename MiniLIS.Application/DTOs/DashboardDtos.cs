@@ -10,6 +10,13 @@ namespace MiniLIS.Application.DTOs
         public int SamplesInProcess { get; set; }
         public int PendingReports { get; set; }
         public int ActiveIncidents { get; set; }
+        
+        // Nuevas métricas solicitadas
+        public double SamplesLastWeekAverage { get; set; }
+        public double SamplesLastMonthAverage { get; set; }
+        public int ReportedCount { get; set; }
+        public int PendingCount { get; set; }
+        public double IncidentRateLast30Days { get; set; }
     }
 
     public class RecentActivityDto

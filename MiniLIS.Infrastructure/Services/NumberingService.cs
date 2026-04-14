@@ -56,6 +56,22 @@ namespace MiniLIS.Infrastructure.Services
             return $"{currentYear}-{nextSeq:D4}";
         }
 
+        public async Task<string> PeekNextSampleNumberAsync()
+        {
+            var yearSetting = await _db.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == KEY_YEAR);
+            var seqSetting = await _db.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == KEY_SEQUENCE);
+
+            string currentYear = DateTime.Now.Year.ToString().Substring(2);
+            int nextSeq = 1;
+
+            if (yearSetting != null && yearSetting.Value == currentYear && seqSetting != null)
+            {
+                nextSeq = int.Parse(seqSetting.Value) + 1;
+            }
+
+            return $"{currentYear}-{nextSeq:D4}";
+        }
+
         public async Task SetNextSequenceAsync(int year, int nextSequence)
         {
             var yearSetting = await _db.SystemSettings.FirstOrDefaultAsync(s => s.Key == KEY_YEAR);

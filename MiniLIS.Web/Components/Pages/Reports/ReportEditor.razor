@@ -4,160 +4,324 @@
 @using Microsoft.AspNetCore.Authorization
 @using MiniLIS.Domain.Identity
 @attribute [Authorize]
+@inject NavigationManager Nav
 @inject IReportService ReportService
 @inject IMasterDataService MasterService
 @inject IDocumentService DocumentService
-@inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <PageTitle>Editor de Informe - MiniLIS Suite</PageTitle>
 
-<div class="container-fluid py-4">
+<div class="rpt-page">
+
     @if (report == null)
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary" role="status"></div>
-            <p class="mt-2">Cargando datos del informe...</p>
+            <p class="text-muted mt-3">Cargando datos del informe...</p>
         </div>
     }
     else
     {
-        <div class="row g-4">
-            <!-- Sidebar: Info y Firmas -->
-            <div class="col-xl-3">
-                <div class="card border-0 shadow-sm rounded-4 mb-4">
-                    <div class="card-body p-4">
-                        <small class="text-uppercase text-muted fw-bold mb-2 d-block">Muestra @report.Sample?.SampleNumber</small>
-                        <h4 class="fw-bold mb-3">@report.Sample?.ClinicalRequest?.Patient?.FullName</h4>
-                        <div class="d-flex flex-column gap-2 small">
-                            <span><i class="bi bi-person-vcard text-muted me-2"></i> <strong>NHC:</strong> @report.Sample?.ClinicalRequest?.Patient?.NHC</span>
-                            <span><i class="bi bi-hospital text-muted me-2"></i> <strong>Origen:</strong> @report.Sample?.ClinicalRequest?.OriginService</span>
-                        </div>
-                    </div>
-                </div>
+    <!-- ═══════════════  SECCIÓN 1 · IDENTIFICACIÓN  ═══════════════ -->
+    <fieldset class="rpt-fieldset">
+        <legend>Identificación</legend>
+        <div class="id-grid">
+            <div class="id-field"><label>Nombre:</label><input type="text" @bind="patientName" /></div>
+            <div class="id-field"><label>Fecha muestra:</label><input type="text" value="@report.Sample?.ReceptionDate.ToString("dd/MM/yyyy")" readonly /></div>
+            <div class="id-field"><label>Fecha informe:</label><input type="date" @bind="reportDate" /></div>
 
-                <div class="card border-0 shadow-sm rounded-4 mb-4">
-                    <div class="card-body p-4">
-                        <h6 class="fw-bold mb-3 border-bottom pb-2">Plantilla de Estudio</h6>
-                        <select class="form-select form-select-sm mb-3" @onchange="OnTemplateSelected">
-                            <option value="">-- Seleccionar --</option>
-                            @foreach (var t in availableTemplates)
-                            {
-                                <option value="@t.Id" selected="@(report.TemplateId == t.Id)">@t.Name</option>
-                            }
-                        </select>
-                        <button class="btn btn-outline-info btn-sm w-100 mb-2" @onclick="ShowAdHocMarkerDialog">
-                            <i class="bi bi-plus-circle me-1"></i> Marcador Extra
-                        </button>
-                    </div>
-                </div>
+            <div class="id-field"><label>Nº muestra:</label><input type="text" value="@report.Sample?.SampleNumber" readonly /></div>
+            <div class="id-field"><label>Petición electrónica:</label><input type="text" @bind="peticionElectronica" /></div>
+            <div class="id-field"><label>NHC:</label><input type="text" value="@report.Sample?.ClinicalRequest?.Patient?.NHC" readonly /></div>
+            <div class="id-field id-field-sm"><label>NASI:</label><input type="text" value="@report.Sample?.ClinicalRequest?.Patient?.NASI" readonly /></div>
 
-                <div class="card border-0 shadow-sm rounded-4">
-                    <div class="card-body p-4">
-                        <h6 class="fw-bold mb-3 border-bottom pb-2">Firmantes (Facultativos)</h6>
-                        <div class="signatory-list" style="max-height: 200px; overflow-y: auto;">
-                            @foreach (var user in availableSignatories)
-                            {
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="user-@user.Id" 
-                                           checked="@selectedSignatoryIds.Contains(user.Id)"
-                                           @onchange="@(e => ToggleSignatory(user.Id, e.Value))" />
-                                    <label class="form-check-label small" for="user-@user.Id">
-                                        @user.FullName
-                                    </label>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Editor Principal -->
-            <div class="col-xl-9">
-                <div class="card border-0 shadow-sm rounded-4 mb-4">
-                    <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
-                        <h5 class="fw-bold mb-0">Análisis Inmunofenotípico</h5>
-                        <div class="badge bg-primary px-3">@(report.MarkerValues.Count) Marcadores</div>
-                    </div>
-                    <div class="card-body p-4">
-                        <MarkerGrid MarkerValues="report.MarkerValues.ToList()" 
-                                  IntensityOptions="intensityOptions" 
-                                  OnMarkerChanged="RecalculateSummary" />
-                        
-                        <div class="mt-4">
-                            <label class="form-label fw-bold text-primary small">TEXTO GENERADO AUTOMÁTICAMENTE:</label>
-                            <div class="p-3 bg-light rounded border fst-italic shadow-inner" style="min-height: 60px;">
-                                @(string.IsNullOrWhiteSpace(report.MarkersSummary) ? "Seleccione intensidades para generar el texto..." : report.MarkersSummary)
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card border-0 shadow-sm rounded-4 mb-4">
-                    <div class="card-body p-4">
-                        <div class="row g-4">
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold"><i class="bi bi-pencil-square me-2"></i>Comentario del Informe</label>
-                                <textarea @bind="report.ReportBody" class="form-control" rows="5"></textarea>
-                            </div>
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold"><i class="bi bi-lightbulb me-2"></i>Conclusiones</label>
-                                <textarea @bind="report.Conclusions" class="form-control" rows="4"></textarea>
-                            </div>
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold text-danger"><i class="bi bi-clipboard-check me-2"></i>DIAGNÓSTICO / COMPATIBLE CON</label>
-                                <input type="text" @bind="report.Diagnosis" class="form-control fw-bold border-danger" placeholder="Ej: Infiltración por LNH de célula B..." />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="d-flex justify-content-end gap-3 mb-5">
-                    <button class="btn btn-light px-4" @onclick='() => Nav.NavigateTo("/muestras")'>Descartar</button>
-                    
-                    <div class="dropdown">
-                        <button class="btn btn-secondary dropdown-toggle px-4" type="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-download me-2"></i> Descargar
-                        </button>
-                        <ul class="dropdown-menu shadow">
-                            <li><button class="dropdown-item" @onclick="DownloadPdf"><i class="bi bi-file-pdf text-danger me-2"></i> Informe PDF</button></li>
-                            <li><button class="dropdown-item" @onclick="DownloadOdt"><i class="bi bi-file-earmark-word text-info me-2"></i> Informe Editable (ODT)</button></li>
-                        </ul>
-                    </div>
-
-                    <button class="btn btn-primary px-5 shadow" disabled="@isSaving" @onclick="SaveAndNotify">
-                        @if (isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
-                        <i class="bi bi-check-lg me-2"></i> Guardar Informe
-                    </button>
+            <div class="id-field id-field-wide"><label>Motivo solicitud:</label><input type="text" @bind="motivoSolicitud" /></div>
+            <div class="id-field"><label>Servicio solicitante:</label><input type="text" @bind="servicioSolicitante" /></div>
+            <div class="id-field"><label>Médico solicitante:</label><input type="text" @bind="medicoSolicitante" /></div>
+        </div>
+        <div class="id-grid mt-2">
+            <div class="id-field">
+                <label>Tipo de muestra:</label>
+                <div class="d-flex align-items-center gap-3 ms-2">
+                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "SP")" @onchange="@(() => tipoMuestra = "SP")" /> SP</label>
+                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "MO")" @onchange="@(() => tipoMuestra = "MO")" /> MO</label>
+                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "LCR")" @onchange="@(() => tipoMuestra = "LCR")" /> LCR</label>
+                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "Otros")" @onchange="@(() => tipoMuestra = "Otros")" /> Otros</label>
+                    @if(tipoMuestra == "Otros")
+                    {
+                        <input type="text" @bind="otroTipoMuestra" class="form-control form-control-sm" style="width: 130px; font-size: 13px; height: 26px; margin-left: 8px;" placeholder="Especificar..." />
+                    }
                 </div>
             </div>
         </div>
+    </fieldset>
+
+    <!-- ═══════════════  SECCIÓN 2 · INFORME  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Informe</legend>
+
+        <!-- Plantilla selector -->
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <label class="rpt-label">Plantilla:</label>
+            <select class="rpt-select" style="width: 260px;" @onchange="OnTemplateSelected">
+                <option value="">-- Seleccionar --</option>
+                @foreach (var t in availableTemplates)
+                {
+                    <option value="@t.Id" selected="@(report.TemplateId == t.Id)">@t.Name</option>
+                }
+            </select>
+        </div>
+
+        <!-- Texto del informe -->
+        <div class="mb-3">
+            <label class="rpt-label">Texto del informe:</label>
+            <textarea class="rpt-textarea" rows="5" @bind="report.ReportBody"></textarea>
+        </div>
+
+        <!-- Marcadores -->
+        <div class="mb-3">
+            <label class="rpt-label">Marcadores:</label>
+            <div class="rpt-markers-box">
+                @foreach (var val in report.MarkerValues.OrderBy(v => v.DisplayOrder))
+                {
+                    <div class="marker-row">
+                        <span class="marker-name">@val.Marker?.Name</span>
+                        <div class="marker-intensities">
+                            @foreach (var intensity in intensityOptions)
+                            {
+                                <label class="intensity-radio">
+                                    <input type="radio" name="mk-@val.MarkerId-@val.DisplayOrder"
+                                           checked="@(val.IntensityValue == intensity)"
+                                           @onchange="@(() => { val.IntensityValue = intensity; RecalculateSummary(); })" />
+                                    @intensity
+                                </label>
+                            }
+                            <label class="intensity-radio intensity-het">
+                                <input type="radio" name="mk-@val.MarkerId-@val.DisplayOrder"
+                                       checked="@(val.IntensityValue == "Heterogéneo")"
+                                       @onchange="@(() => { val.IntensityValue = "Heterogéneo"; RecalculateSummary(); })" />
+                                Heterogéneo
+                            </label>
+                        </div>
+                        <div class="marker-pct">
+                            <input type="text" class="pct-input" placeholder="%" @bind="val.Percentage" @bind:event="oninput" @onkeyup="RecalculateSummary" />
+                        </div>
+                        <button type="button" class="marker-clear" title="Limpiar" @onclick="@(() => { val.IntensityValue = null; val.Percentage = null; RecalculateSummary(); })">
+                            <i class="bi bi-x text-danger"></i>
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Texto adicional -->
+        <div class="mb-3">
+            <label class="rpt-label">Texto adicional (opcional):</label>
+            <textarea class="rpt-textarea" rows="2" @bind="report.AdditionalText" placeholder="Texto libre que aparecerá debajo de los marcadores en el informe..."></textarea>
+        </div>
+    </fieldset>
+
+    <!-- ═══════════════  SECCIÓN 3 · CONCLUSIÓN  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Conclusión</legend>
+        <div class="mb-2">
+            <label class="rpt-label">Conclusión predefinida:</label>
+            <select class="rpt-select" @onchange="OnConclusionSelected">
+                <option value="">-- Seleccionar conclusión --</option>
+                @foreach (var c in templateConclusions)
+                {
+                    <option value="@c.Id">@(c.Text.Length > 100 ? c.Text.Substring(0, 97) + "..." : c.Text)</option>
+                }
+            </select>
+        </div>
+        <textarea class="rpt-textarea" rows="4" @bind="report.Conclusions" placeholder="Texto de la conclusión (editable)..."></textarea>
+    </fieldset>
+
+    <!-- ═══════════════  SECCIÓN 4 · PANELES  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Paneles</legend>
+        <div class="mb-2">
+            <label class="rpt-label">Paneles:</label>
+            <select class="rpt-select" style="width: 280px;" @onchange="OnPanelSelected">
+                <option value="">-- Seleccionar panel --</option>
+                @foreach (var p in availablePanels)
+                {
+                    <option value="@p.Id" selected="@(report.PanelId == p.Id)">@p.Name</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label class="rpt-label">Paneles empleados:</label>
+            <textarea class="rpt-textarea" rows="3" @bind="report.PanelsUsedText" placeholder="Listado de tubos empleados..."></textarea>
+        </div>
+    </fieldset>
+
+    <!-- ═══════════════  SECCIÓN 5 · FIRMAS  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Firmas</legend>
+        <div class="d-flex flex-wrap gap-4 py-2 px-1">
+            @foreach (var user in availableSignatories)
+            {
+                <label class="rpt-signatory">
+                    <input type="checkbox" checked="@selectedSignatoryIds.Contains(user.Id)"
+                           @onchange="@(e => ToggleSignatory(user.Id, e.Value))" />
+                    @user.FullName
+                </label>
+            }
+        </div>
+    </fieldset>
+
+    <!-- ═══════════════  BOTONES  ═══════════════ -->
+    <div class="rpt-actions mt-4 mb-5">
+        <button class="btn btn-light border px-4" @onclick='() => Nav.NavigateTo("/muestras")'>
+            <i class="bi bi-arrow-left me-2"></i>Volver
+        </button>
+
+        <div class="d-flex gap-2">
+            @if (report?.Id > 0)
+            {
+                <a href="/api/downloads/informe/@report.Id/pdf?t=@DateTime.Now.Ticks" 
+                   target="_blank" download class="btn btn-outline-danger px-3">
+                    <i class="bi bi-file-pdf me-2"></i>PDF
+                </a>
+                <a href="/api/downloads/informe/@report.Id/odt?t=@DateTime.Now.Ticks" 
+                   target="_blank" download class="btn btn-outline-info px-3">
+                    <i class="bi bi-file-earmark-word me-2"></i>ODT
+                </a>
+            }
+            <button class="btn btn-primary px-5 fw-bold shadow-sm" disabled="@isSaving" @onclick="SaveAndNotify">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                <i class="bi bi-check-lg me-2"></i>Guardar Informe
+            </button>
+        </div>
+    </div>
     }
 </div>
+
+<style>
+    .rpt-page { padding: 24px 32px; background: #f4f6f9; min-height: calc(100vh - 56px); font-family: 'Segoe UI', system-ui, sans-serif; max-width: 1050px; }
+
+    .rpt-fieldset {
+        border: 1px solid #c0c0c0;
+        border-radius: 4px;
+        padding: 14px 18px 18px;
+        background: #fff;
+    }
+    .rpt-fieldset legend {
+        font-size: 13px;
+        font-weight: 700;
+        color: #334155;
+        padding: 0 8px;
+        width: auto;
+        float: none;
+    }
+
+    .id-grid { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 4px; }
+    .id-field { display: flex; align-items: center; gap: 8px; }
+    .id-field label { font-size: 13px; color: #555; font-weight: 600; white-space: nowrap; margin: 0; width: 130px; text-align: right; }
+    .id-field input[type="text"], .id-field input[type="date"] { font-size: 13px; border: 1px solid #ccc; border-radius: 3px; padding: 3px 8px; height: 28px; width: 180px; background: #fafafa; }
+    .id-field input[type="text"]:focus, .id-field input[type="date"]:focus { border-color: #86b7fe; outline: none; background: #fff; }
+    .id-field input[readonly] { background: #e9ecef; color: #495057; }
+    .id-field-sm input[type="text"] { width: 80px; }
+    .id-field-wide input[type="text"] { width: 280px; }
+
+    .rpt-radio { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; white-space: nowrap; }
+    .rpt-radio input[type="radio"] { accent-color: #0d6efd; margin: 0; width: 14px; height: 14px; }
+
+    .rpt-label { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px; display: block; }
+    .rpt-select { font-size: 13px; border: 1px solid #ccc; border-radius: 3px; padding: 4px 8px; height: 30px; background: #fff; }
+    .rpt-textarea { font-size: 13px; width: 100%; border: 1px solid #ccc; border-radius: 3px; padding: 8px 10px; font-family: 'Consolas', 'Courier New', monospace; resize: vertical; }
+
+    /* ── Markers grid ── */
+    .rpt-markers-box { border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: #fafafa; max-height: 500px; overflow-y: auto; }
+    .marker-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #eee; }
+    .marker-row:last-child { border-bottom: none; }
+    .marker-name { font-size: 13px; font-weight: 700; color: #1e293b; width: 80px; text-align: right; flex-shrink: 0; }
+    .marker-intensities { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; }
+    .intensity-radio { font-size: 11px; display: inline-flex; align-items: center; gap: 2px; cursor: pointer; white-space: nowrap; padding: 1px 4px; border-radius: 3px; margin: 0; }
+    .intensity-radio:hover { background: #eef2f7; }
+    .intensity-radio input { accent-color: #2563eb; width: 12px; height: 12px; margin: 0; }
+    .intensity-het { color: #b45309; }
+    .marker-pct { width: 50px; flex-shrink: 0; }
+    .pct-input { width: 100%; font-size: 12px; border: 1px solid #ddd; border-radius: 3px; padding: 2px 6px; text-align: center; height: 24px; }
+    .marker-clear { background: none; border: none; padding: 2px; cursor: pointer; font-size: 14px; }
+
+    /* ── Signatories ── */
+    .rpt-signatory { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; }
+    .rpt-signatory input { accent-color: #0d6efd; }
+
+    /* ── Actions ── */
+    .rpt-actions { display: flex; justify-content: space-between; align-items: center; }
+</style>
 
 @code {
     [Parameter] public int SampleId { get; set; }
 
     private SampleReport? report;
     private List<ReportTemplate> availableTemplates = new();
+    private List<Panel> availablePanels = new();
     private List<ApplicationUser> availableSignatories = new();
+    private List<TemplateConclusion> templateConclusions = new();
     private List<int> selectedSignatoryIds = new();
     private List<string> intensityOptions = new();
     private bool isSaving = false;
+
+    // Identification fields (editable)
+    private string patientName = "";
+    private DateTime reportDate = DateTime.Today;
+    private string peticionElectronica = "";
+    private string motivoSolicitud = "";
+    private string servicioSolicitante = "";
+    private string medicoSolicitante = "";
+    private string tipoMuestra = "MO";
+    private string otroTipoMuestra = "";
 
     protected override async Task OnInitializedAsync()
     {
         report = await ReportService.GetOrCreateReportAsync(SampleId);
         availableTemplates = await MasterService.GetAllTemplatesAsync();
+        availablePanels = await MasterService.GetAllPanelsAsync();
         availableSignatories = await ReportService.GetAvailableSignatoriesAsync();
-        
+
         var intensities = await MasterService.GetIntensitySettingsAsync();
         intensityOptions = intensities.Select(i => i.Value).ToList();
 
-        if (report.Signatories.Any())
+        // Populate identification from sample data
+        var patient = report.Sample?.ClinicalRequest?.Patient;
+        patientName = patient?.FullName ?? "";
+        peticionElectronica = report.Sample?.ClinicalRequest?.RequestNumber ?? "";
+        servicioSolicitante = report.Sample?.ClinicalRequest?.OriginService ?? "";
+        medicoSolicitante = report.Sample?.ClinicalRequest?.DoctorName ?? "";
+
+        // Parse tipo muestra from Diagnosis if available
+        var diag = report.Sample?.Diagnosis ?? "";
+        var typeMatch = System.Text.RegularExpressions.Regex.Match(diag, @"\[TIPO:\s*(.+?)\]");
+        if (typeMatch.Success)
         {
-            selectedSignatoryIds = report.Signatories.Select(s => s.UserId).ToList();
+            var t = typeMatch.Groups[1].Value.Trim();
+            if (t == "SP" || t == "MO" || t == "LCR") {
+                tipoMuestra = t;
+            } else {
+                tipoMuestra = "Otros";
+                otroTipoMuestra = t;
+            }
+            motivoSolicitud = diag.Replace(typeMatch.Value, "").Trim();
         }
+        else
+        {
+            motivoSolicitud = diag;
+        }
+
+        reportDate = report.ReportDate ?? DateTime.Today;
+
+        // Load existing signatories
+        if (report.Signatories.Any())
+            selectedSignatoryIds = report.Signatories.Select(s => s.UserId).ToList();
+
+        // Load conclusions if template already selected
+        if (report.TemplateId.HasValue)
+            templateConclusions = await MasterService.GetTemplateConclusionsAsync(report.TemplateId.Value);
     }
 
     private async Task OnTemplateSelected(ChangeEventArgs e)
@@ -169,9 +333,8 @@
             {
                 report!.TemplateId = templateId;
                 report.ReportBody = template.HeaderText;
-                report.Conclusions = template.DefaultConclusion;
 
-                // Load markets from template
+                // Load markers
                 report.MarkerValues.Clear();
                 foreach (var tm in template.Markers.OrderBy(m => m.DisplayOrder))
                 {
@@ -182,7 +345,38 @@
                         DisplayOrder = tm.DisplayOrder
                     });
                 }
+
+                // Load conclusions for this template
+                templateConclusions = template.Conclusions?.ToList() ?? new List<TemplateConclusion>();
+
+                // Set default conclusion if exists
+                if (!string.IsNullOrEmpty(template.DefaultConclusion))
+                    report.Conclusions = template.DefaultConclusion;
+
                 RecalculateSummary();
+            }
+        }
+    }
+
+    private void OnConclusionSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int conclusionId))
+        {
+            var conclusion = templateConclusions.FirstOrDefault(c => c.Id == conclusionId);
+            if (conclusion != null)
+                report!.Conclusions = conclusion.Text;
+        }
+    }
+
+    private void OnPanelSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int panelId))
+        {
+            var panel = availablePanels.FirstOrDefault(p => p.Id == panelId);
+            if (panel != null)
+            {
+                report!.PanelId = panelId;
+                report.PanelsUsedText = panel.TubeListText ?? "";
             }
         }
     }
@@ -210,39 +404,16 @@
 
     private async Task DownloadPdf()
     {
-        await Save(); 
-        try
-        {
-            var pdfBytes = await DocumentService.GeneratePdfAsync(report!);
-            var fileName = $"Informe_{report!.Sample?.SampleNumber}_{DateTime.Now:yyyyMMdd}.pdf";
-            await StreamFileToBrowser(fileName, pdfBytes);
-        }
-        catch (Exception ex)
-        {
-            await JS.InvokeVoidAsync("alert", "Error al generar PDF: " + ex.Message);
-        }
+        await Save();
+        var url = $"/api/downloads/informe/{report!.Id}/pdf?t={DateTime.Now.Ticks}";
+        await JS.InvokeVoidAsync("triggerDownload", url);
     }
 
     private async Task DownloadOdt()
     {
         await Save();
-        try
-        {
-            var odtBytes = await DocumentService.GenerateOdtAsync(report!);
-            var fileName = $"Informe_{report!.Sample?.SampleNumber}_{DateTime.Now:yyyyMMdd}.odt";
-            await StreamFileToBrowser(fileName, odtBytes);
-        }
-        catch (Exception ex)
-        {
-            await JS.InvokeVoidAsync("alert", "Error al generar ODT: " + ex.Message);
-        }
-    }
-
-    private async Task StreamFileToBrowser(string fileName, byte[] content)
-    {
-        using var stream = new MemoryStream(content);
-        using var dotNetStreamReference = new DotNetStreamReference(stream: stream);
-        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, dotNetStreamReference);
+        var url = $"/api/downloads/informe/{report!.Id}/odt?t={DateTime.Now.Ticks}";
+        await JS.InvokeVoidAsync("triggerDownload", url);
     }
 
     private async Task SaveAndNotify()
@@ -256,16 +427,30 @@
         isSaving = true;
         try
         {
+            report!.ReportDate = reportDate;
+
+            // Optional: Write back edited fields to report/sample so PDF generation sees them.
+            if(report.Sample != null)
+            {
+                if(report.Sample.ClinicalRequest != null)
+                {
+                    if(report.Sample.ClinicalRequest.Patient != null)
+                        report.Sample.ClinicalRequest.Patient.FullName = patientName;
+                    
+                    report.Sample.ClinicalRequest.RequestNumber = peticionElectronica;
+                    report.Sample.ClinicalRequest.OriginService = servicioSolicitante;
+                    report.Sample.ClinicalRequest.DoctorName = medicoSolicitante;
+                }
+                
+                var t = tipoMuestra == "Otros" && !string.IsNullOrWhiteSpace(otroTipoMuestra) ? otroTipoMuestra : tipoMuestra;
+                report.Sample.Diagnosis = string.IsNullOrWhiteSpace(t) ? motivoSolicitud : $"[TIPO: {t}] {motivoSolicitud}";
+            }
+
             await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), selectedSignatoryIds);
         }
         finally
         {
             isSaving = false;
         }
-    }
-
-    private void ShowAdHocMarkerDialog()
-    {
-        // Simple stub: Inject a fake marker for now or implement a modal
     }
 }

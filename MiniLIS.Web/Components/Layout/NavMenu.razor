@@ -1,59 +1,95 @@
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">MiniLIS.Web</a>
+<div class="iso-sidebar-header">
+    <div class="iso-logo">
+        <i class="bi bi-shield-check text-info me-2 h5 mb-0"></i> 
+        <span>MiniLIS Suite</span>
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+<nav class="iso-nav">
+    <NavLink class="iso-nav-link" href="" Match="NavLinkMatch.All">
+        <i class="bi bi-grid-1x2"></i> Dashboard
+    </NavLink>
+    
+    <NavLink class="iso-nav-link" href="muestras/nueva">
+        <i class="bi bi-list-task"></i> Nueva Muestra
+    </NavLink>
+    
+    <NavLink class="iso-nav-link" href="muestras">
+        <i class="bi bi-calendar3"></i> Bandeja Técnica
+    </NavLink>
+    
+    <div class="nav-section-title">ADMINISTRACIÓN</div>
+    
+    <NavLink class="iso-nav-link" href="configuracion">
+        <i class="bi bi-gear"></i> Configuración
+    </NavLink>
+    
+    <NavLink class="iso-nav-link" href="notificaciones">
+        <i class="bi bi-bell"></i> Notificaciones
+    </NavLink>
+    
+    <div class="iso-nav-link text-warning mt-2" style="cursor:pointer">
+        <i class="bi bi-shield-check"></i> Panel Avanzado
+    </div>
+</nav>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Inicio
-            </NavLink>
-        </div>
-
-        <AuthorizeView>
-            <Authorized>
-                <div class="nav-item px-3">
-                    <hr class="text-white opacity-25" />
-                    <span class="nav-link text-white-50 small">LABORATORIO</span>
-                </div>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="muestras/nueva">
-                        <span class="bi bi-plus-circle-nav-menu" aria-hidden="true"></span> Registro de Entrada
-                    </NavLink>
-                </div>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="muestras">
-                        <span class="bi bi-list-columns-reverse" aria-hidden="true"></span> Bandeja de Trabajo
-                    </NavLink>
-                </div>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="configuracion">
-                        <span class="bi bi-gear-fill" aria-hidden="true"></span> Configuración
-                    </NavLink>
-                </div>
-
-                <div class="nav-item px-3 mt-4">
-                    <hr class="text-white opacity-25" />
-                    <div class="d-flex align-items-center text-white px-3 mb-2 small">
-                        <span class="bi bi-person-circle me-2"></span> @context.User.Identity?.Name
-                    </div>
-                    <a class="nav-link text-danger" href="/account/logout">
-                        <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Cerrar Sesión
-                    </a>
-                </div>
-            </Authorized>
-            <NotAuthorized>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="login">
-                         Iniciar Sesión
-                    </NavLink>
-                </div>
-            </NotAuthorized>
-        </AuthorizeView>
-    </nav>
-</div>
-
+<style>
+    .iso-sidebar-header {
+        height: 60px;
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        background-color: #171c22;
+        border-bottom: 1px solid #2a333d;
+    }
+    .iso-logo {
+        font-weight: 700;
+        letter-spacing: 1px;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        color: white;
+    }
+    
+    .iso-nav {
+        padding: 20px 0;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .nav-section-title {
+        font-size: 10px;
+        font-weight: 700;
+        color: #58697a;
+        padding: 24px 20px 10px 20px;
+        letter-spacing: 1px;
+    }
+    
+    .iso-nav-link {
+        display: flex;
+        align-items: center;
+        padding: 12px 20px;
+        color: #a0aec0;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 500;
+        border-left: 3px solid transparent;
+        transition: all 0.2s;
+    }
+    
+    .iso-nav-link i {
+        margin-right: 12px;
+        font-size: 15px;
+    }
+    
+    .iso-nav-link:hover {
+        background-color: #242c36;
+        color: white;
+    }
+    
+    .iso-nav-link.active {
+        background-color: #2b3543;
+        color: white;
+        border-left: 3px solid #f5a623; /* ISO Yellow active border */
+    }
+</style>

@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Roles = "Administrador")]
 @inject IMasterDataService MasterService
+@inject NavigationManager Nav
 
 <PageTitle>Configuración - MiniLIS Suite</PageTitle>
 
@@ -25,7 +26,12 @@
                 </li>
                 <li class="nav-item">
                     <button class="nav-link @(activeTab == "templates" ? "active" : "")" @onclick='() => SetTab("templates")'>
-                        <i class="bi bi-file-earmark-medical me-2"></i> Plantillas de Informe
+                        <i class="bi bi-file-earmark-medical me-2"></i> Plantillas
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "panels" ? "active" : "")" @onclick='() => SetTab("panels")'>
+                        <i class="bi bi-grid-3x3 me-2"></i> Paneles
                     </button>
                 </li>
                 <li class="nav-item">
@@ -41,166 +47,257 @@
             </ul>
         </div>
         <div class="card-body p-4">
+
+            @* ════════ TAB: MARCADORES ════════ *@
             @if (activeTab == "markers")
             {
-                <div class="tab-pane fade show active">
-                    <div class="d-flex justify-content-between mb-3">
-                        <h5 class="fw-bold">Catálogo de Marcadores</h5>
-                        <button class="btn btn-primary btn-sm" @onclick="ShowNewMarkerModal">
-                            <i class="bi bi-plus"></i> Nuevo Marcador
-                        </button>
-                    </div>
-                    <div class="table-responsive">
-                       <table class="table table-hover align-middle">
-                           <thead>
-                               <tr>
-                                   <th>Nombre</th>
-                                   <th>Descripción</th>
-                                   <th class="text-end">Acciones</th>
-                               </tr>
-                           </thead>
-                           <tbody>
-                               @foreach (var m in markers)
-                               {
-                                   <tr>
-                                       <td class="fw-bold text-primary">@m.Name</td>
-                                       <td class="text-muted small">@(string.IsNullOrEmpty(m.Description) ? "-" : m.Description)</td>
-                                       <td class="text-end">
-                                           <button class="btn btn-outline-secondary btn-sm" @onclick="() => EditMarker(m)">
-                                               <i class="bi bi-pencil"></i>
-                                           </button>
-                                       </td>
-                                   </tr>
-                               }
-                           </tbody>
-                       </table>
-                    </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <h5 class="fw-bold">Catálogo de Marcadores</h5>
+                    <button class="btn btn-primary btn-sm" @onclick="() => { editingMarker = new Marker(); showMarkerForm = true; }">
+                        <i class="bi bi-plus"></i> Nuevo Marcador
+                    </button>
                 </div>
+
+                @if (showMarkerForm)
+                {
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body p-3">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control form-control-sm" placeholder="Nombre (ej: CD34)" @bind="editingMarker.Name" />
+                                </div>
+                                <div class="col-md-5">
+                                    <input type="text" class="form-control form-control-sm" placeholder="Descripción" @bind="editingMarker.Description" />
+                                </div>
+                                <div class="col-md-3 d-flex gap-2">
+                                    <button class="btn btn-success btn-sm" @onclick="SaveMarker"><i class="bi bi-check-lg"></i> Guardar</button>
+                                    <button class="btn btn-light btn-sm" @onclick="() => showMarkerForm = false">Cancelar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <table class="table table-hover align-middle">
+                    <thead><tr><th>Nombre</th><th>Descripción</th><th class="text-end">Acciones</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in markers)
+                        {
+                            <tr>
+                                <td class="fw-bold text-primary">@m.Name</td>
+                                <td class="text-muted small">@(string.IsNullOrEmpty(m.Description) ? "-" : m.Description)</td>
+                                <td class="text-end">
+                                    <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => { editingMarker = m; showMarkerForm = true; }">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteMarker(m.Id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             }
+
+            @* ════════ TAB: PLANTILLAS ════════ *@
             else if (activeTab == "templates")
             {
-               <div class="tab-pane fade show active">
-                    <div class="d-flex justify-content-between mb-3">
-                        <h5 class="fw-bold">Plantillas de Resultado</h5>
-                        <button class="btn btn-primary btn-sm" @onclick="ShowNewTemplateModal">
-                            <i class="bi bi-plus"></i> Nueva Plantilla
-                        </button>
-                    </div>
-                    <div class="row g-4">
-                        @foreach (var t in templates)
-                        {
-                            <div class="col-md-6 col-lg-4">
-                                <div class="card border h-100 template-card">
-                                    <div class="card-body">
-                                        <h6 class="fw-bold text-dark">@t.Name</h6>
-                                        <p class="text-muted small mb-3">
-                                            @(string.IsNullOrEmpty(t.HeaderText) ? "Sin texto predefinido" : (t.HeaderText.Length > 60 ? t.HeaderText.Substring(0, 57) + "..." : t.HeaderText))
-                                        </p>
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <span class="badge bg-light text-dark border">
-                                                <i class="bi bi-list-check me-1"></i> Marcadores: @(templateMarkerCounts.GetValueOrDefault(t.Id, 0))
-                                            </span>
-                                            <div class="btn-group">
-                                                <button class="btn btn-outline-primary btn-sm" @onclick="() => EditTemplate(t)">
-                                                    <i class="bi bi-gear"></i> Editar
-                                                </button>
-                                                <button class="btn btn-outline-info btn-sm" title="Clonar" @onclick="() => CloneTemplate(t)">
-                                                    <i class="bi bi-copy"></i>
-                                                </button>
-                                            </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <h5 class="fw-bold">Plantillas de Resultado</h5>
+                    <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("/configuracion/plantilla/nueva")'>
+                        <i class="bi bi-plus"></i> Nueva Plantilla
+                    </button>
+                </div>
+                <div class="row g-4">
+                    @foreach (var t in templates)
+                    {
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card border h-100 template-card">
+                                <div class="card-body">
+                                    <h6 class="fw-bold text-dark">@t.Name</h6>
+                                    <p class="text-muted small mb-3">
+                                        @(string.IsNullOrEmpty(t.HeaderText) ? "Sin texto predefinido" : (t.HeaderText.Length > 60 ? t.HeaderText.Substring(0, 57) + "..." : t.HeaderText))
+                                    </p>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="badge bg-light text-dark border">
+                                            <i class="bi bi-list-check me-1"></i> Marcadores: @(templateMarkerCounts.GetValueOrDefault(t.Id, 0))
+                                        </span>
+                                        <div class="btn-group">
+                                            <button class="btn btn-outline-primary btn-sm" @onclick="() => EditTemplate(t)">
+                                                <i class="bi bi-gear"></i> Editar
+                                            </button>
+                                            <button class="btn btn-outline-info btn-sm" title="Clonar" @onclick="() => CloneTemplate(t)">
+                                                <i class="bi bi-copy"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger btn-sm" title="Eliminar" @onclick="() => DeleteTemplate(t.Id)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        }
-                    </div>
-               </div>
-            }
-            else if (activeTab == "system")
-            {
-                <div class="tab-pane fade show active">
-                    <h5 class="fw-bold mb-4">Configuración de Intensidades</h5>
-                    <p class="text-muted small">Define los niveles que aparecerán como radio-buttons en los informes.</p>
-                    <div class="row g-3">
-                        @foreach (var setting in intensitySettings)
-                        {
-                            <div class="col-md-4 col-lg-3">
-                                <div class="input-group">
-                                    <span class="input-group-text bg-white">@setting.Key.Split(':').Last()</span>
-                                    <input type="text" @bind="setting.Value" class="form-control" />
-                                </div>
-                            </div>
-                        }
-                    </div>
-                    <div class="mt-4">
-                        <button class="btn btn-success" @onclick="SaveIntensities">
-                            <i class="bi bi-save me-1"></i> Guardar Intensidades
-                        </button>
-                    </div>
+                        </div>
+                    }
                 </div>
             }
+
+            @* ════════ TAB: PANELES ════════ *@
+            else if (activeTab == "panels")
+            {
+                <div class="d-flex justify-content-between mb-3">
+                    <h5 class="fw-bold">Paneles de Tubos</h5>
+                    <button class="btn btn-primary btn-sm" @onclick="() => { editingPanel = new Panel(); showPanelForm = true; }">
+                        <i class="bi bi-plus"></i> Nuevo Panel
+                    </button>
+                </div>
+
+                @if (showPanelForm)
+                {
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body p-3">
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold">Nombre del Panel</label>
+                                    <input type="text" class="form-control form-control-sm" placeholder="Ej: SLPC + 23" @bind="editingPanel.Name" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold">Descripción</label>
+                                    <input type="text" class="form-control form-control-sm" placeholder="Descripción" @bind="editingPanel.Description" />
+                                </div>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold">Listado de Tubos</label>
+                                <textarea class="form-control form-control-sm" rows="4" @bind="editingPanel.TubeListText" placeholder="8+lambda/56+kappa/5/3/19/20+4/45/38&#10;23/10/79b/200/19/20/45/43"></textarea>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-success btn-sm" @onclick="SavePanel"><i class="bi bi-check-lg"></i> Guardar</button>
+                                <button class="btn btn-light btn-sm" @onclick="() => showPanelForm = false">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <table class="table table-hover align-middle">
+                    <thead><tr><th>Nombre</th><th>Descripción</th><th>Tubos</th><th class="text-end">Acciones</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in panels)
+                        {
+                            <tr>
+                                <td class="fw-bold text-primary">@p.Name</td>
+                                <td class="text-muted small">@(p.Description ?? "-")</td>
+                                <td class="text-muted small" style="max-width: 300px; white-space: pre-wrap;">@(string.IsNullOrEmpty(p.TubeListText) ? "-" : (p.TubeListText.Length > 80 ? p.TubeListText.Substring(0, 77) + "..." : p.TubeListText))</td>
+                                <td class="text-end">
+                                    <button class="btn btn-outline-secondary btn-sm me-1" @onclick="() => { editingPanel = p; showPanelForm = true; }">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => DeletePanel(p.Id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @* ════════ TAB: AJUSTES (Intensidades) ════════ *@
+            else if (activeTab == "system")
+            {
+                <h5 class="fw-bold mb-4">Configuración de Intensidades</h5>
+                <p class="text-muted small">Define los niveles que aparecerán como radio-buttons en los informes. Puedes añadir o quitar valores.</p>
+                <div class="row g-3 mb-3">
+                    @for (int i = 0; i < intensitySettings.Count; i++)
+                    {
+                        var setting = intensitySettings[i];
+                        <div class="col-md-4 col-lg-3">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white small">@(i + 1)</span>
+                                <input type="text" @bind="setting.Value" class="form-control" />
+                                <button class="btn btn-outline-danger btn-sm" @onclick="() => RemoveIntensity(setting)"><i class="bi bi-x"></i></button>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="d-flex gap-2 mb-3">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="AddIntensity">
+                        <i class="bi bi-plus me-1"></i>Añadir Intensidad
+                    </button>
+                </div>
+                <button class="btn btn-success" @onclick="SaveIntensities">
+                    <i class="bi bi-save me-1"></i> Guardar Intensidades
+                </button>
+            }
+
+            @* ════════ TAB: CABECERA ════════ *@
             else if (activeTab == "header")
             {
-                <div class="tab-pane fade show active">
-                    <h5 class="fw-bold mb-4">Configuración de Cabecera de Informes</h5>
-                    <div class="row g-4">
-                        <div class="col-md-6 border-end">
-                            <h6 class="fw-bold small text-muted text-uppercase mb-3">Diseño del Logotipo</h6>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Subir Imagen (Logo)</label>
-                                <InputFile OnChange="HandleLogoUpload" class="form-control" accept="image/png, image/jpeg" />
+                <h5 class="fw-bold mb-4">Configuración de Cabecera de Informes</h5>
+                <div class="row g-4">
+                    <div class="col-md-6 border-end">
+                        <h6 class="fw-bold small text-muted text-uppercase mb-3">Diseño del Logotipo</h6>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Subir Imagen (Logo)</label>
+                            <InputFile OnChange="HandleLogoUpload" class="form-control" accept="image/png, image/jpeg" />
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label small fw-bold">Posición</label>
+                                <select class="form-select select-sm" @bind="logoAlignment">
+                                    <option value="Left">Izquierda</option>
+                                    <option value="Center">Centro</option>
+                                    <option value="Right">Derecha</option>
+                                </select>
                             </div>
-                            <div class="row">
-                                <div class="col-6 mb-3">
-                                    <label class="form-label small fw-bold">Posición</label>
-                                    <select class="form-select select-sm" @bind="logoAlignment">
-                                        <option value="Left">Izquierda</option>
-                                        <option value="Center">Centro</option>
-                                        <option value="Right">Derecha</option>
-                                    </select>
-                                </div>
-                                <div class="col-6 mb-3">
-                                    <label class="form-label small fw-bold">Ancho (px)</label>
-                                    <input type="number" class="form-control" @bind="logoWidth" />
-                                </div>
-                            </div>
-                            <h6 class="fw-bold small text-muted text-uppercase mb-3 mt-4">Texto de Cabecera</h6>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Línea 1 (Nombre Centro)</label>
-                                <input type="text" class="form-control" @bind="headerLine1" placeholder="Ej: Laboratorio Central de Citometría" />
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Línea 2 (Dirección/Contacto)</label>
-                                <input type="text" class="form-control" @bind="headerLine2" placeholder="Ej: Calle Médica 123, Madrid - Tel: 910 000 000" />
+                            <div class="col-6 mb-3">
+                                <label class="form-label small fw-bold">Ancho (px)</label>
+                                <input type="number" class="form-control" @bind="logoWidth" />
                             </div>
                         </div>
-                        <div class="col-md-6 bg-light p-4 rounded-3 d-flex flex-column align-items-center">
-                            <h6 class="fw-bold small text-muted text-uppercase mb-4">Previsualización Cabecera (A4)</h6>
-                            <div class="preview-page border bg-white shadow-sm p-3 w-100" style="min-height: 200px;">
-                                <div class="header-preview-container d-flex flex-column" style="text-align: @(logoAlignment.ToLower())">
-                                    @if (!string.IsNullOrEmpty(logoBase64))
-                                    {
-                                        <div class="mb-2" style="text-align: @(logoAlignment.ToLower())">
-                                            <img src="data:image/png;base64,@logoBase64" style="width: @(logoWidth)px; height: auto;" />
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="mb-2 text-center text-muted border py-4 bg-light small">Sin Logotipo</div>
-                                    }
-                                    <div class="header-text-lines">
-                                        <div class="fw-bold" style="font-size: 14px;">@(string.IsNullOrEmpty(headerLine1) ? "NOMBRE DEL CENTRO" : headerLine1)</div>
-                                        <div class="text-muted" style="font-size: 11px;">@(string.IsNullOrEmpty(headerLine2) ? "DIRECCIÓN Y CONTACTO" : headerLine2)</div>
+                        <h6 class="fw-bold small text-muted text-uppercase mb-3 mt-4">Texto de Cabecera</h6>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Línea 1 (Nombre Centro)</label>
+                            <input type="text" class="form-control" @bind="headerLine1" placeholder="Ej: Laboratorio Central de Citometría" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Línea 2 (Dirección/Contacto)</label>
+                            <input type="text" class="form-control" @bind="headerLine2" placeholder="Ej: Calle Médica 123, Madrid" />
+                        </div>
+                    </div>
+                    <div class="col-md-6 bg-light p-4 rounded-3 d-flex flex-column align-items-center">
+                        <h6 class="fw-bold small text-muted text-uppercase mb-4">Previsualización Cabecera (A4)</h6>
+                        <div class="preview-page border bg-white shadow-sm p-3 w-100" style="min-height: 200px;">
+                            <div class="header-preview-container d-flex flex-column" style="text-align: @(logoAlignment.ToLower())">
+                                @if (!string.IsNullOrEmpty(logoBase64))
+                                {
+                                    <div class="mb-2" style="text-align: @(logoAlignment.ToLower())">
+                                        <img src="data:image/png;base64,@logoBase64" style="width: @(logoWidth)px; height: auto;" />
                                     </div>
+                                }
+                                else
+                                {
+                                    <div class="mb-2 text-center text-muted border py-4 bg-light small">Sin Logotipo</div>
+                                }
+                                <div class="header-text-lines">
+                                    <div class="fw-bold" style="font-size: 14px;">@(string.IsNullOrEmpty(headerLine1) ? "NOMBRE DEL CENTRO" : headerLine1)</div>
+                                    <div class="text-muted" style="font-size: 11px;">@(string.IsNullOrEmpty(headerLine2) ? "DIRECCIÓN Y CONTACTO" : headerLine2)</div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="mt-4 border-top pt-4">
-                        <button class="btn btn-primary px-4 fw-bold" @onclick="SaveHeaderConfig">
-                            <i class="bi bi-save me-2"></i> Guardar Cabecera Médica
-                        </button>
-                    </div>
+                </div>
+                <div class="mt-4 border-top pt-4">
+                    @if (!string.IsNullOrEmpty(statusMessage))
+                    {
+                        <div class="alert @(isError ? "alert-danger" : "alert-success") alert-dismissible fade show mb-3" role="alert">
+                            <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle") me-2"></i>
+                            @statusMessage
+                            <button type="button" class="btn-close" @onclick="() => statusMessage = null"></button>
+                        </div>
+                    }
+                    <button class="btn btn-primary px-4 fw-bold" @onclick="SaveHeaderConfig">
+                        <i class="bi bi-save me-2"></i> Guardar Cabecera Médica
+                    </button>
                 </div>
             }
         </div>
@@ -230,11 +327,22 @@
 </style>
 
 @code {
+
+
     private string activeTab = "markers";
     private List<Marker> markers = new();
     private List<ReportTemplate> templates = new();
+    private List<Panel> panels = new();
     private List<SystemSetting> intensitySettings = new();
     private Dictionary<int, int> templateMarkerCounts = new();
+
+    // Marker form
+    private bool showMarkerForm = false;
+    private Marker editingMarker = new();
+
+    // Panel form
+    private bool showPanelForm = false;
+    private Panel editingPanel = new();
 
     // Header Settings
     private string logoBase64 = "";
@@ -253,9 +361,9 @@
     {
         markers = await MasterService.GetAllMarkersAsync();
         templates = await MasterService.GetAllTemplatesAsync();
+        panels = await MasterService.GetAllPanelsAsync();
         intensitySettings = await MasterService.GetIntensitySettingsAsync();
 
-        // Count markers per template for the UI
         templateMarkerCounts.Clear();
         foreach (var t in templates)
         {
@@ -276,39 +384,112 @@
 
     private void SetTab(string tab) => activeTab = tab;
 
+    // ── MARKERS ──
+    private async Task SaveMarker()
+    {
+        if (!string.IsNullOrWhiteSpace(editingMarker.Name))
+        {
+            await MasterService.UpsertMarkerAsync(editingMarker);
+            showMarkerForm = false;
+            await LoadData();
+        }
+    }
+
+    private async Task DeleteMarker(int id)
+    {
+        await MasterService.DeleteMarkerAsync(id);
+        await LoadData();
+    }
+
+    // ── PANELS ──
+    private async Task SavePanel()
+    {
+        if (!string.IsNullOrWhiteSpace(editingPanel.Name))
+        {
+            await MasterService.UpsertPanelAsync(editingPanel);
+            showPanelForm = false;
+            await LoadData();
+        }
+    }
+
+    private async Task DeletePanel(int id)
+    {
+        await MasterService.DeletePanelAsync(id);
+        await LoadData();
+    }
+
+    // ── TEMPLATES ──
+    private void EditTemplate(ReportTemplate t) => Nav.NavigateTo($"/configuracion/plantilla/{t.Id}");
+    
+    private async Task CloneTemplate(ReportTemplate t)
+    {
+        await MasterService.CloneTemplateAsync(t.Id, t.Name + " (Copia)");
+        await LoadData();
+    }
+
+    private async Task DeleteTemplate(int id)
+    {
+        await MasterService.DeleteTemplateAsync(id);
+        await LoadData();
+    }
+
+    // ── INTENSITIES ──
     private async Task SaveIntensities()
     {
         await MasterService.UpdateIntensitySettingsAsync(intensitySettings);
         StateHasChanged();
     }
 
+    private void AddIntensity()
+    {
+        var nextIndex = intensitySettings.Count + 1;
+        intensitySettings.Add(new SystemSetting { Key = $"Config:Intensity:{nextIndex}", Value = "" });
+    }
+
+    private void RemoveIntensity(SystemSetting setting)
+    {
+        intensitySettings.Remove(setting);
+    }
+
+    private string? statusMessage;
+    private bool isError = false;
+
+    // ── HEADER ──
     private async Task HandleLogoUpload(InputFileChangeEventArgs e)
     {
-        var file = e.File;
-        var buffer = new byte[file.Size];
-        await file.OpenReadStream(2 * 1024 * 1024).ReadAsync(buffer); // max 2MB
-        logoBase64 = Convert.ToBase64String(buffer);
+        try 
+        {
+            var file = e.File;
+            var maxAllowedSize = 5 * 1024 * 1024; // 5MB
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize).CopyToAsync(ms);
+            logoBase64 = Convert.ToBase64String(ms.ToArray());
+            statusMessage = "Imagen cargada correctamente. Pulsa 'Guardar' para aplicar.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error al cargar la imagen: " + ex.Message;
+            isError = true;
+        }
     }
 
     private async Task SaveHeaderConfig()
     {
-        await MasterService.SaveSettingAsync("Header:LogoBase64", logoBase64, "Logotipo en Base64");
-        await MasterService.SaveSettingAsync("Header:LogoAlignment", logoAlignment, "Alineación del Logo");
-        await MasterService.SaveSettingAsync("Header:LogoWidth", logoWidth.ToString(), "Ancho del Logo");
-        await MasterService.SaveSettingAsync("Header:Line1", headerLine1, "Cabecera Línea 1");
-        await MasterService.SaveSettingAsync("Header:Line2", headerLine2, "Cabecera Línea 2");
-        // Notify success? (Skip for now, or use JS alert)
-    }
-
-    // Modal Handlers (Stubs for now, will implement dialogs in next step)
-    private void ShowNewMarkerModal() { }
-    private void EditMarker(Marker m) { }
-    private void ShowNewTemplateModal() { }
-    private void EditTemplate(ReportTemplate t) { }
-    
-    private async Task CloneTemplate(ReportTemplate t)
-    {
-        await MasterService.CloneTemplateAsync(t.Id, t.Name + " (Copia)");
-        await LoadData();
+        try 
+        {
+            await MasterService.SaveSettingAsync("Header:LogoBase64", logoBase64, "Logotipo en Base64");
+            await MasterService.SaveSettingAsync("Header:LogoAlignment", logoAlignment, "Alineación del Logo");
+            await MasterService.SaveSettingAsync("Header:LogoWidth", logoWidth.ToString(), "Ancho del Logo");
+            await MasterService.SaveSettingAsync("Header:Line1", headerLine1, "Cabecera Línea 1");
+            await MasterService.SaveSettingAsync("Header:Line2", headerLine2, "Cabecera Línea 2");
+            statusMessage = "Configuración de cabecera guardada con éxito.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error al guardar: " + ex.Message;
+            isError = true;
+        }
     }
 }

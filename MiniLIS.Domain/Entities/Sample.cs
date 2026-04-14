@@ -37,9 +37,12 @@ namespace MiniLIS.Domain.Entities
         
         public string Diagnosis { get; set; } = string.Empty;
 
+        [MaxLength(200)]
+        public string StudyPanel { get; set; } = string.Empty;
+
         // Concurrency token for Optimistic Concurrency
-        [Timestamp]
-        public byte[] RowVersion { get; set; }
+        [ConcurrencyCheck]
+        public byte[] RowVersion { get; set; } = Guid.NewGuid().ToByteArray();
 
         public ICollection<SamplePanel> Panels { get; set; } = new List<SamplePanel>();
     }

@@ -50,6 +50,16 @@ namespace MiniLIS.Infrastructure.Services
             return panel;
         }
 
+        public async Task DeletePanelAsync(int id)
+        {
+            var panel = await _db.Panels.FindAsync(id);
+            if (panel != null)
+            {
+                _db.Panels.Remove(panel);
+                await _db.SaveChangesAsync();
+            }
+        }
+
         // --- TEMPLATES ---
         public async Task<List<ReportTemplate>> GetAllTemplatesAsync() => await _db.ReportTemplates.ToListAsync();
 
@@ -58,6 +68,7 @@ namespace MiniLIS.Infrastructure.Services
             return await _db.ReportTemplates
                 .Include(t => t.Markers)
                     .ThenInclude(tm => tm.Marker)
+                .Include(t => t.Conclusions.OrderBy(c => c.DisplayOrder))
                 .FirstOrDefaultAsync(t => t.Id == id);
         }
 
@@ -155,6 +166,33 @@ namespace MiniLIS.Infrastructure.Services
                 _db.SystemSettings.Update(setting);
             }
             await _db.SaveChangesAsync();
+        }
+
+        // --- TEMPLATE CONCLUSIONS ---
+        public async Task<List<TemplateConclusion>> GetTemplateConclusionsAsync(int templateId)
+        {
+            return await _db.TemplateConclusions
+                .Where(c => c.ReportTemplateId == templateId)
+                .OrderBy(c => c.DisplayOrder)
+                .ToListAsync();
+        }
+
+        public async Task<TemplateConclusion> UpsertTemplateConclusionAsync(TemplateConclusion conclusion)
+        {
+            if (conclusion.Id == 0) _db.TemplateConclusions.Add(conclusion);
+            else _db.TemplateConclusions.Update(conclusion);
+            await _db.SaveChangesAsync();
+            return conclusion;
+        }
+
+        public async Task DeleteTemplateConclusionAsync(int id)
+        {
+            var conclusion = await _db.TemplateConclusions.FindAsync(id);
+            if (conclusion != null)
+            {
+                _db.TemplateConclusions.Remove(conclusion);
+                await _db.SaveChangesAsync();
+            }
         }
     }
 }

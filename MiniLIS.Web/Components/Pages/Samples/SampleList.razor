@@ -7,166 +7,182 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<PageTitle>Bandeja de Trabajo - MiniLIS Suite</PageTitle>
+<PageTitle>Bandeja Técnica - MiniLIS Suite</PageTitle>
 
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="bandeja-page">
+
+    <!-- Header -->
+    <div class="bandeja-header">
         <div>
-            <h1 class="h3 fw-bold text-dark mb-0">Bandeja de Trabajo</h1>
-            <p class="text-muted small">Gestión y seguimiento de muestras clínicas</p>
+            <h1 class="bandeja-title">
+                <i class="bi bi-layers"></i> Bandeja Técnica
+            </h1>
         </div>
         <div class="d-flex gap-2">
-            <button class="btn btn-outline-success border-2 fw-bold" @onclick="ExportExcel">
-                <i class="bi bi-file-earmark-spreadsheet me-2"></i> Exportar Excel
+            <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportExcel">
+                <i class="bi bi-file-earmark-spreadsheet"></i> Exportar Excel
             </button>
-            <button class="btn btn-primary fw-bold" @onclick='() => Nav.NavigateTo("/muestras/nueva")'>
-                <i class="bi bi-plus-lg me-2"></i> Nueva Muestra
+            <button class="btn-bandeja btn-bandeja-primary" @onclick='() => Nav.NavigateTo("/muestras/nueva")'>
+                <i class="bi bi-plus-lg"></i> Crear Muestra
             </button>
         </div>
     </div>
 
-    <!-- Filtros -->
-    <div class="card border-0 shadow-sm rounded-4 mb-4">
-        <div class="card-body p-4">
-            <div class="row g-3">
-                <div class="col-lg-3">
-                    <label class="form-label small fw-bold text-muted">Búsqueda rápida</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-                        <input type="text" class="form-control border-start-0" placeholder="NHC, Nombre o Nº Muestra" 
-                               @bind="searchTerm" @bind:event="oninput" @onkeyup="ApplyFilters" />
-                    </div>
-                </div>
-                <div class="col-lg-2">
-                    <label class="form-label small fw-bold text-muted">Estado</label>
-                    <select class="form-select" @bind="statusFilter" @bind:after="ApplyFilters">
-                        <option value="">Todos los estados</option>
-                        @foreach (var status in Enum.GetValues<SampleStatus>())
-                        {
-                            <option value="@status">@status</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-lg-4">
-                    <label class="form-label small fw-bold text-muted">Rango de Fechas</label>
-                    <div class="d-flex gap-2 align-items-center">
-                        <input type="date" class="form-control form-control-sm" @bind="fromDate" @bind:after="ApplyFilters" />
-                        <span class="text-muted small">-</span>
-                        <input type="date" class="form-control form-control-sm" @bind="toDate" @bind:after="ApplyFilters" />
-                    </div>
-                </div>
-                <div class="col-lg-3 d-flex align-items-end gap-2">
-                    <button class="btn btn-light btn-sm flex-grow-1" @onclick="SetDateToday">Hoy</button>
-                    <button class="btn btn-light btn-sm flex-grow-1" @onclick="SetDateSevenDays">7 días</button>
-                    <button class="btn btn-outline-secondary btn-sm" @onclick="ClearFilters">Limpiar</button>
-                </div>
-            </div>
+    <!-- Barra de Filtros -->
+    <div class="filter-strip">
+        <div class="filter-group">
+            <i class="bi bi-search filter-icon"></i>
+            <input type="text" class="filter-control" placeholder="Código, NHC, Nombre..."
+                   @bind="searchTerm" @bind:event="oninput" @onkeyup="ApplyFilters" />
+        </div>
+
+        <div class="filter-divider"></div>
+
+        <div class="filter-group">
+            <select class="filter-control" @bind="statusFilter" @bind:after="ApplyFilters">
+                <option value="">-- Todos los estados --</option>
+                @foreach (var status in Enum.GetValues<SampleStatus>())
+                {
+                    <option value="@status">@status</option>
+                }
+            </select>
+        </div>
+
+        <div class="filter-divider"></div>
+
+        <div class="filter-group filter-dates">
+            <i class="bi bi-calendar3 filter-icon"></i>
+            <input type="date" class="filter-control filter-date" @bind="fromDate" @bind:after="ApplyFilters" title="Desde" />
+            <span class="date-separator">–</span>
+            <input type="date" class="filter-control filter-date" @bind="toDate" @bind:after="ApplyFilters" title="Hasta" />
+        </div>
+
+        <div class="filter-actions">
+            <button class="btn-filter-search" @onclick="ApplyFilters">Buscar</button>
+            <button class="btn-filter-clear" @onclick="ClearFilters" title="Limpiar filtros">
+                <i class="bi bi-x-lg"></i>
+            </button>
         </div>
     </div>
 
     <!-- Tabla -->
-    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="bg-light border-bottom">
-                    <tr class="text-muted small text-uppercase">
-                        <th class="ps-4">Nº Muestra</th>
-                        <th>Fecha</th>
-                        <th>NHC</th>
-                        <th>Paciente</th>
-                        <th>Origen</th>
-                        <th>Estado</th>
-                        <th class="text-end pe-4">Acciones</th>
+    <div class="bandeja-table-wrap">
+        <table class="bandeja-table">
+            <thead>
+                <tr>
+                    <th class="col-code">Código <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                    <th class="col-date">Fecha</th>
+                    <th class="col-nhc">NHC</th>
+                    <th class="col-lab">Nº Lab</th>
+                    <th class="col-name">Nombre</th>
+                    <th class="col-surname">Apellidos</th>
+                    <th class="col-service">Servicio</th>
+                    <th class="col-status">Estado</th>
+                    <th class="col-panel">Panel Estudio</th>
+                    <th class="col-incident">Incidencia</th>
+                    <th class="col-actions">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (isLoading)
+                {
+                    <tr>
+                        <td colspan="11" class="cell-empty">
+                            <div class="spinner-border text-primary" role="status"></div>
+                        </td>
                     </tr>
-                </thead>
-                <tbody>
-                    @if (isLoading)
+                }
+                else if (!samples.Any())
+                {
+                    <tr>
+                        <td colspan="11" class="cell-empty">
+                            <i class="bi bi-inbox empty-icon"></i>
+                            <span>Sin resultados para los filtros actuales</span>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var s in samples)
                     {
                         <tr>
-                            <td colspan="7" class="text-center py-5">
-                                <span class="spinner-border text-primary"></span>
+                            <td class="cell-code">@s.SampleNumber</td>
+                            <td class="cell-date">@s.ReceptionDate.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="cell-nhc"><span class="nhc-chip">@s.ClinicalRequest?.Patient?.NHC</span></td>
+                            <td class="cell-lab">@s.ClinicalRequest?.RequestNumber</td>
+                            <td class="cell-name">
+                                @{
+                                    var fullName = s.ClinicalRequest?.Patient?.FullName ?? "";
+                                    var parts = fullName.Split(',', 2);
+                                    var firstName = parts.Length == 2 ? parts[1].Trim() : fullName;
+                                }
+                                @firstName
+                            </td>
+                            <td class="cell-surname">
+                                @{
+                                    var lastName = parts.Length == 2 ? parts[0].Trim() : "";
+                                }
+                                @lastName
+                            </td>
+                            <td class="cell-service">@s.ClinicalRequest?.OriginService</td>
+                            <td class="cell-status">
+                                <span class="status-pill @GetStatusClass(s.Status)">@GetStatusLabel(s.Status)</span>
+                            </td>
+                            <td class="cell-panel">@s.StudyPanel</td>
+                            <td class="cell-incident">
+                                @if(s.HasIncident)
+                                {
+                                    <span class="incident-badge" title="@s.IncidentsNotes"><i class="bi bi-exclamation-triangle-fill"></i> SÍ</span>
+                                }
+                            </td>
+                            <td class="cell-actions">
+                                <button class="action-icon action-edit" title="Editar Registro"
+                                        @onclick='() => Nav.NavigateTo($"/muestras/editar/{s.Id}")'>
+                                    <i class="bi bi-pencil-square"></i>
+                                </button>
+                                <button class="action-icon action-report" title="Informar"
+                                        @onclick='() => Nav.NavigateTo($"/informes/editar/{s.Id}")'>
+                                    <i class="bi bi-file-earmark-medical"></i>
+                                </button>
                             </td>
                         </tr>
                     }
-                    else if (!samples.Any())
-                    {
-                        <tr>
-                            <td colspan="7" class="text-center py-5 text-muted">
-                                <i class="bi bi-inbox h2 d-block mb-3"></i> No se encontraron muestras con los filtros aplicados.
-                            </td>
-                        </tr>
-                    }
-                    else
-                    {
-                        @foreach (var s in samples)
-                        {
-                            <tr>
-                                <td class="ps-4 fw-bold">@s.SampleNumber</td>
-                                <td>@s.ReceptionDate.ToString("dd/MM/yyyy HH:mm")</td>
-                                <td><code class="text-dark bg-light px-2 rounded">@s.ClinicalRequest?.Patient?.NHC</code></td>
-                                <td>
-                                    <button class="btn btn-link link-dark text-decoration-none p-0 fw-semibold" 
-                                            @onclick="() => ShowPreview(s.ClinicalRequest?.Patient)">
-                                        @s.ClinicalRequest?.Patient?.FullName
-                                    </button>
-                                </td>
-                                <td>@s.ClinicalRequest?.OriginService</td>
-                                <td>
-                                    <span class="badge @GetStatusBadgeClass(s.Status)">
-                                        @s.Status
-                                    </span>
-                                </td>
-                                <td class="text-end pe-4">
-                                    <div class="btn-group shadow-sm border rounded">
-                                        <button class="btn btn-white btn-sm px-3" title="Editar Informe" @onclick='() => Nav.NavigateTo($"/informes/editar/{s.Id}")'>
-                                            <i class="bi bi-file-earmark-medical text-primary"></i>
-                                        </button>
-                                        <button class="btn btn-white btn-sm px-3" title="Ver Detalles">
-                                            <i class="bi bi-eye text-muted"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
+                }
+            </tbody>
+        </table>
     </div>
 </div>
 
 <!-- Modal Vista Previa Paciente -->
 @if (previewPatient != null)
 {
-    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5)">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="card shadow border-0 rounded-4 w-100">
-                <div class="card-header bg-primary text-white py-3 border-0 rounded-top-4 d-flex justify-content-between">
-                    <h5 class="mb-0 fw-bold"><i class="bi bi-person-circle me-2"></i>Vista Previa de Paciente</h5>
-                    <button type="button" class="btn-close btn-close-white" @onclick="() => previewPatient = null"></button>
+    <div class="modal-backdrop-custom" @onclick="() => previewPatient = null">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-card-header">
+                <h5><i class="bi bi-person-circle me-2"></i>Vista Previa de Paciente</h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => previewPatient = null"></button>
+            </div>
+            <div class="modal-card-body">
+                <div class="mb-4 text-center">
+                    <div class="display-6 fw-bold text-dark">@previewPatient.FullName</div>
+                    <div class="text-muted small">NHC: @previewPatient.NHC</div>
                 </div>
-                <div class="card-body p-4">
-                    <div class="mb-4 text-center">
-                        <div class="display-6 fw-bold text-dark">@previewPatient.FullName</div>
-                        <div class="text-muted small">NHC: @previewPatient.NHC</div>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="small text-muted d-block">Fecha Nacimiento</label>
+                        <strong>@previewPatient.BirthDate?.ToString("dd/MM/yyyy")</strong>
                     </div>
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <label class="small text-muted d-block">Fecha Nacimiento</label>
-                            <strong>@previewPatient.BirthDate?.ToString("dd/MM/yyyy")</strong>
-                        </div>
-                        <div class="col-6">
-                            <label class="small text-muted d-block">NASI / Identificador</label>
-                            <strong>@previewPatient.NASI</strong>
-                        </div>
-                        <div class="col-12 mt-3 p-3 bg-light rounded-3 border">
-                            <h6 class="fw-bold mb-2">Última Actividad</h6>
-                            <p class="text-muted small mb-0">Total solicitudes registradas: <strong>@previewPatient.Requests.Count</strong></p>
-                        </div>
+                    <div class="col-6">
+                        <label class="small text-muted d-block">NASI / Identificador</label>
+                        <strong>@previewPatient.NASI</strong>
                     </div>
-                    <div class="mt-4">
-                        <button class="btn btn-secondary w-100 py-2 rounded-3" @onclick="() => previewPatient = null">Cerrar</button>
+                    <div class="col-12 mt-3 p-3 bg-light rounded-3 border">
+                        <h6 class="fw-bold mb-2">Última Actividad</h6>
+                        <p class="text-muted small mb-0">Total solicitudes registradas: <strong>@previewPatient.Requests.Count</strong></p>
                     </div>
+                </div>
+                <div class="mt-4">
+                    <button class="btn btn-secondary w-100 py-2 rounded-3" @onclick="() => previewPatient = null">Cerrar</button>
                 </div>
             </div>
         </div>
@@ -174,9 +190,282 @@
 }
 
 <style>
-    .btn-white { background: white; border: none; }
-    .btn-white:hover { background: #f8f9fa; }
-    .shadow-inner { box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+    /* ── Page ─────────────────────────────────────────────── */
+    .bandeja-page {
+        padding: 28px 32px;
+        background: #f4f6f9;
+        min-height: calc(100vh - 56px);
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    .bandeja-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    .bandeja-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: #1e293b;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .bandeja-title i { color: #3b82f6; font-size: 24px; }
+
+    .btn-bandeja {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 20px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .btn-bandeja-outline {
+        background: #fff;
+        color: #16a34a;
+        border: 1.5px solid #bbf7d0;
+    }
+    .btn-bandeja-outline:hover { background: #f0fdf4; border-color: #16a34a; }
+    .btn-bandeja-primary {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+    .btn-bandeja-primary:hover { box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35); transform: translateY(-1px); }
+
+    /* ── Filter Strip ────────────────────────────────────── */
+    .filter-strip {
+        display: flex;
+        align-items: center;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 6px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .filter-group {
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        flex: 1;
+        min-width: 0;
+    }
+    .filter-icon { color: #94a3b8; margin-right: 8px; flex-shrink: 0; }
+    .filter-control {
+        border: none;
+        background: transparent;
+        font-size: 13px;
+        color: #334155;
+        outline: none;
+        width: 100%;
+        padding: 6px 0;
+    }
+    .filter-control::placeholder { color: #94a3b8; }
+    select.filter-control { cursor: pointer; }
+
+    .filter-dates { gap: 6px; }
+    .filter-date { width: 120px; text-align: center; flex: none; }
+    .date-separator { color: #cbd5e1; font-size: 12px; }
+
+    .filter-divider {
+        width: 1px;
+        height: 28px;
+        background: #e2e8f0;
+        flex-shrink: 0;
+    }
+    .filter-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-left: 8px;
+    }
+    .btn-filter-search {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: #fff;
+        border: none;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 28px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .btn-filter-search:hover { box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+    .btn-filter-clear {
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        color: #64748b;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .btn-filter-clear:hover { background: #e2e8f0; color: #334155; }
+
+    /* ── Table ────────────────────────────────────────────── */
+    .bandeja-table-wrap {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .bandeja-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .bandeja-table thead tr {
+        background: #f8fafc;
+    }
+    .bandeja-table th {
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        padding: 14px 12px;
+        border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .sort-icon { font-size: 9px; color: #94a3b8; margin-left: 4px; }
+
+    .bandeja-table td {
+        font-size: 13px;
+        color: #334155;
+        padding: 12px;
+        border-bottom: 1px solid #f1f5f9;
+        vertical-align: middle;
+    }
+    .bandeja-table tbody tr { transition: background 0.1s; }
+    .bandeja-table tbody tr:hover { background: #f8fafc; }
+    .bandeja-table tbody tr:last-child td { border-bottom: none; }
+
+    /* Cell styles */
+    .col-code { padding-left: 20px !important; }
+    .cell-code { padding-left: 20px !important; font-weight: 700; color: #1e293b; font-family: 'JetBrains Mono', 'Consolas', monospace; }
+    .cell-date { color: #64748b; font-size: 12px; white-space: nowrap; }
+    .nhc-chip {
+        background: #eff6ff;
+        color: #2563eb;
+        border: 1px solid #bfdbfe;
+        padding: 2px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', 'Consolas', monospace;
+    }
+    .cell-lab { color: #64748b; font-size: 12px; }
+    .cell-name { font-weight: 600; color: #1e293b; }
+    .cell-surname { font-weight: 600; color: #475569; }
+    .cell-service { color: #64748b; }
+    .cell-panel { color: #6366f1; font-weight: 600; font-size: 12px; }
+    .cell-incident { text-align: center; }
+    .incident-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #fee2e2;
+        color: #dc2626;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 20px;
+    }
+    .incident-badge i { font-size: 10px; }
+
+    /* Status Pills */
+    .status-pill {
+        display: inline-block;
+        padding: 4px 14px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+    }
+    .status-recibida { background: #dbeafe; color: #1d4ed8; }
+    .status-enproceso { background: #fef3c7; color: #92400e; }
+    .status-reportada { background: #e0e7ff; color: #4338ca; }
+    .status-finalizada { background: #dcfce7; color: #166534; }
+    .status-rechazada { background: #fee2e2; color: #991b1b; }
+
+    /* Action Buttons */
+    .cell-actions { text-align: center; white-space: nowrap; }
+    .action-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        margin: 0 2px;
+        font-size: 14px;
+    }
+    .action-edit { color: #2563eb; }
+    .action-edit:hover { background: #eff6ff; border-color: #93c5fd; box-shadow: 0 2px 6px rgba(37,99,235,0.15); }
+    .action-report { color: #059669; }
+    .action-report:hover { background: #ecfdf5; border-color: #6ee7b7; box-shadow: 0 2px 6px rgba(5,150,105,0.15); }
+    .action-settings { color: #64748b; }
+    .action-settings:hover { background: #f1f5f9; border-color: #cbd5e1; }
+
+    /* Empty state */
+    .cell-empty {
+        text-align: center;
+        padding: 48px 12px !important;
+        color: #94a3b8;
+    }
+    .empty-icon { font-size: 32px; display: block; margin-bottom: 12px; }
+
+    /* Col widths (hints) */
+    .col-actions { text-align: center; width: 90px; }
+    .col-incident { text-align: center; width: 90px; }
+
+    /* ── Modal ────────────────────────────────────────────── */
+    .modal-backdrop-custom {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.5);
+        backdrop-filter: blur(4px);
+        z-index: 1050;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-card {
+        background: #fff;
+        border-radius: 16px;
+        width: 480px;
+        max-width: 95vw;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        overflow: hidden;
+    }
+    .modal-card-header {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff;
+        padding: 18px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .modal-card-header h5 { margin: 0; font-weight: 700; font-size: 16px; }
+    .modal-card-body { padding: 24px; }
 </style>
 
 @code {
@@ -184,7 +473,6 @@
     private bool isLoading = true;
     private Patient? previewPatient;
 
-    // Filter properties
     private string searchTerm = "";
     private SampleStatus? statusFilter;
     private DateTime? fromDate;
@@ -202,10 +490,7 @@
         isLoading = false;
     }
 
-    private async Task ApplyFilters()
-    {
-        await LoadSamples();
-    }
+    private async Task ApplyFilters() => await LoadSamples();
 
     private async Task ClearFilters()
     {
@@ -216,42 +501,34 @@
         await LoadSamples();
     }
 
-    private async Task SetDateToday()
-    {
-        fromDate = DateTime.Today;
-        toDate = DateTime.Today;
-        await LoadSamples();
-    }
-
-    private async Task SetDateSevenDays()
-    {
-        fromDate = DateTime.Today.AddDays(-7);
-        toDate = DateTime.Today;
-        await LoadSamples();
-    }
-
     private void ShowPreview(Patient? patient)
     {
         previewPatient = patient;
     }
 
-    private string GetStatusBadgeClass(SampleStatus status) => status switch
+    private string GetStatusClass(SampleStatus status) => status switch
     {
-        SampleStatus.Recibida => "bg-info text-white shadow-sm",
-        SampleStatus.EnProceso => "bg-warning text-dark shadow-sm",
-        SampleStatus.Finalizada => "bg-success text-white shadow-sm",
-        SampleStatus.Rechazada => "bg-danger text-white shadow-sm",
-        _ => "bg-secondary text-white"
+        SampleStatus.Recibida => "status-recibida",
+        SampleStatus.EnProceso => "status-enproceso",
+        SampleStatus.ReportadaParcial => "status-reportada",
+        SampleStatus.Finalizada => "status-finalizada",
+        SampleStatus.Rechazada => "status-rechazada",
+        _ => ""
     };
 
-    private async Task ExportExcel()
+    private string GetStatusLabel(SampleStatus status) => status switch
     {
-        var fileBytes = await SampleService.ExportSamplesToCsvAsync(samples);
-        var fileName = $"Muestras_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+        SampleStatus.Recibida => "recibida",
+        SampleStatus.EnProceso => "en proceso",
+        SampleStatus.ReportadaParcial => "rep. parcial",
+        SampleStatus.Finalizada => "finalizada",
+        SampleStatus.Rechazada => "rechazada",
+        _ => status.ToString()
+    };
 
-        using var stream = new MemoryStream(fileBytes);
-        using var dotNetStreamReference = new DotNetStreamReference(stream: stream);
-
-        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, dotNetStreamReference);
+    private void ExportExcel()
+    {
+        var url = $"/api/downloads/muestras/csv?t={DateTime.Now.Ticks}";
+        JS.InvokeVoidAsync("triggerDownload", url);
     }
 }

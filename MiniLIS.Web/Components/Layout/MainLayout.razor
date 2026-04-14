@@ -1,23 +1,135 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@using Microsoft.AspNetCore.Components.Authorization
 
-<div class="page">
-    <div class="sidebar">
+<div class="iso-layout">
+    <aside class="iso-sidebar">
         <NavMenu />
-    </div>
+    </aside>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+    <main class="iso-main">
+        <header class="iso-topbar">
+            <AuthorizeView>
+                <Authorized>
+                    <div class="user-greeting">
+                        <span class="greeting-text">Hola, </span>
+                        <span class="greeting-name">@context.User.Identity?.Name</span>
+                        @if (context.User.IsInRole("Administrador")) { 
+                            <span class="role-badge">ADMINISTRADOR</span> 
+                        } else if (context.User.IsInRole("Facultativo")) { 
+                            <span class="role-badge">FACULTATIVO</span> 
+                        } else if (context.User.IsInRole("Técnico")) { 
+                            <span class="role-badge">TÉCNICO</span> 
+                        } else {
+                            <span class="role-badge">USUARIO DE LABORATORIO</span> 
+                        }
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+            
+            <form action="/account/logout" method="get" class="m-0">
+                <button type="submit" class="btn-logout">
+                    Salida
+                </button>
+            </form>
+        </header>
 
-        <article class="content px-4">
+        <section class="iso-content">
             @Body
-        </article>
+        </section>
     </main>
 </div>
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+<style>
+    /* ISO 15189 Global Layout Tokens */
+    :root {
+        --iso-sidebar-bg: #1e252e;
+        --iso-sidebar-width: 250px;
+        --iso-bg: #f5f6f8;
+        --iso-border: #e8e8e8;
+        --iso-text-main: #333333;
+    }
+
+    body {
+        margin: 0;
+        background-color: var(--iso-bg);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: var(--iso-text-main);
+    }
+
+    .iso-layout {
+        display: flex;
+        min-height: 100vh;
+        width: 100%;
+    }
+
+    .iso-sidebar {
+        width: var(--iso-sidebar-width);
+        background-color: var(--iso-sidebar-bg);
+        color: white;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+    }
+
+    .iso-main {
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        background-color: var(--iso-bg);
+    }
+
+    .iso-topbar {
+        height: 60px;
+        background-color: white;
+        border-bottom: 1px solid var(--iso-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+    }
+
+    .user-greeting {
+        font-size: 13px;
+        color: #666;
+    }
+    
+    .greeting-name {
+        font-weight: 600;
+        color: #333;
+        margin-right: 8px;
+    }
+
+    .role-badge {
+        background-color: #8c98a5;
+        color: white;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .btn-logout {
+        background: transparent;
+        border: 1px solid #ff4d4f;
+        color: #ff4d4f;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-logout:hover {
+        background: #fff1f0;
+    }
+
+    .iso-content {
+        padding: 24px;
+        overflow-y: auto;
+        flex-grow: 1;
+    }
+</style>

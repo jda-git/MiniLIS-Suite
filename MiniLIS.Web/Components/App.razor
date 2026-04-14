@@ -15,18 +15,35 @@
 
 <body>
     <Routes @rendermode="InteractiveServer" />
+    <iframe id="downloadFrame" style="display:none;"></iframe>
     <script src="_framework/blazor.web.js"></script>
     <script>
-        window.downloadFileFromStream = async (fileName, contentStreamReference) => {
-            const arrayBuffer = await contentStreamReference.arrayBuffer();
-            const blob = new Blob([arrayBuffer]);
-            const url = URL.createObjectURL(blob);
-            const anchorElement = document.createElement('a');
-            anchorElement.href = url;
-            anchorElement.download = fileName ?? '';
-            anchorElement.click();
-            anchorElement.remove();
-            URL.revokeObjectURL(url);
+        window.triggerDownload = (url) => {
+            window.location.assign(url);
+        }
+
+        window.downloadFileFromBase64 = (fileName, base64, contentType) => {
+            try {
+                const byteCharacters = atob(base64);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: contentType });
+                const url = URL.createObjectURL(blob);
+                const anchorElement = document.createElement('a');
+                anchorElement.href = url;
+                anchorElement.download = fileName || 'documento';
+                anchorElement.style.display = 'none';
+                document.body.appendChild(anchorElement);
+                anchorElement.click();
+                document.body.removeChild(anchorElement);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error("Download Base64 Error: ", err);
+                alert("Ocurrió un error al forzar la descarga del documento.");
+            }
         }
     </script>
 </body>

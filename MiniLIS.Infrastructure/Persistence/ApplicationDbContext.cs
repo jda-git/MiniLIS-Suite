@@ -27,15 +27,11 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<SampleReport> SampleReports => Set<SampleReport>();
         public DbSet<ReportMarkerValue> ReportMarkerValues => Set<ReportMarkerValue>();
         public DbSet<ReportSignatory> ReportSignatories => Set<ReportSignatory>();
+        public DbSet<TemplateConclusion> TemplateConclusions => Set<TemplateConclusion>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-
-            // Configure Sample concurrency
-            modelBuilder.Entity<Sample>()
-                .Property(s => s.RowVersion)
-                .IsRowVersion();
 
             // Configure Relationships
             modelBuilder.Entity<Sample>()

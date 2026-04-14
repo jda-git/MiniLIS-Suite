@@ -23,7 +23,7 @@ namespace MiniLIS.Infrastructure.Services
             _patientService = patientService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType)
+        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "")
         {
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
@@ -47,6 +47,9 @@ namespace MiniLIS.Infrastructure.Services
                     ClinicalRequest = request,
                     Status = SampleStatus.Recibida,
                     Diagnosis = sampleDiagnosis,
+                    StudyPanel = studyPanel ?? string.Empty,
+                    HasIncident = hasIncident,
+                    IncidentsNotes = incidentNotes ?? string.Empty,
                 };
 
                 _db.Samples.Add(sample);
@@ -75,7 +78,8 @@ namespace MiniLIS.Infrastructure.Services
                 query = query.Where(s => 
                     s.SampleNumber.ToLower().Contains(searchTerm) ||
                     s.ClinicalRequest.Patient.FullName.ToLower().Contains(searchTerm) ||
-                    s.ClinicalRequest.Patient.NHC.ToLower().Contains(searchTerm));
+                    s.ClinicalRequest.Patient.NHC.ToLower().Contains(searchTerm) ||
+                    s.ClinicalRequest.Patient.NASI.ToLower().Contains(searchTerm));
             }
 
             if (status.HasValue)
@@ -123,6 +127,22 @@ namespace MiniLIS.Infrastructure.Services
 
             // Return as UTF-8 with BOM for Excel compatibility
             return Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        }
+
+        public async Task<Sample?> GetSampleByIdAsync(int sampleId)
+        {
+            return await _db.Samples
+                .Include(s => s.ClinicalRequest)
+                    .ThenInclude(cr => cr.Patient)
+                .FirstOrDefaultAsync(s => s.Id == sampleId);
+        }
+
+        public async Task<bool> UpdateSampleAsync(Sample sample)
+        {
+            _db.Samples.Update(sample);
+            sample.RowVersion = Guid.NewGuid().ToByteArray();
+            await _db.SaveChangesAsync();
+            return true;
         }
     }
 }

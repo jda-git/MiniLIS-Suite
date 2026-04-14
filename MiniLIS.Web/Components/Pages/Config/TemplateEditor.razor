@@ -1,4 +1,6 @@
 @page "/configuracion/plantillas/{TemplateId:int?}"
+@page "/configuracion/plantilla/{TemplateId:int?}"
+@page "/configuracion/plantilla/nueva"
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
@@ -31,17 +33,71 @@
                         <textarea @bind="template.HeaderText" class="form-control" rows="4" placeholder="En la muestra analizada se observa..."></textarea>
                     </div>
                     <div class="mb-0">
-                        <label class="form-label fw-semibold">Conclusión Estándar</label>
+                        <label class="form-label fw-semibold">Conclusión Estándar (Por defecto)</label>
                         <textarea @bind="template.DefaultConclusion" class="form-control" rows="3" placeholder="Compatible con..."></textarea>
                     </div>
                 </div>
             </div>
 
+            <!-- Conclusions Section -->
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">Conclusiones Predefinidas</h5>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="AddConclusion">
+                            <i class="bi bi-plus me-1"></i>Añadir
+                        </button>
+                    </div>
+                    <p class="text-muted small">Estas opciones aparecerán en el desplegable de conclusiones al usar esta plantilla.</p>
+                    @if (!conclusions.Any())
+                    {
+                        <div class="text-center py-3 text-muted small border border-dashed rounded">
+                            No hay conclusiones predefinidas.
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var c in conclusions.OrderBy(x => x.DisplayOrder))
+                        {
+                            <div class="d-flex gap-2 mb-2 align-items-start">
+                                <span class="badge bg-light text-dark border mt-1">@c.DisplayOrder</span>
+                                @if (editingConclusionId == c.Id)
+                                {
+                                    <textarea class="form-control form-control-sm flex-grow-1" rows="2" @bind="editingConclusionText"></textarea>
+                                    <button class="btn btn-success btn-sm" @onclick="() => SaveEditedConclusion(c)"><i class="bi bi-check-lg"></i></button>
+                                    <button class="btn btn-light btn-sm" @onclick="() => editingConclusionId = 0">✕</button>
+                                }
+                                else
+                                {
+                                    <div class="flex-grow-1 small border rounded p-2 bg-light">@c.Text</div>
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => StartEditConclusion(c)"><i class="bi bi-pencil"></i></button>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteConclusion(c.Id)"><i class="bi bi-trash"></i></button>
+                                }
+                            </div>
+                        }
+                    }
+
+                    @if (showNewConclusionForm)
+                    {
+                        <div class="card mt-2 border-primary">
+                            <div class="card-body p-2">
+                                <textarea class="form-control form-control-sm mb-2" rows="2" @bind="newConclusionText" placeholder="Texto de la conclusión predefinida..."></textarea>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-success btn-sm" @onclick="SaveNewConclusion"><i class="bi bi-check-lg me-1"></i>Guardar</button>
+                                    <button class="btn btn-light btn-sm" @onclick="() => showNewConclusionForm = false">Cancelar</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Markers Order -->
             <div class="card border-0 shadow-sm rounded-4">
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <h5 class="fw-bold mb-0">Orden de Marcadores (Rejilla)</h5>
-                        <span class="badge bg-light text-dark border small">Utiliza Arrastrar y Soltar</span>
+                        <span class="badge bg-light text-dark border small">Arrastrar y Soltar</span>
                     </div>
 
                     <div class="marker-sort-list">
@@ -129,8 +185,15 @@
     private ReportTemplate template = new();
     private List<Marker> allMarkers = new();
     private List<TemplateMarker> selectedMarkers = new();
+    private List<TemplateConclusion> conclusions = new();
     private string searchQuery = "";
     private bool isSaving = false;
+
+    // Conclusions form state
+    private bool showNewConclusionForm = false;
+    private string newConclusionText = "";
+    private int editingConclusionId = 0;
+    private string editingConclusionText = "";
 
     // DnD State
     private TemplateMarker? draggedItem;
@@ -146,6 +209,7 @@
             {
                 template = existing;
                 selectedMarkers = existing.Markers.ToList();
+                conclusions = existing.Conclusions?.ToList() ?? new List<TemplateConclusion>();
             }
         }
     }
@@ -172,38 +236,73 @@
     {
         var ordered = selectedMarkers.OrderBy(x => x.DisplayOrder).ToList();
         for (int i = 0; i < ordered.Count; i++)
-        {
             ordered[i].DisplayOrder = i + 1;
-        }
     }
 
-    // --- Drag and Drop Logic ---
-    private void HandleDragStart(TemplateMarker item)
-    {
-        draggedItem = item;
-    }
-
-    private void HandleDragOver(TemplateMarker item)
-    {
-        if (draggedItem == null || draggedItem == item) return;
-        
-        // Visual cue or real-time swap
-    }
+    // --- Drag and Drop ---
+    private void HandleDragStart(TemplateMarker item) => draggedItem = item;
+    private void HandleDragOver(TemplateMarker item) { }
 
     private void HandleDrop(TemplateMarker targetItem)
     {
         if (draggedItem == null || draggedItem == targetItem) return;
-
         int oldIndex = draggedItem.DisplayOrder;
         int newIndex = targetItem.DisplayOrder;
-
         draggedItem.DisplayOrder = newIndex;
         targetItem.DisplayOrder = oldIndex;
-
         ReorderMarkers();
         draggedItem = null;
     }
 
+    // --- Conclusions CRUD ---
+    private void AddConclusion()
+    {
+        showNewConclusionForm = true;
+        newConclusionText = "";
+    }
+
+    private async Task SaveNewConclusion()
+    {
+        if (string.IsNullOrWhiteSpace(newConclusionText)) return;
+
+        // Template must be saved first
+        if (template.Id == 0)
+        {
+            await MasterService.UpsertTemplateAsync(template, selectedMarkers);
+        }
+
+        var conclusion = new TemplateConclusion
+        {
+            ReportTemplateId = template.Id,
+            Text = newConclusionText.Trim(),
+            DisplayOrder = conclusions.Count + 1
+        };
+        await MasterService.UpsertTemplateConclusionAsync(conclusion);
+        conclusions.Add(conclusion);
+        showNewConclusionForm = false;
+        newConclusionText = "";
+    }
+
+    private void StartEditConclusion(TemplateConclusion c)
+    {
+        editingConclusionId = c.Id;
+        editingConclusionText = c.Text;
+    }
+
+    private async Task SaveEditedConclusion(TemplateConclusion c)
+    {
+        c.Text = editingConclusionText.Trim();
+        await MasterService.UpsertTemplateConclusionAsync(c);
+        editingConclusionId = 0;
+    }
+
+    private async Task DeleteConclusion(int id)
+    {
+        await MasterService.DeleteTemplateConclusionAsync(id);
+        conclusions.RemoveAll(c => c.Id == id);
+    }
+
+    // --- Save Template ---
     private async Task SaveTemplate()
     {
         isSaving = true;
@@ -211,10 +310,6 @@
         {
             await MasterService.UpsertTemplateAsync(template, selectedMarkers);
             Nav.NavigateTo("/configuracion");
-        }
-        catch (Exception ex)
-        {
-            // Error handling
         }
         finally
         {

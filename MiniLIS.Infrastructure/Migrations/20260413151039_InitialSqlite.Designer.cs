@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MiniLIS.Infrastructure.Persistence;
 
@@ -10,9 +11,11 @@ using MiniLIS.Infrastructure.Persistence;
 namespace MiniLIS.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260413151039_InitialSqlite")]
+    partial class InitialSqlite
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.14");
@@ -224,9 +227,6 @@ namespace MiniLIS.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("TubeListText")
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -292,7 +292,7 @@ namespace MiniLIS.Infrastructure.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("IntensityValue")
-                        .HasMaxLength(20)
+                        .HasMaxLength(10)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsAdHoc")
@@ -409,6 +409,7 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("BLOB");
 
                     b.Property<string>("SampleNumber")
@@ -418,11 +419,6 @@ namespace MiniLIS.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("StudyPanel")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
@@ -486,9 +482,6 @@ namespace MiniLIS.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("AdditionalText")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Conclusions")
                         .HasColumnType("TEXT");
 
@@ -510,12 +503,6 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<string>("MarkersSummary")
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("PanelId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PanelsUsedText")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("ReportBody")
                         .HasColumnType("TEXT");
 
@@ -535,8 +522,6 @@ namespace MiniLIS.Infrastructure.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("PanelId");
 
                     b.HasIndex("SampleId");
 
@@ -582,44 +567,6 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SystemSettings");
-                });
-
-            modelBuilder.Entity("MiniLIS.Domain.Entities.TemplateConclusion", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("CreatedBy")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ReportTemplateId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Text")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("UpdatedBy")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ReportTemplateId");
-
-                    b.ToTable("TemplateConclusions");
                 });
 
             modelBuilder.Entity("MiniLIS.Domain.Entities.TemplateMarker", b =>
@@ -863,10 +810,6 @@ namespace MiniLIS.Infrastructure.Migrations
 
             modelBuilder.Entity("MiniLIS.Domain.Entities.SampleReport", b =>
                 {
-                    b.HasOne("MiniLIS.Domain.Entities.Panel", "Panel")
-                        .WithMany()
-                        .HasForeignKey("PanelId");
-
                     b.HasOne("MiniLIS.Domain.Entities.Sample", "Sample")
                         .WithMany()
                         .HasForeignKey("SampleId")
@@ -877,22 +820,9 @@ namespace MiniLIS.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("TemplateId");
 
-                    b.Navigation("Panel");
-
                     b.Navigation("Sample");
 
                     b.Navigation("Template");
-                });
-
-            modelBuilder.Entity("MiniLIS.Domain.Entities.TemplateConclusion", b =>
-                {
-                    b.HasOne("MiniLIS.Domain.Entities.ReportTemplate", "ReportTemplate")
-                        .WithMany("Conclusions")
-                        .HasForeignKey("ReportTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ReportTemplate");
                 });
 
             modelBuilder.Entity("MiniLIS.Domain.Entities.TemplateMarker", b =>
@@ -931,8 +861,6 @@ namespace MiniLIS.Infrastructure.Migrations
 
             modelBuilder.Entity("MiniLIS.Domain.Entities.ReportTemplate", b =>
                 {
-                    b.Navigation("Conclusions");
-
                     b.Navigation("Markers");
                 });
 

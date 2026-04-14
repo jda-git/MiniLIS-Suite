@@ -1,3 +1,4 @@
+@page "/muestras/nueva"
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
@@ -9,212 +10,362 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<PageTitle>Nueva Muestra - MiniLIS Suite</PageTitle>
+<PageTitle>Registro de Nueva Muestra - MiniLIS Suite</PageTitle>
 
-<div class="container-fluid py-4">
-    <div class="row justify-content-center">
-        <div class="col-xl-10">
-            <div class="card shadow-sm border-0 rounded-4 overflow-hidden">
-                <div class="card-header bg-primary text-white py-3">
-                    <h4 class="mb-0"><i class="bi bi-plus-circle me-2"></i> Registro de Nueva Muestra</h4>
+<div class="iso-page">
+    <div class="d-flex align-items-center mb-4">
+        <i class="bi bi-file-earmark-plus text-primary fs-4 me-2"></i> 
+        <h4 class="mb-0 fw-bold text-dark">Registro de Nueva Muestra</h4>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger py-2 px-3 rounded small mb-3 border-0 shadow-sm">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> @errorMessage
+        </div>
+    }
+
+    <EditForm Model="model" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+        
+        <div class="iso-panel">
+            
+            <!-- Fila 1 -->
+            <div class="clin-row">
+                <div class="clin-field" style="width: 220px;">
+                    <label>Nº MUESTRA</label>
+                    <input type="text" class="clin-input bg-light text-primary fw-bold" value="@nextSampleNumber" readonly tabindex="-1" />
                 </div>
-                <div class="card-body p-4 bg-light">
+                <div class="clin-field" style="width: 200px;">
+                    <label>NHC <span class="text-danger ms-1">*</span></label>
+                    <InputText @bind-Value="model.NHC" class="clin-input" @onblur="OnNHCBlur" />
+                    <ValidationMessage For="@(() => model.NHC)" class="validation-inline" />
+                </div>
+                <div class="clin-field flex-grow-1">
+                    <label>Nº LABORATORIO</label>
+                    <InputText @bind-Value="model.RequestNumber" class="clin-input" />
+                </div>
+                <div class="clin-field" style="width: 200px;">
+                    <label>NASI</label>
+                    <InputText @bind-Value="model.NASI" class="clin-input" />
+                </div>
+            </div>
+
+            <!-- Fila 2 -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 220px;">
+                    <label>FECHA <span class="text-danger ms-1">*</span></label>
+                    <InputDate @bind-Value="model.ReceptionDate" class="clin-input" />
+                    <ValidationMessage For="@(() => model.ReceptionDate)" class="validation-inline" />
+                </div>
+                <div class="clin-field" style="width: 320px;">
+                    <label>NOMBRE <span class="text-danger ms-1">*</span></label>
+                    <InputText @bind-Value="model.FirstName" class="clin-input" />
+                    <ValidationMessage For="@(() => model.FirstName)" class="validation-inline" />
+                </div>
+                <div class="clin-field flex-grow-1">
+                    <label>APELLIDOS <span class="text-danger ms-1">*</span></label>
+                    <InputText @bind-Value="model.LastName" class="clin-input" />
+                    <ValidationMessage For="@(() => model.LastName)" class="validation-inline" />
+                </div>
+            </div>
+
+            <!-- Fila 3 -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 45%;">
+                    <label>MOTIVO/SOSPECHA</label>
+                    <InputText @bind-Value="model.Diagnosis" class="clin-input" />
+                </div>
+                <div class="clin-field-radio flex-grow-1 position-relative">
+                    <label class="radio-group-label pe-3">TIPO: <span class="text-danger ms-1">*</span></label>
                     
-                    @if (!string.IsNullOrEmpty(errorMessage))
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "SP")" @onchange="@(() => model.SampleTypeRadio = "SP")" /> 
+                        <span>SP</span>
+                    </label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "MO")" @onchange="@(() => model.SampleTypeRadio = "MO")" /> 
+                        <span>MO</span>
+                    </label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "LCR")" @onchange="@(() => model.SampleTypeRadio = "LCR")" /> 
+                        <span>LCR</span>
+                    </label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "OTROS")" @onchange="@(() => model.SampleTypeRadio = "OTROS")" /> 
+                        <span>OTROS</span>
+                    </label>
+                    
+                    @if(model.SampleTypeRadio == "OTROS")
                     {
-                        <div class="alert alert-danger">@errorMessage</div>
+                        <InputText @bind-Value="model.SampleTypeOtherText" class="form-control form-control-sm ms-3" style="width: 150px;" placeholder="Especifique..." />
                     }
+                    
+                    <ValidationMessage For="@(() => model.SampleTypeRadio)" class="validation-inline-radio" />
+                </div>
+            </div>
 
-                    <EditForm Model="model" OnValidSubmit="HandleSubmit">
-                        <DataAnnotationsValidator />
-                        
-                        <!-- SECCIÓN 1: PACIENTE -->
-                        <div class="form-section mb-4 p-4 rounded-3 bg-white border">
-                            <h5 class="section-title text-primary fw-bold mb-3 border-bottom pb-2">
-                                <i class="bi bi-person-vcard me-2"></i> Datos del Paciente
-                            </h5>
-                            <div class="row g-3">
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">NHC</label>
-                                    <div class="input-group">
-                                        <InputText @bind-Value="model.NHC" class="form-control" placeholder="3478389" @onblur="OnNHCBlur" />
-                                        <button type="button" class="btn btn-outline-secondary" @onclick="SearchByNHC">
-                                            <i class="bi bi-search"></i>
-                                        </button>
-                                    </div>
-                                    <ValidationMessage For="@(() => model.NHC)" />
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label fw-semibold">Nombre Completo</label>
-                                    <InputText @bind-Value="model.FullName" class="form-control" placeholder="Apellidos, Nombre" />
-                                    <ValidationMessage For="@(() => model.FullName)" />
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Fecha Nacimiento</label>
-                                    <InputDate @bind-Value="model.BirthDate" class="form-control" />
-                                </div>
-                            </div>
-                            @if (isExistingPatient)
-                            {
-                                <div class="alert alert-warning mt-3 py-2 small d-flex align-items-center">
-                                    <i class="bi bi-exclamation-triangle-fill me-2 h5 mb-0"></i>
-                                    <div>
-                                        <strong>Paciente encontrado:</strong> Si modifica los datos aquí, se actualizarán permanentemente en la base de datos para este NHC.
-                                    </div>
-                                </div>
-                            }
-                        </div>
+            <!-- Fila 4 -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 45%;">
+                    <label>SERVICIO</label>
+                    <InputText @bind-Value="model.OriginService" class="clin-input" />
+                </div>
+                <div class="clin-field flex-grow-1">
+                    <label>MÉDICO</label>
+                    <InputText @bind-Value="model.DoctorName" class="clin-input" />
+                </div>
+            </div>
 
-                        <!-- SECCIÓN 2: SOLICITUD -->
-                        <div class="form-section mb-4 p-4 rounded-3 bg-white border">
-                            <h5 class="section-title text-primary fw-bold mb-3 border-bottom pb-2">
-                                <i class="bi bi-clipboard2-pulse me-2"></i> Petición Clínica
-                            </h5>
-                            <div class="row g-3">
-                                <div class="col-md-4">
-                                    <label class="form-label fw-semibold">Servicio Origen</label>
-                                    <InputText @bind-Value="model.OriginService" class="form-control" placeholder="Hematología, Pediatría..." />
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label fw-semibold">Médico Solicitante</label>
-                                    <InputText @bind-Value="model.DoctorName" class="form-control" placeholder="Dr. ..." />
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label fw-semibold">Nº Petición Electrónica</label>
-                                    <InputText @bind-Value="model.RequestNumber" class="form-control" placeholder="Opcional" />
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- SECCIÓN 3: MUESTRA -->
-                        <div class="form-section mb-4 p-4 rounded-3 bg-white border shadow-sm" style="border-left: 5px solid #0d6efd !important;">
-                            <h5 class="section-title text-primary fw-bold mb-3 border-bottom pb-2">
-                                <i class="bi bi-vial me-2"></i> Datos de la Muestra
-                            </h5>
-                            <div class="row g-3">
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Nº Muestra (Automático)</label>
-                                    <div class="h4 text-primary fw-bold p-2 bg-light border rounded">@nextSampleNumber</div>
-                                    <div class="small text-muted mt-1">Sugerido por el sistema</div>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Tipo de Muestra</label>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        @foreach (var type in sampleTypes)
-                                        {
-                                            <div class="form-check form-check-inline m-0">
-                                                <input class="form-check-input" type="radio" name="sampleType" id="@type" value="@type" 
-                                                       checked="@(model.SampleType == type)" 
-                                                       @onchange="@(() => model.SampleType = type)" />
-                                                <label class="form-check-label" for="@type">@type</label>
-                                            </div>
-                                        }
-                                    </div>
-                                    <ValidationMessage For="@(() => model.SampleType)" />
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label fw-semibold">Motivo / Sospecha</label>
-                                    <InputTextArea @bind-Value="model.Diagnosis" class="form-control" rows="2" placeholder="Sospecha de LAL..." />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="d-flex justify-content-end gap-3 mt-4">
-                            <button type="button" class="btn btn-light px-5 py-2 fw-semibold" @onclick="Cancel">Cancelar</button>
-                            <button type="submit" class="btn btn-primary px-5 py-2 fw-semibold shadow-sm" disabled="@isSubmitting">
-                                @if (isSubmitting)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-2"></span>
-                                }
-                                <i class="bi bi-save me-2"></i> Grabar Muestra y Paciente
-                            </button>
-                        </div>
-                    </EditForm>
+            <!-- Fila 5 -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 55%;">
+                    <label>PANEL ESTUDIO</label>
+                    <InputText @bind-Value="model.StudyPanel" class="clin-input" />
+                </div>
+                <div class="clin-field-radio flex-grow-1 position-relative">
+                    <label class="radio-group-label pe-3">INCIDENCIA</label>
+                    <label class="clin-radio ms-3">
+                        <input type="checkbox" checked="@model.HasIncident" @onchange="@((ChangeEventArgs e) => model.HasIncident = (bool)(e.Value ?? false))" style="accent-color:#dc3545; width:14px; height:14px;" />
+                        <span class="@(model.HasIncident ? "text-danger fw-bold" : "")">SÍ</span>
+                    </label>
+                    @if(model.HasIncident)
+                    {
+                        <InputText @bind-Value="model.IncidentNotes" class="clin-input ms-2 flex-grow-1" placeholder="Describa la incidencia preanalítica..." style="border-left: 1px solid #ced4da;" />
+                    }
                 </div>
             </div>
         </div>
-    </div>
+
+        <div class="d-flex justify-content-end gap-3 mt-4 pt-3">
+            <button type="button" class="btn btn-light px-4 py-2 border text-muted fw-semibold shadow-sm" @onclick="Cancel">Cancelar</button>
+            <button type="submit" class="btn btn-primary px-5 py-2 fw-semibold shadow-sm" disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                }
+                <i class="bi bi-save me-2"></i> Grabar Muestra
+            </button>
+        </div>
+    </EditForm>
 </div>
 
 <style>
-    .form-section { transition: all 0.2s; }
-    .form-section:hover { border-color: #0d6efd !important; }
-    .bg-light { background-color: #f8f9fa !important; }
+    .iso-page { 
+        padding: 24px 32px; 
+    }
+    
+    .iso-panel {
+        background: white; 
+        border-radius: 8px; 
+        border: 1px solid #e8e8e8; 
+        padding: 24px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        max-width: 1000px;
+    }
+    
+    .clin-row { 
+        display: flex; 
+        gap: 16px; 
+        width: 100%; 
+        align-items: center; /* Evita que los campos se estiren verticalmente */
+    }
+    
+    .clin-field { 
+        display: flex; 
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        overflow: hidden;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        height: 36px; /* Forza una sola línea de altura */
+        position: relative; /* Para encapsular la validación absoluta */
+    }
+
+    .clin-field:focus-within {
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    
+    /* Regla para pintar de rojo la caja cuando hay un error de validación */
+    .clin-field:has(.invalid) {
+        border-color: #dc3545;
+        background-color: #fffafb;
+    }
+
+    .validation-inline {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #dc3545;
+        font-size: 11px;
+        font-weight: 700;
+        pointer-events: none;
+        background: transparent;
+    }
+    
+    .validation-inline-radio {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #dc3545;
+        font-size: 11px;
+        font-weight: 700;
+        pointer-events: none;
+    }
+    
+    .clin-field label { 
+        background: #f8f9fa;
+        color: #555;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 8px 12px;
+        margin: 0;
+        border-right: 1px solid #ced4da;
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+        letter-spacing: 0.5px;
+    }
+    
+    .clin-input { 
+        border: none; 
+        padding: 8px 12px; 
+        font-size: 13px; 
+        color: #333;
+        width: 100%;
+        outline: none; 
+        background: transparent;
+    }
+
+    /* Radio button container con el mismo estilo */
+    .clin-field-radio {
+        display: flex; 
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        overflow: hidden;
+        height: 36px; /* Forza una sola línea de altura */
+        align-items: center; /* Alineación vertical perfecta */
+    }
+
+    .radio-group-label {
+        background: #f8f9fa;
+        color: #555;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 0 12px;
+        margin: 0;
+        border-right: 1px solid #ced4da;
+        display: flex;
+        align-items: center;
+        letter-spacing: 0.5px;
+        height: 100%;
+    }
+    
+    .clin-radio { 
+        font-size: 13px; 
+        color: #333;
+        cursor: pointer; 
+        display: flex; 
+        align-items: center; 
+        gap: 6px; 
+        margin: 0; 
+        font-weight: 500;
+    }
+
+    .clin-radio input[type="radio"] {
+        accent-color: #0d6efd;
+        width: 14px;
+        height: 14px;
+    }
 </style>
 
 @code {
     private RegistrationModel model = new();
     private string nextSampleNumber = "Cargando...";
     private string? errorMessage;
-    private bool isExistingPatient = false;
     private bool isSubmitting = false;
-    private string[] sampleTypes = { "SP", "MO", "LCR", "Otros" };
 
     protected override async Task OnInitializedAsync()
     {
-        nextSampleNumber = await NumberingService.GetNextSampleNumberAsync();
-        model.SampleType = "MO"; // Predeterminado
+        nextSampleNumber = await NumberingService.PeekNextSampleNumberAsync();
+        model.SampleTypeRadio = "MO"; // Predeterminado
     }
 
     private async Task OnNHCBlur()
     {
         if (!string.IsNullOrWhiteSpace(model.NHC))
         {
-            await SearchByNHC();
-        }
-    }
-
-    private async Task SearchByNHC()
-    {
-        if (string.IsNullOrWhiteSpace(model.NHC)) return;
-
-        var patient = await PatientService.GetByNHCAsync(model.NHC);
-        if (patient != null)
-        {
-            model.FullName = patient.FullName;
-            model.BirthDate = patient.BirthDate;
-            model.NASI = patient.NASI;
-            isExistingPatient = true;
-        }
-        else
-        {
-            isExistingPatient = false;
-            // No limpiar campos automáticamente para permitir registro de nuevo paciente
+            var patient = await PatientService.GetByNHCAsync(model.NHC);
+            if (patient != null)
+            {
+                // Parse legacy single-string FullName into Name & LastName
+                var parts = patient.FullName.Split(',', 2);
+                if (parts.Length == 2)
+                {
+                    model.LastName = parts[0].Trim();
+                    model.FirstName = parts[1].Trim();
+                }
+                else
+                {
+                    // Fallback
+                    model.FirstName = patient.FullName;
+                    model.LastName = "";
+                }
+                model.NASI = patient.NASI;
+            }
         }
     }
 
     private async Task HandleSubmit()
     {
+        // Custom validación tipo de muestra "Otros"
+        if (model.SampleTypeRadio == "OTROS" && string.IsNullOrWhiteSpace(model.SampleTypeOtherText))
+        {
+            errorMessage = "Si selecciona 'OTROS' debe especificar el tipo de muestra.";
+            return;
+        }
+
         isSubmitting = true;
         errorMessage = null;
         
         try 
         {
-            // 1. Prepare Patient
+            // Re-ensamblar nombre completo
+            string fullSafeName = $"{model.LastName}, {model.FirstName}";
+
+            // 1. Preparar Paciente
             var patient = new Patient {
                 NHC = model.NHC,
-                FullName = model.FullName,
-                BirthDate = model.BirthDate,
-                NASI = model.NASI
+                FullName = fullSafeName,
+                NASI = model.NASI ?? string.Empty
             };
             
-            // 2. Prepare Request
+            // 2. Preparar Petición
             var request = new ClinicalRequest {
-                Patient = patient, // Required member
+                Patient = patient, 
                 OriginService = model.OriginService ?? "Desconocido",
                 DoctorName = model.DoctorName ?? "Desconocido",
                 RequestNumber = model.RequestNumber ?? ""
             };
 
-            // 3. Register transactionally
-            var sample = await SampleRegistry.RegisterSampleAsync(patient, request, model.Diagnosis ?? "", model.SampleType);
+            // Inyectar tipo de muestra validado dentro del diagnosis (preserva lógica DB antigua)
+            string actualType = model.SampleTypeRadio == "OTROS" ? model.SampleTypeOtherText! : model.SampleTypeRadio;
+            string finalDiagnosis = $"[TIPO: {actualType}] {model.Diagnosis}";
+
+            // 3. Registrar con el framework actual
+            var sample = await SampleRegistry.RegisterSampleAsync(patient, request, finalDiagnosis, actualType, model.StudyPanel ?? "", model.HasIncident, model.IncidentNotes ?? "");
             
             await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
             Nav.NavigateTo("/muestras");
         }
         catch (Exception ex)
         {
-            errorMessage = "Error al grabar: " + ex.Message;
+            var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "";
+            errorMessage = $"Error al grabar: {ex.Message} {innerMsg}";
         }
         finally
         {
@@ -226,22 +377,31 @@
 
     public class RegistrationModel
     {
-        [Required(ErrorMessage = "El NHC es obligatorio")]
+        [Required(ErrorMessage = "Requerido")]
         public string NHC { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "El Nombre es obligatorio")]
-        public string FullName { get; set; } = string.Empty;
+        [Required(ErrorMessage = "Requerido")]
+        public string FirstName { get; set; } = string.Empty;
 
-        public DateTime? BirthDate { get; set; }
-        public string? NASI { get; set; }
+        [Required(ErrorMessage = "Requerido")]
+        public string LastName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Requerido")]
+        public DateTime ReceptionDate { get; set; } = DateTime.Today;
 
         public string? OriginService { get; set; }
         public string? DoctorName { get; set; }
-        public string? RequestNumber { get; set; }
+        public string? RequestNumber { get; set; } // "Nº LABORATORIO"
+        public string? NASI { get; set; }
 
-        [Required(ErrorMessage = "Seleccione el tipo de muestra")]
-        public string SampleType { get; set; } = string.Empty;
+        [Required(ErrorMessage = "Requerido")]
+        public string SampleTypeRadio { get; set; } = string.Empty;
+        
+        public string? SampleTypeOtherText { get; set; }
         
         public string? Diagnosis { get; set; }
+        public string? StudyPanel { get; set; }
+        public bool HasIncident { get; set; } = false;
+        public string? IncidentNotes { get; set; }
     }
 }

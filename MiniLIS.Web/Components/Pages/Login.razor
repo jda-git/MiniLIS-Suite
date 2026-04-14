@@ -1,60 +1,237 @@
 @page "/login"
 @using Microsoft.AspNetCore.Components.Authorization
+@layout MiniLIS.Web.Components.Layout.LoginLayout
 @attribute [AllowAnonymous]
 @inject NavigationManager nav
 
-<PageTitle>Login - MiniLIS Suite</PageTitle>
+<PageTitle>Acceso Técnico - MiniLIS Suite</PageTitle>
 
-<div class="login-container">
-    <div class="login-box shadow-lg p-5 rounded bg-white">
-        <h2 class="text-center mb-4">MiniLIS Suite</h2>
-        <p class="text-muted text-center mb-4">Citometría de Flujo - Intranet</p>
-
-        @if (!string.IsNullOrEmpty(ErrorMessage))
-        {
-            <div class="alert alert-danger">@ErrorMessage</div>
-        }
-
-        <form action="/account/login" method="post">
-            <AntiforgeryToken />
-            <div class="mb-3">
-                <label for="username" class="form-label">Usuario</label>
-                <input type="text" name="Username" id="username" class="form-control" placeholder="Introduzca su usuario" required />
+<div class="tech-auth-overlay">
+    <div class="auth-card animate-fade-in shadow-2xl">
+        <div class="auth-header">
+            <div class="auth-logo-container">
+                <i class="bi bi-shield-lock-fill text-tech-blue"></i>
             </div>
-            <div class="mb-4">
-                <label for="password" class="form-label">Contraseña</label>
-                <input type="password" name="Password" id="password" class="form-control" placeholder="••••••••" required />
+            <div class="auth-titles">
+                <h1 class="auth-title">MiniLIS Suite</h1>
+                <p class="auth-subtitle">SISTEMA INTEGRAL DE CITOMETRÍA</p>
             </div>
-            
-            <div class="form-check mb-3">
-                <input class="form-check-input" type="checkbox" name="RememberMe" id="rememberMe">
-                <label class="form-check-label" for="rememberMe">
-                    Recordar sesión
-                </label>
+        </div>
+
+        <div class="auth-body">
+            <div class="technical-info mb-4">
+                <div class="d-flex justify-content-between x-small text-tech-muted uppercase fw-bold mb-1">
+                    <span>Terminal de Acceso</span>
+                    <span>v2.0.4.Final</span>
+                </div>
+                <div class="tech-line"></div>
             </div>
 
-            <button type="submit" class="btn btn-primary w-100 py-2">Iniciar Sesión</button>
-        </form>
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-tech mb-4">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i> @ErrorMessage
+                </div>
+            }
 
-        <div class="mt-4 text-center small text-muted">
-            &copy; 2026 Laboratorio de Citometría
+            <form action="/account/login" method="post">
+                <AntiforgeryToken />
+                <div class="auth-input-group mb-4">
+                    <label class="auth-label"><i class="bi bi-person me-2"></i>IDENTIDAD DE USUARIO</label>
+                    <input type="text" name="Username" class="auth-input" placeholder="p.ej. admin@minilis.com" required />
+                    <div class="input-focus-line"></div>
+                </div>
+
+                <div class="auth-input-group mb-4">
+                    <label class="auth-label"><i class="bi bi-key me-2"></i>CLAVE DE ACCESO</label>
+                    <input type="password" name="Password" class="auth-input" placeholder="••••••••" required />
+                    <div class="input-focus-line"></div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-5">
+                    <div class="form-check custom-tech-check">
+                        <input class="form-check-input" type="checkbox" name="RememberMe" id="rememberMe">
+                        <label class="form-check-label text-tech-muted" for="rememberMe">Mantener sesión</label>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-tech-action w-100 py-3 uppercase fw-bold tracking-widest">
+                    Validar Credenciales <i class="bi bi-arrow-right-short ms-2"></i>
+                </button>
+            </form>
+        </div>
+
+        <div class="auth-footer text-center">
+            <p>&copy; 2026 LABORATORIO DE CITOMETRÍA</p>
+            <div class="d-flex justify-content-center gap-4 x-small text-tech-muted mt-2">
+                <span>INTRA-L3-PROTECTED</span>
+                <span>SECURED AES-256</span>
+            </div>
         </div>
     </div>
 </div>
 
 <style>
-    .login-container {
-        height: 100vh;
+    :root {
+        --tech-blue: #0ea5e9;
+        --tech-bg: #0f172a;
+        --tech-card: rgba(30, 41, 59, 0.7);
+        --tech-border: rgba(51, 65, 85, 0.8);
+        --tech-muted: #94a3b8;
+        --white: #ffffff;
+    }
+
+    .tech-auth-overlay {
+        min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: #f8f9fa;
-        background-image: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+        background-color: var(--tech-bg);
+        background-image: 
+            radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.15) 0, transparent 50%), 
+            radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.1) 0, transparent 50%);
+        padding: 20px;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     }
-    .login-box {
+
+    .auth-card {
         width: 100%;
-        max-width: 400px;
-        border-top: 4px solid #007bff;
+        max-width: 460px;
+        background: var(--tech-card);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--tech-border);
+        border-radius: 4px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .auth-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+        background: linear-gradient(90deg, #0284c7 0%, #38bdf8 50%, #0284c7 100%);
+    }
+
+    .auth-header {
+        padding: 40px 40px 20px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .auth-logo-container {
+        font-size: 2.5rem;
+    }
+
+    .text-tech-blue { color: var(--tech-blue); }
+
+    .auth-title {
+        color: var(--white);
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.5px;
+    }
+
+    .auth-subtitle {
+        color: var(--tech-muted);
+        font-size: 0.75rem;
+        margin: 0;
+        letter-spacing: 2px;
+        font-weight: 500;
+    }
+
+    .auth-body {
+        padding: 0 40px 40px;
+    }
+
+    .technical-info .tech-line {
+        height: 1px;
+        background: var(--tech-border);
+        width: 100%;
+    }
+
+    .x-small { font-size: 0.65rem; }
+    .uppercase { text-transform: uppercase; }
+    .tracking-widest { letter-spacing: 0.1em; }
+    .text-tech-muted { color: var(--tech-muted); }
+
+    .auth-label {
+        display: block;
+        color: var(--tech-muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-bottom: 12px;
+        letter-spacing: 0.5px;
+    }
+
+    .auth-input {
+        width: 100%;
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid var(--tech-border);
+        padding: 14px 16px;
+        color: var(--white);
+        font-size: 1rem;
+        outline: none;
+        transition: all 0.2s;
+        border-radius: 4px;
+    }
+
+    .auth-input:focus {
+        border-color: var(--tech-blue);
+        background: rgba(15, 23, 42, 0.6);
+    }
+
+    .alert-tech {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #fca5a5;
+        font-size: 0.875rem;
+    }
+
+    .btn-tech-action {
+        background: var(--tech-blue);
+        color: var(--white);
+        border: none;
+        border-radius: 4px;
+        transition: all 0.3s;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .btn-tech-action:hover {
+        background: #0284c7;
+        box-shadow: 0 0 20px rgba(14, 165, 233, 0.4);
+        transform: translateY(-1px);
+    }
+
+    .auth-footer {
+        padding: 0 40px 30px;
+        color: var(--tech-muted);
+        font-size: 0.75rem;
+    }
+
+    .animate-fade-in {
+        animation: fadeIn 0.6s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .custom-tech-check .form-check-input {
+        background-color: var(--tech-bg);
+        border-color: var(--tech-border);
+    }
+
+    .custom-tech-check .form-check-input:checked {
+        background-color: var(--tech-blue);
+        border-color: var(--tech-blue);
     }
 </style>
 
@@ -63,8 +240,8 @@
     public string? Error { get; set; }
 
     private string? ErrorMessage => Error switch {
-        "Invalid login attempt" => "Usuario o contraseña incorrectos.",
-        "Please provide username and password" => "Por favor, complete todos los campos.",
+        "Invalid login attempt" => "CREDENTILES NO VÁLIDAS PARA ESTE TERMINAL.",
+        "Please provide username and password" => "CAMPOS REQUERIDOS NO DETECTADOS.",
         _ => Error
     };
 

@@ -20,6 +20,16 @@ namespace MiniLIS.Domain.Entities
         public string? Conclusions { get; set; } // Editable conclusion
         public string? Diagnosis { get; set; } // Independent field
         
+        /// <summary>Optional free text that appears below the markers list in the final report.</summary>
+        public string? AdditionalText { get; set; }
+
+        /// <summary>Selected panel for this report.</summary>
+        public int? PanelId { get; set; }
+        public Panel? Panel { get; set; }
+
+        /// <summary>Editable text showing tubes used — loaded from Panel.TubeListText but editable per-report.</summary>
+        public string? PanelsUsedText { get; set; }
+
         public DateTime? ReportDate { get; set; }
         public bool IsFinalized { get; set; } = false;
 
@@ -33,7 +43,7 @@ namespace MiniLIS.Domain.Entities
         public int SampleReportId { get; set; }
         public SampleReport SampleReport { get; set; }
         public int UserId { get; set; }
-        // We will refer to ApplicationUser later or just stay with UserId for simplicity in Domain
+        public MiniLIS.Domain.Identity.ApplicationUser User { get; set; }
     }
 
     public class ReportMarkerValue
@@ -45,7 +55,7 @@ namespace MiniLIS.Domain.Entities
         public int MarkerId { get; set; }
         public Marker Marker { get; set; }
         
-        [MaxLength(10)]
+        [MaxLength(20)]
         public string? IntensityValue { get; set; } // "-", "+", "++", etc.
         
         [MaxLength(20)]

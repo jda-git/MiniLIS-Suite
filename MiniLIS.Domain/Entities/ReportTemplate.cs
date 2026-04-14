@@ -31,6 +31,7 @@ namespace MiniLIS.Domain.Entities
         public string? DefaultConclusion { get; set; }
 
         public ICollection<TemplateMarker> Markers { get; set; } = new List<TemplateMarker>();
+        public ICollection<TemplateConclusion> Conclusions { get; set; } = new List<TemplateConclusion>();
     }
 
     // Join table to define which markers belong to which template and in what order
@@ -41,6 +42,23 @@ namespace MiniLIS.Domain.Entities
         public ReportTemplate ReportTemplate { get; set; }
         public int MarkerId { get; set; }
         public Marker Marker { get; set; }
+        public int DisplayOrder { get; set; }
+    }
+
+    /// <summary>
+    /// Predefined conclusion option for a template. 
+    /// Users select one from a dropdown; the text loads into an editable textarea.
+    /// </summary>
+    public class TemplateConclusion : AuditableEntity
+    {
+        public int Id { get; set; }
+
+        public int ReportTemplateId { get; set; }
+        public ReportTemplate ReportTemplate { get; set; }
+
+        [Required]
+        public string Text { get; set; } = string.Empty;
+
         public int DisplayOrder { get; set; }
     }
 }

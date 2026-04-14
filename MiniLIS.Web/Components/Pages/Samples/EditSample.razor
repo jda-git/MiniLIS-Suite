@@ -1,0 +1,348 @@
+@page "/muestras/editar/{SampleId:int}"
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@using Microsoft.AspNetCore.Authorization
+@using System.ComponentModel.DataAnnotations
+@attribute [Authorize]
+@inject IPatientService PatientService
+@inject ISampleService SampleService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Editar Muestra - MiniLIS Suite</PageTitle>
+
+<div class="iso-page">
+    <div class="d-flex align-items-center mb-4">
+        <i class="bi bi-pencil-square text-primary fs-4 me-2"></i> 
+        <h4 class="mb-0 fw-bold text-dark">Editar Registro de Muestra</h4>
+        <span class="badge bg-primary ms-3 fs-6">@model.SampleNumber</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger py-2 px-3 rounded small mb-3 border-0 shadow-sm">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> @errorMessage
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success py-2 px-3 rounded small mb-3 border-0 shadow-sm">
+            <i class="bi bi-check-circle-fill me-2"></i> @successMessage
+        </div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="text-muted mt-3">Cargando datos de la muestra...</p>
+        </div>
+    }
+    else if (loadError)
+    {
+        <div class="alert alert-warning">No se encontró la muestra con ID @SampleId.</div>
+    }
+    else
+    {
+    <EditForm Model="model" OnValidSubmit="HandleUpdate">
+        <DataAnnotationsValidator />
+        
+        <div class="iso-panel">
+            
+            <!-- Fila 1 -->
+            <div class="clin-row">
+                <div class="clin-field" style="width: 220px;">
+                    <label>Nº MUESTRA</label>
+                    <input type="text" class="clin-input bg-light text-primary fw-bold" value="@model.SampleNumber" readonly tabindex="-1" />
+                </div>
+                <div class="clin-field" style="width: 200px;">
+                    <label>NHC <span class="text-danger ms-1">*</span></label>
+                    <InputText @bind-Value="model.NHC" class="clin-input" />
+                    <ValidationMessage For="@(() => model.NHC)" class="validation-inline" />
+                </div>
+                <div class="clin-field flex-grow-1">
+                    <label>Nº LABORATORIO</label>
+                    <InputText @bind-Value="model.RequestNumber" class="clin-input" />
+                </div>
+                <div class="clin-field" style="width: 200px;">
+                    <label>NASI</label>
+                    <InputText @bind-Value="model.NASI" class="clin-input" />
+                </div>
+            </div>
+
+            <!-- Fila 2 -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 220px;">
+                    <label>FECHA <span class="text-danger ms-1">*</span></label>
+                    <InputDate @bind-Value="model.ReceptionDate" class="clin-input" />
+                    <ValidationMessage For="@(() => model.ReceptionDate)" class="validation-inline" />
+                </div>
+                <div class="clin-field" style="width: 320px;">
+                    <label>NOMBRE <span class="text-danger ms-1">*</span></label>
+                    <InputText @bind-Value="model.FirstName" class="clin-input" />
+                    <ValidationMessage For="@(() => model.FirstName)" class="validation-inline" />
+                </div>
+                <div class="clin-field flex-grow-1">
+                    <label>APELLIDOS <span class="text-danger ms-1">*</span></label>
+                    <InputText @bind-Value="model.LastName" class="clin-input" />
+                    <ValidationMessage For="@(() => model.LastName)" class="validation-inline" />
+                </div>
+            </div>
+
+            <!-- Fila 3: Motivo + Tipo -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 45%;">
+                    <label>MOTIVO/SOSPECHA</label>
+                    <InputText @bind-Value="model.Diagnosis" class="clin-input" />
+                </div>
+                <div class="clin-field-radio flex-grow-1 position-relative">
+                    <label class="radio-group-label pe-3">TIPO: <span class="text-danger ms-1">*</span></label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "SP")" @onchange="@(() => model.SampleTypeRadio = "SP")" /> <span>SP</span>
+                    </label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "MO")" @onchange="@(() => model.SampleTypeRadio = "MO")" /> <span>MO</span>
+                    </label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "LCR")" @onchange="@(() => model.SampleTypeRadio = "LCR")" /> <span>LCR</span>
+                    </label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="stype" checked="@(model.SampleTypeRadio == "OTROS")" @onchange="@(() => model.SampleTypeRadio = "OTROS")" /> <span>OTROS</span>
+                    </label>
+                    @if(model.SampleTypeRadio == "OTROS")
+                    {
+                        <InputText @bind-Value="model.SampleTypeOtherText" class="form-control form-control-sm ms-3" style="width: 150px;" placeholder="Especifique..." />
+                    }
+                    <ValidationMessage For="@(() => model.SampleTypeRadio)" class="validation-inline-radio" />
+                </div>
+            </div>
+
+            <!-- Fila 4: Servicio + Médico -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 45%;">
+                    <label>SERVICIO</label>
+                    <InputText @bind-Value="model.OriginService" class="clin-input" />
+                </div>
+                <div class="clin-field flex-grow-1">
+                    <label>MÉDICO</label>
+                    <InputText @bind-Value="model.DoctorName" class="clin-input" />
+                </div>
+            </div>
+
+            <!-- Fila 5: Panel + Incidencia -->
+            <div class="clin-row mt-3">
+                <div class="clin-field" style="width: 55%;">
+                    <label>PANEL ESTUDIO</label>
+                    <InputText @bind-Value="model.StudyPanel" class="clin-input" />
+                </div>
+                <div class="clin-field-radio flex-grow-1 position-relative">
+                    <label class="radio-group-label pe-3">INCIDENCIA</label>
+                    <label class="clin-radio ms-3">
+                        <input type="checkbox" checked="@model.HasIncident" @onchange="@((ChangeEventArgs e) => model.HasIncident = (bool)(e.Value ?? false))" style="accent-color:#dc3545; width:14px; height:14px;" />
+                        <span class="@(model.HasIncident ? "text-danger fw-bold" : "")">SÍ</span>
+                    </label>
+                    @if(model.HasIncident)
+                    {
+                        <InputText @bind-Value="model.IncidentNotes" class="clin-input ms-2 flex-grow-1" placeholder="Describa la incidencia preanalítica..." style="border-left: 1px solid #ced4da;" />
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-3 mt-4 pt-3">
+            <button type="button" class="btn btn-light px-4 py-2 border text-muted fw-semibold shadow-sm" @onclick="Cancel">
+                <i class="bi bi-arrow-left me-2"></i>Volver
+            </button>
+            <button type="submit" class="btn btn-success px-5 py-2 fw-semibold shadow-sm" disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                }
+                <i class="bi bi-check-lg me-2"></i> Guardar Cambios
+            </button>
+        </div>
+    </EditForm>
+    }
+</div>
+
+<style>
+    .iso-page { padding: 24px 32px; }
+    .iso-panel { background: white; border-radius: 8px; border: 1px solid #e8e8e8; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); max-width: 1000px; }
+    .clin-row { display: flex; gap: 16px; width: 100%; align-items: center; }
+    .clin-field { display: flex; background: #fff; border: 1px solid #ced4da; border-radius: 6px; overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s; height: 36px; position: relative; }
+    .clin-field:focus-within { border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
+    .clin-field:has(.invalid) { border-color: #dc3545; background-color: #fffafb; }
+    .validation-inline { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #dc3545; font-size: 11px; font-weight: 700; pointer-events: none; }
+    .validation-inline-radio { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #dc3545; font-size: 11px; font-weight: 700; pointer-events: none; }
+    .clin-field label { background: #f8f9fa; color: #555; font-size: 11px; font-weight: 700; padding: 8px 12px; margin: 0; border-right: 1px solid #ced4da; display: flex; align-items: center; white-space: nowrap; letter-spacing: 0.5px; }
+    .clin-input { border: none; padding: 8px 12px; font-size: 13px; color: #333; width: 100%; outline: none; background: transparent; }
+    .clin-field-radio { display: flex; background: #fff; border: 1px solid #ced4da; border-radius: 6px; overflow: hidden; height: 36px; align-items: center; }
+    .radio-group-label { background: #f8f9fa; color: #555; font-size: 11px; font-weight: 700; padding: 0 12px; margin: 0; border-right: 1px solid #ced4da; display: flex; align-items: center; letter-spacing: 0.5px; height: 100%; }
+    .clin-radio { font-size: 13px; color: #333; cursor: pointer; display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; }
+    .clin-radio input[type="radio"], .clin-radio input[type="checkbox"] { accent-color: #0d6efd; width: 14px; height: 14px; }
+</style>
+
+@code {
+    [Parameter] public int SampleId { get; set; }
+
+    private EditModel model = new();
+    private bool isLoading = true;
+    private bool loadError = false;
+    private bool isSubmitting = false;
+    private string? errorMessage;
+    private string? successMessage;
+
+    // Keep references to original entities for updating
+    private Sample? originalSample;
+    private ClinicalRequest? originalRequest;
+    private Patient? originalPatient;
+
+    protected override async Task OnInitializedAsync()
+    {
+        originalSample = await SampleService.GetSampleByIdAsync(SampleId);
+        if (originalSample == null)
+        {
+            loadError = true;
+            isLoading = false;
+            return;
+        }
+
+        originalRequest = originalSample.ClinicalRequest;
+        originalPatient = originalRequest?.Patient;
+
+        // Populate edit model from loaded data
+        model.SampleNumber = originalSample.SampleNumber;
+        model.ReceptionDate = originalSample.ReceptionDate;
+        model.StudyPanel = originalSample.StudyPanel;
+        model.HasIncident = originalSample.HasIncident;
+        model.IncidentNotes = originalSample.IncidentsNotes;
+
+        // Parse Diagnosis to extract TIPO prefix
+        var diag = originalSample.Diagnosis ?? "";
+        var typeMatch = System.Text.RegularExpressions.Regex.Match(diag, @"\[TIPO:\s*(.+?)\]\s*(.*)");
+        if (typeMatch.Success)
+        {
+            var extractedType = typeMatch.Groups[1].Value.Trim();
+            model.Diagnosis = typeMatch.Groups[2].Value.Trim();
+
+            if (extractedType == "SP" || extractedType == "MO" || extractedType == "LCR")
+            {
+                model.SampleTypeRadio = extractedType;
+            }
+            else
+            {
+                model.SampleTypeRadio = "OTROS";
+                model.SampleTypeOtherText = extractedType;
+            }
+        }
+        else
+        {
+            model.Diagnosis = diag;
+            model.SampleTypeRadio = "MO";
+        }
+
+        if (originalPatient != null)
+        {
+            model.NHC = originalPatient.NHC;
+            model.NASI = originalPatient.NASI;
+            var parts = originalPatient.FullName.Split(',', 2);
+            if (parts.Length == 2)
+            {
+                model.LastName = parts[0].Trim();
+                model.FirstName = parts[1].Trim();
+            }
+            else
+            {
+                model.FirstName = originalPatient.FullName;
+                model.LastName = "";
+            }
+        }
+
+        if (originalRequest != null)
+        {
+            model.OriginService = originalRequest.OriginService;
+            model.DoctorName = originalRequest.DoctorName;
+            model.RequestNumber = originalRequest.RequestNumber;
+        }
+
+        isLoading = false;
+    }
+
+    private async Task HandleUpdate()
+    {
+        if (originalSample == null || originalRequest == null || originalPatient == null) return;
+
+        isSubmitting = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            // Update patient
+            string fullSafeName = $"{model.LastName}, {model.FirstName}";
+            originalPatient.FullName = fullSafeName;
+            originalPatient.NHC = model.NHC;
+            originalPatient.NASI = model.NASI ?? string.Empty;
+            await PatientService.UpsertPatientAsync(originalPatient);
+
+            // Update clinical request
+            originalRequest.OriginService = model.OriginService ?? "";
+            originalRequest.DoctorName = model.DoctorName ?? "";
+            originalRequest.RequestNumber = model.RequestNumber ?? "";
+
+            // Update sample
+            string actualType = model.SampleTypeRadio == "OTROS" ? model.SampleTypeOtherText! : model.SampleTypeRadio;
+            originalSample.Diagnosis = $"[TIPO: {actualType}] {model.Diagnosis}";
+            originalSample.ReceptionDate = model.ReceptionDate;
+            originalSample.StudyPanel = model.StudyPanel ?? string.Empty;
+            originalSample.HasIncident = model.HasIncident;
+            originalSample.IncidentsNotes = model.IncidentNotes ?? string.Empty;
+
+            await SampleService.UpdateSampleAsync(originalSample);
+
+            successMessage = "Registro actualizado correctamente.";
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "";
+            errorMessage = $"Error al actualizar: {ex.Message} {innerMsg}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void Cancel() => Nav.NavigateTo("/muestras");
+
+    public class EditModel
+    {
+        public string SampleNumber { get; set; } = "";
+
+        [Required(ErrorMessage = "Requerido")]
+        public string NHC { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Requerido")]
+        public string FirstName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Requerido")]
+        public string LastName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Requerido")]
+        public DateTime ReceptionDate { get; set; } = DateTime.Today;
+
+        public string? OriginService { get; set; }
+        public string? DoctorName { get; set; }
+        public string? RequestNumber { get; set; }
+        public string? NASI { get; set; }
+
+        [Required(ErrorMessage = "Requerido")]
+        public string SampleTypeRadio { get; set; } = string.Empty;
+        public string? SampleTypeOtherText { get; set; }
+
+        public string? Diagnosis { get; set; }
+        public string? StudyPanel { get; set; }
+        public bool HasIncident { get; set; } = false;
+        public string? IncidentNotes { get; set; }
+    }
+}

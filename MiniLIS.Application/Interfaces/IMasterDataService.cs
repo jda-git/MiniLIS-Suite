@@ -14,6 +14,7 @@ namespace MiniLIS.Application.Interfaces
         // PANELS
         Task<List<Panel>> GetAllPanelsAsync();
         Task<Panel> UpsertPanelAsync(Panel panel);
+        Task DeletePanelAsync(int id);
 
         // TEMPLATES
         Task<List<ReportTemplate>> GetAllTemplatesAsync();
@@ -21,6 +22,11 @@ namespace MiniLIS.Application.Interfaces
         Task<ReportTemplate> UpsertTemplateAsync(ReportTemplate template, List<TemplateMarker> markers);
         Task<ReportTemplate> CloneTemplateAsync(int sourceTemplateId, string newName);
         Task DeleteTemplateAsync(int id);
+
+        // TEMPLATE CONCLUSIONS
+        Task<List<TemplateConclusion>> GetTemplateConclusionsAsync(int templateId);
+        Task<TemplateConclusion> UpsertTemplateConclusionAsync(TemplateConclusion conclusion);
+        Task DeleteTemplateConclusionAsync(int id);
 
         // SYSTEM / INTENSITIES
         Task<List<SystemSetting>> GetIntensitySettingsAsync();

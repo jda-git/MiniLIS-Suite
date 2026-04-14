@@ -29,7 +29,7 @@ namespace MiniLIS.Infrastructure.Seed
 
             // 2. Seed Default Admin
             const string adminEmail = "admin@minilis.com";
-            const string adminUser = "admin";
+            const string adminUser = adminEmail;
             
             var existingAdmin = await userManager.FindByNameAsync(adminUser);
             if (existingAdmin == null)
