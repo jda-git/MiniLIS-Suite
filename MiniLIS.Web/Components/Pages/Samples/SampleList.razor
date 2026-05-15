@@ -23,7 +23,7 @@
                 <i class="bi bi-file-earmark-spreadsheet"></i> Exportar Excel
             </button>
             <button class="btn-bandeja btn-bandeja-primary" @onclick='() => Nav.NavigateTo("/muestras/nueva")'>
-                <i class="bi bi-plus-lg"></i> Crear Muestra
+                <i class="bi bi-plus-lg"></i> Nueva Muestra
             </button>
         </div>
     </div>
@@ -128,7 +128,24 @@
                             <td class="cell-status">
                                 <span class="status-pill @GetStatusClass(s.Status)">@GetStatusLabel(s.Status)</span>
                             </td>
-                            <td class="cell-panel">@s.StudyPanel</td>
+                            <td class="cell-panel">
+                                @{
+                                    var hasPanels = s.Panels != null && s.Panels.Any();
+                                    var pendingRead = hasPanels && s.Panels.Any(p => p.IsRequested && !p.IsRead);
+                                    var panelCount = hasPanels ? s.Panels.Count : 0;
+                                }
+                                <button type="button" class="action-icon action-panel" title="Gestionar paneles" @onclick="@(() => OpenPanelModal(s))">
+                                    <i class="bi bi-clipboard2-pulse"></i>
+                                </button>
+                                @if (pendingRead)
+                                {
+                                    <span class="pending-read-badge">PENDIENTE LEER</span>
+                                }
+                                else if (panelCount > 0)
+                                {
+                                    <span class="panel-ok-badge">@panelCount panel(es)</span>
+                                }
+                            </td>
                             <td class="cell-incident">
                                 @if(s.HasIncident)
                                 {
@@ -183,6 +200,74 @@
                 </div>
                 <div class="mt-4">
                     <button class="btn btn-secondary w-100 py-2 rounded-3" @onclick="() => previewPatient = null">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Gestión de Paneles -->
+@if (panelModalSample != null)
+{
+    <div class="modal-backdrop-custom" @onclick="ClosePanelModal">
+        <div class="modal-card" style="width: 600px;" @onclick:stopPropagation="true">
+            <div class="modal-card-header" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">
+                <h5><i class="bi bi-clipboard2-pulse me-2"></i>Paneles — @panelModalSample.SampleNumber</h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="ClosePanelModal"></button>
+            </div>
+            <div class="modal-card-body">
+                @if (!modalPanels.Any())
+                {
+                    <p class="text-muted text-center py-3">No hay paneles asignados a esta muestra.</p>
+                }
+                else
+                {
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th style="font-size:11px;" class="text-uppercase text-muted">Panel</th>
+                                <th style="font-size:11px; width:90px;" class="text-center text-uppercase text-muted">Solicitado</th>
+                                <th style="font-size:11px; width:90px;" class="text-center text-uppercase text-muted">Leído</th>
+                                <th style="width:40px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var sp in modalPanels)
+                            {
+                                <tr>
+                                    <td class="fw-semibold" style="font-size:13px;">@(sp.Panel?.Name ?? sp.CustomText ?? "—")</td>
+                                    <td class="text-center">
+                                        <input type="checkbox" checked="@sp.IsRequested" @onchange="@((ChangeEventArgs e) => sp.IsRequested = (bool)(e.Value ?? false))" style="accent-color:#3b82f6; width:16px; height:16px;" />
+                                    </td>
+                                    <td class="text-center">
+                                        <input type="checkbox" checked="@sp.IsRead" @onchange="@((ChangeEventArgs e) => sp.IsRead = (bool)(e.Value ?? false))" style="accent-color:#16a34a; width:16px; height:16px;" />
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm text-danger p-0" @onclick="@(() => modalPanels.Remove(sp))"><i class="bi bi-trash3"></i></button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                <!-- Add panel selector -->
+                <div class="d-flex gap-2 mt-3 pt-3 border-top">
+                    <select class="form-select form-select-sm" @bind="modalAddPanelId">
+                        <option value="0">— Añadir panel —</option>
+                        @foreach (var p in allPanelsForModal.Where(ap => !modalPanels.Any(mp => mp.PanelId == ap.Id)))
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </select>
+                    <button type="button" class="btn btn-sm btn-primary px-3" @onclick="AddPanelToModal" disabled="@(modalAddPanelId == 0)">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button class="btn btn-light border px-3" @onclick="ClosePanelModal">Cancelar</button>
+                    <button class="btn btn-primary px-4 fw-bold" @onclick="SavePanelModal">
+                        <i class="bi bi-check-lg me-1"></i>Guardar
+                    </button>
                 </div>
             </div>
         </div>
@@ -466,6 +551,38 @@
     }
     .modal-card-header h5 { margin: 0; font-weight: 700; font-size: 16px; }
     .modal-card-body { padding: 24px; }
+
+    /* Panel button */
+    .action-panel { color: #6366f1; }
+    .action-panel:hover { background: #eef2ff; border-color: #a5b4fc; box-shadow: 0 2px 6px rgba(99,102,241,0.15); }
+    
+    /* Blinking PENDIENTE LEER badge */
+    .pending-read-badge {
+        display: inline-block;
+        background: #fee2e2;
+        color: #dc2626;
+        font-size: 10px;
+        font-weight: 800;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid #fca5a5;
+        margin-left: 6px;
+        animation: blink-badge 1s ease-in-out infinite;
+    }
+    @@keyframes blink-badge {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    .panel-ok-badge {
+        display: inline-block;
+        background: #dcfce7;
+        color: #166534;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-left: 6px;
+    }
 </style>
 
 @code {
@@ -478,8 +595,17 @@
     private DateTime? fromDate;
     private DateTime? toDate;
 
+    // Panel modal state
+    private Sample? panelModalSample;
+    private List<SamplePanel> modalPanels = new();
+    private List<Panel> allPanelsForModal = new();
+    private int modalAddPanelId = 0;
+
+    [Inject] private IMasterDataService MasterService { get; set; } = default!;
+
     protected override async Task OnInitializedAsync()
     {
+        allPanelsForModal = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name).ToList();
         await LoadSamples();
     }
 
@@ -505,6 +631,52 @@
     {
         previewPatient = patient;
     }
+
+    // --- Panel Modal ---
+    private async Task OpenPanelModal(Sample sample)
+    {
+        panelModalSample = sample;
+        modalAddPanelId = 0;
+        // Load fresh panels for this sample
+        var panels = await SampleService.GetSamplePanelsAsync(sample.Id);
+        modalPanels = panels.Select(p => new SamplePanel
+        {
+            Id = p.Id,
+            SampleId = p.SampleId,
+            PanelId = p.PanelId,
+            Panel = p.Panel,
+            IsRequested = p.IsRequested,
+            IsRead = p.IsRead,
+            DisplayOrder = p.DisplayOrder,
+            CustomText = p.CustomText
+        }).ToList();
+    }
+
+    private void AddPanelToModal()
+    {
+        if (modalAddPanelId == 0) return;
+        var panel = allPanelsForModal.FirstOrDefault(p => p.Id == modalAddPanelId);
+        if (panel == null) return;
+        modalPanels.Add(new SamplePanel
+        {
+            PanelId = panel.Id,
+            Panel = panel,
+            IsRequested = true,
+            IsRead = false,
+            DisplayOrder = modalPanels.Count + 1
+        });
+        modalAddPanelId = 0;
+    }
+
+    private async Task SavePanelModal()
+    {
+        if (panelModalSample == null) return;
+        await SampleService.SetSamplePanelsAsync(panelModalSample.Id, modalPanels);
+        panelModalSample = null;
+        await LoadSamples(); // Refresh to show updated badges
+    }
+
+    private void ClosePanelModal() => panelModalSample = null;
 
     private string GetStatusClass(SampleStatus status) => status switch
     {

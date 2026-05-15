@@ -19,5 +19,8 @@ namespace MiniLIS.Domain.Entities
         /// "8+lambda/56+kappa/5/3/19/20+4/45/38\n23/10/79b/200/19/20/45/43"
         /// </summary>
         public string? TubeListText { get; set; }
+
+        /// <summary>Display order in the panel selection UI.</summary>
+        public int DisplayOrder { get; set; } = 0;
     }
 }

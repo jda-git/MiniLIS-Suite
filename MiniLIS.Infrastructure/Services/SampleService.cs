@@ -23,7 +23,7 @@ namespace MiniLIS.Infrastructure.Services
             _patientService = patientService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "")
+        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null)
         {
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
@@ -55,6 +55,24 @@ namespace MiniLIS.Infrastructure.Services
                 _db.Samples.Add(sample);
                 await _db.SaveChangesAsync();
 
+                // 4. Create SamplePanel entries from selected panel IDs
+                if (panelIds != null && panelIds.Any())
+                {
+                    int order = 1;
+                    foreach (var panelId in panelIds)
+                    {
+                        _db.SamplePanels.Add(new SamplePanel
+                        {
+                            SampleId = sample.Id,
+                            PanelId = panelId,
+                            IsRequested = true,
+                            IsRead = false,
+                            DisplayOrder = order++
+                        });
+                    }
+                    await _db.SaveChangesAsync();
+                }
+
                 await transaction.CommitAsync();
                 return sample;
             }
@@ -70,6 +88,8 @@ namespace MiniLIS.Infrastructure.Services
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
+                .Include(s => s.Panels)
+                    .ThenInclude(sp => sp.Panel)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -134,6 +154,8 @@ namespace MiniLIS.Infrastructure.Services
             return await _db.Samples
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
+                .Include(s => s.Panels)
+                    .ThenInclude(sp => sp.Panel)
                 .FirstOrDefaultAsync(s => s.Id == sampleId);
         }
 
@@ -143,6 +165,53 @@ namespace MiniLIS.Infrastructure.Services
             sample.RowVersion = Guid.NewGuid().ToByteArray();
             await _db.SaveChangesAsync();
             return true;
+        }
+
+        // --- Panel management ---
+
+        public async Task<List<SamplePanel>> GetSamplePanelsAsync(int sampleId)
+        {
+            return await _db.SamplePanels
+                .Include(sp => sp.Panel)
+                .Where(sp => sp.SampleId == sampleId)
+                .OrderBy(sp => sp.DisplayOrder)
+                .ToListAsync();
+        }
+
+        public async Task SetSamplePanelsAsync(int sampleId, List<SamplePanel> panels)
+        {
+            // Remove existing panels for this sample
+            var existing = await _db.SamplePanels
+                .Where(sp => sp.SampleId == sampleId)
+                .ToListAsync();
+            _db.SamplePanels.RemoveRange(existing);
+            await _db.SaveChangesAsync();
+
+            // Add new panels
+            int order = 1;
+            foreach (var sp in panels)
+            {
+                _db.SamplePanels.Add(new SamplePanel
+                {
+                    SampleId = sampleId,
+                    PanelId = sp.PanelId,
+                    IsRequested = sp.IsRequested,
+                    IsRead = sp.IsRead,
+                    DisplayOrder = order++,
+                    CustomText = sp.CustomText
+                });
+            }
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task TogglePanelReadAsync(int samplePanelId, bool isRead)
+        {
+            var sp = await _db.SamplePanels.FindAsync(samplePanelId);
+            if (sp != null)
+            {
+                sp.IsRead = isRead;
+                await _db.SaveChangesAsync();
+            }
         }
     }
 }

@@ -138,18 +138,24 @@
         <textarea class="rpt-textarea" rows="4" @bind="report.Conclusions" placeholder="Texto de la conclusión (editable)..."></textarea>
     </fieldset>
 
-    <!-- ═══════════════  SECCIÓN 4 · PANELES  ═══════════════ -->
+    <!-- ═══════════════  SECCIÓN 4 · PANELES (Auto-importados)  ═══════════════ -->
     <fieldset class="rpt-fieldset mt-3">
         <legend>Paneles</legend>
         <div class="mb-2">
-            <label class="rpt-label">Paneles:</label>
-            <select class="rpt-select" style="width: 280px;" @onchange="OnPanelSelected">
-                <option value="">-- Seleccionar panel --</option>
-                @foreach (var p in availablePanels)
-                {
-                    <option value="@p.Id" selected="@(report.PanelId == p.Id)">@p.Name</option>
-                }
-            </select>
+            <label class="rpt-label">Paneles leídos (importados del registro):</label>
+            @if (readPanelNames.Any())
+            {
+                <div class="d-flex flex-wrap gap-2 mt-1 mb-2">
+                    @foreach (var pn in readPanelNames)
+                    {
+                        <span style="background:#dbeafe; color:#1d4ed8; font-size:12px; font-weight:700; padding:3px 10px; border-radius:8px;">@pn</span>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="text-muted small mt-1">No hay paneles marcados como leídos en el registro de la muestra.</p>
+            }
         </div>
         <div>
             <label class="rpt-label">Paneles empleados:</label>
@@ -266,6 +272,9 @@
     private List<int> selectedSignatoryIds = new();
     private List<string> intensityOptions = new();
     private bool isSaving = false;
+    private List<string> readPanelNames = new();
+
+    [Inject] private ISampleService SampleService { get; set; } = default!;
 
     // Identification fields (editable)
     private string patientName = "";
@@ -314,6 +323,20 @@
         }
 
         reportDate = report.ReportDate ?? DateTime.Today;
+
+        // Auto-import read panels from the sample
+        var samplePanels = await SampleService.GetSamplePanelsAsync(SampleId);
+        var readPanels = samplePanels.Where(sp => sp.IsRead).ToList();
+        readPanelNames = readPanels.Select(sp => sp.Panel?.Name ?? "—").ToList();
+
+        // Auto-fill PanelsUsedText if empty
+        if (string.IsNullOrWhiteSpace(report.PanelsUsedText) && readPanels.Any())
+        {
+            var tubeLines = readPanels
+                .Where(sp => sp.Panel?.TubeListText != null)
+                .SelectMany(sp => sp.Panel!.TubeListText!.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+            report.PanelsUsedText = string.Join("\n", tubeLines);
+        }
 
         // Load existing signatories
         if (report.Signatories.Any())
@@ -368,18 +391,6 @@
         }
     }
 
-    private void OnPanelSelected(ChangeEventArgs e)
-    {
-        if (int.TryParse(e.Value?.ToString(), out int panelId))
-        {
-            var panel = availablePanels.FirstOrDefault(p => p.Id == panelId);
-            if (panel != null)
-            {
-                report!.PanelId = panelId;
-                report.PanelsUsedText = panel.TubeListText ?? "";
-            }
-        }
-    }
 
     private void ToggleSignatory(int userId, object? isChecked)
     {

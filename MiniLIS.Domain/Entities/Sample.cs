@@ -37,6 +37,7 @@ namespace MiniLIS.Domain.Entities
         
         public string Diagnosis { get; set; } = string.Empty;
 
+        /// <summary>Legacy text field for study panel. Kept for backward compat.</summary>
         [MaxLength(200)]
         public string StudyPanel { get; set; } = string.Empty;
 
@@ -44,17 +45,34 @@ namespace MiniLIS.Domain.Entities
         [ConcurrencyCheck]
         public byte[] RowVersion { get; set; } = Guid.NewGuid().ToByteArray();
 
+        /// <summary>Panels requested/read for this sample.</summary>
         public ICollection<SamplePanel> Panels { get; set; } = new List<SamplePanel>();
     }
 
+    /// <summary>
+    /// Join entity linking a Sample to a Panel with request/read tracking.
+    /// </summary>
     public class SamplePanel : AuditableEntity
     {
         public int Id { get; set; }
+        
         public int SampleId { get; set; }
-        public Sample Sample { get; set; }
+        public Sample Sample { get; set; } = null!;
+        
         public int PanelId { get; set; }
-        public bool IsExpansion { get; set; } = false;
-        public int? AddedByUserId { get; set; }
-        public bool NotifiedToRegistry { get; set; } = false;
+        public Panel Panel { get; set; } = null!;
+
+        /// <summary>True if this panel was requested for the sample.</summary>
+        public bool IsRequested { get; set; } = true;
+
+        /// <summary>True if this panel/tube has been read on the cytometer by a technician.</summary>
+        public bool IsRead { get; set; } = false;
+
+        /// <summary>Display order within the sample's panel list.</summary>
+        public int DisplayOrder { get; set; } = 0;
+
+        /// <summary>Optional free-text for custom/ad-hoc panel entries not in the catalog.</summary>
+        [MaxLength(300)]
+        public string? CustomText { get; set; }
     }
 }
