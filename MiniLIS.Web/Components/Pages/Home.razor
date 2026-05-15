@@ -92,20 +92,20 @@
                 <div class="kpi-card-body">
                     <div class="tat-grid">
                         <div class="tat-item tat-main">
-                            <div class="tat-value">@stats.TatMedianDays</div>
-                            <div class="tat-label">Mediana (días)</div>
+                            <div class="tat-value">@(stats.TatMedianDays < 1 ? Math.Round(stats.TatMedianDays * 24, 1) : stats.TatMedianDays)</div>
+                            <div class="tat-label">Mediana (@(stats.TatMedianDays < 1 ? "horas" : "días"))</div>
                         </div>
                         <div class="tat-item">
-                            <div class="tat-value-sm">@stats.TatAvgDays</div>
-                            <div class="tat-label">Media</div>
+                            <div class="tat-value-sm">@(stats.TatAvgDays < 1 ? Math.Round(stats.TatAvgDays * 24, 1) : stats.TatAvgDays)</div>
+                            <div class="tat-label">Media (@(stats.TatAvgDays < 1 ? "h" : "d"))</div>
                         </div>
                         <div class="tat-item">
-                            <div class="tat-value-sm">@stats.TatMinDays</div>
-                            <div class="tat-label">Mínimo</div>
+                            <div class="tat-value-sm">@(stats.TatMinDays < 1 ? Math.Round(stats.TatMinDays * 24, 1) : stats.TatMinDays)</div>
+                            <div class="tat-label">Mín. (@(stats.TatMinDays < 1 ? "h" : "d"))</div>
                         </div>
                         <div class="tat-item">
-                            <div class="tat-value-sm">@stats.TatMaxDays</div>
-                            <div class="tat-label">Máximo</div>
+                            <div class="tat-value-sm">@(stats.TatMaxDays < 1 ? Math.Round(stats.TatMaxDays * 24, 1) : stats.TatMaxDays)</div>
+                            <div class="tat-label">Máx. (@(stats.TatMaxDays < 1 ? "h" : "d"))</div>
                         </div>
                     </div>
                     @{

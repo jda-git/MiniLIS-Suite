@@ -25,7 +25,7 @@ namespace MiniLIS.Infrastructure.Services
             var weekStart = today.AddDays(-(int)today.DayOfWeek + 1); // Monday
             if (today.DayOfWeek == DayOfWeek.Sunday) weekStart = weekStart.AddDays(-7);
             var monthStart = new DateTime(today.Year, today.Month, 1);
-            var last30Days = today.AddDays(-30);
+            var last30Days = today.AddDays(-90); // Extended window to catch older samples
 
             // ── Status counters ──
             var statusCounts = await _db.Samples
@@ -54,14 +54,17 @@ namespace MiniLIS.Infrastructure.Services
             double avgPerDay = activeDays > 0 ? (double)last30Samples.Count / activeDays : 0;
 
             // ── TAT (Turnaround Time) ──
-            // For finalized samples in the last 30 days, compute ReportDate - ReceptionDate
-            var tatData = await _db.SampleReports
-                .Where(r => r.ReportDate.HasValue && r.Sample.Status == SampleStatus.Finalizada
-                         && r.Sample.ReceptionDate >= last30Days)
-                .Select(r => new { r.Sample.ReceptionDate, ReportDate = r.ReportDate!.Value })
+            // For finalized samples in the last 30 days, compute (ReportDate or UpdatedAtUtc) - ReceptionDate
+            var tatData = await _db.Samples
+                .Include(s => s.Panels)
+                .Where(s => s.Status == SampleStatus.Finalizada && s.ReceptionDate >= last30Days)
+                .Select(s => new { 
+                    s.ReceptionDate, 
+                    FinalDate = _db.SampleReports.Where(r => r.SampleId == s.Id).Select(r => r.ReportDate).FirstOrDefault() ?? s.UpdatedAtUtc ?? DateTime.Now 
+                })
                 .ToListAsync();
 
-            var tatDays = tatData.Select(r => (r.ReportDate - r.ReceptionDate).TotalDays).OrderBy(d => d).ToList();
+            var tatDays = tatData.Select(r => (r.FinalDate - r.ReceptionDate).TotalDays).Where(d => d >= 0).OrderBy(d => d).ToList();
 
             double tatAvg = tatDays.Any() ? tatDays.Average() : 0;
             double tatMedian = 0;
@@ -105,10 +108,10 @@ namespace MiniLIS.Infrastructure.Services
                 SamplesFinalizada = finalizada,
                 SamplesRechazada = rechazada,
 
-                TatAvgDays = Math.Round(tatAvg, 1),
-                TatMedianDays = Math.Round(tatMedian, 1),
-                TatMinDays = Math.Round(tatMin, 1),
-                TatMaxDays = Math.Round(tatMax, 1),
+                TatAvgDays = Math.Round(tatAvg, 2),
+                TatMedianDays = Math.Round(tatMedian, 2),
+                TatMinDays = Math.Round(tatMin, 2),
+                TatMaxDays = Math.Round(tatMax, 2),
 
                 SamplesReceivedToday = todayCount,
                 SamplesReceivedThisWeek = weekCount,

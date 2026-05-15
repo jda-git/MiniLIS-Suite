@@ -30,7 +30,6 @@ namespace MiniLIS.Web.Controllers
             try
             {
                 var report = await _db.SampleReports
-                    .AsNoTracking()
                     .Include(r => r.Sample)
                     .FirstOrDefaultAsync(r => r.Id == id);
 
@@ -38,12 +37,17 @@ namespace MiniLIS.Web.Controllers
 
                 var bytes = await _documentService.GeneratePdfAsync(report);
                 
-                // Actualizar estado a Finalizada
+                // Finalize report and sample for TAT and status tracking
+                report.IsFinalized = true;
+                if (!report.ReportDate.HasValue) report.ReportDate = DateTime.Now;
+
                 if (report.Sample != null)
                 {
                     report.Sample.Status = SampleStatus.Finalizada;
-                    await _db.SaveChangesAsync();
+                    report.Sample.UpdatedAtUtc = DateTime.UtcNow;
                 }
+
+                await _db.SaveChangesAsync();
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
                 var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? id.ToString();

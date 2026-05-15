@@ -198,28 +198,52 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task SetSamplePanelsAsync(int sampleId, List<SamplePanel> panels)
         {
-            // Remove existing panels for this sample
-            var existing = await _db.SamplePanels
-                .Where(sp => sp.SampleId == sampleId)
-                .ToListAsync();
-            _db.SamplePanels.RemoveRange(existing);
-            await _db.SaveChangesAsync();
-
-            // Add new panels
-            int order = 1;
-            foreach (var sp in panels)
-            {
-                _db.SamplePanels.Add(new SamplePanel
-                {
-                    SampleId = sampleId,
-                    PanelId = sp.PanelId,
-                    IsRequested = sp.IsRequested,
-                    IsRead = sp.IsRead,
-                    DisplayOrder = order++,
-                    CustomText = sp.CustomText
-                });
+            Console.WriteLine($"[DIAG] SetSamplePanelsAsync: SampleId={sampleId}, PanelsCount={panels?.Count ?? 0}");
+            var sample = await _db.Samples
+                .Include(s => s.Panels)
+                .FirstOrDefaultAsync(s => s.Id == sampleId);
+            
+            if (sample == null) {
+                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Sample {sampleId} not found!");
+                return;
             }
-            await _db.SaveChangesAsync();
+
+            // Use a transaction to ensure atomicity
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                // Remove existing
+                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Removing {sample.Panels.Count} existing panels.");
+                _db.SamplePanels.RemoveRange(sample.Panels);
+                await _db.SaveChangesAsync();
+
+                // Add new ones from the provided list
+                int order = 1;
+                foreach (var sp in panels)
+                {
+                    Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Adding panel PanelId={sp.PanelId}, CustomText='{sp.CustomText}', IsRead={sp.IsRead}");
+                    var newSp = new SamplePanel
+                    {
+                        SampleId = sampleId,
+                        PanelId = sp.PanelId,
+                        IsRequested = sp.IsRequested,
+                        IsRead = sp.IsRead,
+                        DisplayOrder = order++,
+                        CustomText = sp.CustomText
+                    };
+                    _db.SamplePanels.Add(newSp);
+                }
+
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Commit successful.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: ERROR: {ex.Message}");
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         public async Task TogglePanelReadAsync(int samplePanelId, bool isRead)
