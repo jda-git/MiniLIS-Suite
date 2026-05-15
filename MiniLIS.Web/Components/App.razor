@@ -18,8 +18,14 @@
     <iframe id="downloadFrame" style="display:none;"></iframe>
     <script src="_framework/blazor.web.js"></script>
     <script>
-        window.triggerDownload = (url) => {
-            window.location.assign(url);
+        window.triggerDownload = (url, fileName) => {
+            const anchorElement = document.createElement('a');
+            anchorElement.href = url;
+            if (fileName) anchorElement.download = fileName;
+            anchorElement.style.display = 'none';
+            document.body.appendChild(anchorElement);
+            anchorElement.click();
+            document.body.removeChild(anchorElement);
         }
 
         window.downloadFileFromBase64 = (fileName, base64, contentType) => {

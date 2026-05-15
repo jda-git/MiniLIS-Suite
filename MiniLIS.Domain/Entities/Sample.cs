@@ -59,8 +59,8 @@ namespace MiniLIS.Domain.Entities
         public int SampleId { get; set; }
         public Sample Sample { get; set; } = null!;
         
-        public int PanelId { get; set; }
-        public Panel Panel { get; set; } = null!;
+        public int? PanelId { get; set; }
+        public Panel? Panel { get; set; }
 
         /// <summary>True if this panel was requested for the sample.</summary>
         public bool IsRequested { get; set; } = true;

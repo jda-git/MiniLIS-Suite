@@ -187,12 +187,16 @@
         <div class="d-flex gap-2">
             @if (report?.Id > 0)
             {
-                <a href="/api/downloads/informe/@report.Id/pdf?t=@DateTime.Now.Ticks" 
-                   target="_blank" download class="btn btn-outline-danger px-3">
+                <a href="/api/downloads/informe/@report.Id/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf?preview=true" 
+                   target="_blank" class="btn btn-outline-success px-3">
+                    <i class="bi bi-eye me-2"></i>Previsualizar PDF
+                </a>
+                <a href="/api/downloads/informe/@report.Id/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf" 
+                   download class="btn btn-outline-danger px-3">
                     <i class="bi bi-file-pdf me-2"></i>PDF
                 </a>
-                <a href="/api/downloads/informe/@report.Id/odt?t=@DateTime.Now.Ticks" 
-                   target="_blank" download class="btn btn-outline-info px-3">
+                <a href="/api/downloads/informe/@report.Id/odt/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).odt" 
+                   download class="btn btn-outline-info px-3">
                     <i class="bi bi-file-earmark-word me-2"></i>ODT
                 </a>
             }
@@ -327,7 +331,7 @@
         // Auto-import read panels from the sample
         var samplePanels = await SampleService.GetSamplePanelsAsync(SampleId);
         var readPanels = samplePanels.Where(sp => sp.IsRead).ToList();
-        readPanelNames = readPanels.Select(sp => sp.Panel?.Name ?? "—").ToList();
+        readPanelNames = readPanels.Select(sp => sp.Panel?.Name ?? sp.CustomText ?? "—").ToList();
 
         // Auto-fill PanelsUsedText if empty
         if (string.IsNullOrWhiteSpace(report.PanelsUsedText) && readPanels.Any())
@@ -411,20 +415,6 @@
             report.MarkersSummary = ReportService.GenerateMarkersSummary(report.MarkerValues);
             StateHasChanged();
         }
-    }
-
-    private async Task DownloadPdf()
-    {
-        await Save();
-        var url = $"/api/downloads/informe/{report!.Id}/pdf?t={DateTime.Now.Ticks}";
-        await JS.InvokeVoidAsync("triggerDownload", url);
-    }
-
-    private async Task DownloadOdt()
-    {
-        await Save();
-        var url = $"/api/downloads/informe/{report!.Id}/odt?t={DateTime.Now.Ticks}";
-        await JS.InvokeVoidAsync("triggerDownload", url);
     }
 
     private async Task SaveAndNotify()

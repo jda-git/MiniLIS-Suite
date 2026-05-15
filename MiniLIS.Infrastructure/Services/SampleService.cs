@@ -23,7 +23,7 @@ namespace MiniLIS.Infrastructure.Services
             _patientService = patientService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null)
+        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null)
         {
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
@@ -56,9 +56,9 @@ namespace MiniLIS.Infrastructure.Services
                 await _db.SaveChangesAsync();
 
                 // 4. Create SamplePanel entries from selected panel IDs
+                int order = 1;
                 if (panelIds != null && panelIds.Any())
                 {
-                    int order = 1;
                     foreach (var panelId in panelIds)
                     {
                         _db.SamplePanels.Add(new SamplePanel
@@ -70,8 +70,26 @@ namespace MiniLIS.Infrastructure.Services
                             DisplayOrder = order++
                         });
                     }
-                    await _db.SaveChangesAsync();
                 }
+
+                // 5. Create SamplePanel entries for custom (free-text) panels
+                if (customPanelTexts != null && customPanelTexts.Any())
+                {
+                    foreach (var text in customPanelTexts)
+                    {
+                        _db.SamplePanels.Add(new SamplePanel
+                        {
+                            SampleId = sample.Id,
+                            PanelId = null,
+                            CustomText = text,
+                            IsRequested = true,
+                            IsRead = false,
+                            DisplayOrder = order++
+                        });
+                    }
+                }
+
+                if (order > 1) await _db.SaveChangesAsync();
 
                 await transaction.CommitAsync();
                 return sample;

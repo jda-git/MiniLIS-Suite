@@ -563,7 +563,7 @@
             panelNames.AddRange(customPanels);
             string studyPanelText = string.Join(", ", panelNames);
 
-            var sample = await SampleRegistry.RegisterSampleAsync(patient, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList());
+            var sample = await SampleRegistry.RegisterSampleAsync(patient, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels);
             
             await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
             Nav.NavigateTo("/muestras");

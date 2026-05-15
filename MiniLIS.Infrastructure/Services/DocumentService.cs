@@ -41,6 +41,7 @@ namespace MiniLIS.Infrastructure.Services
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
+
             var logoAlignment = await _masterService.GetSettingAsync("Header:LogoAlignment") ?? "Left";
             var logoWidthStr = await _masterService.GetSettingAsync("Header:LogoWidth");
             int.TryParse(logoWidthStr, out int logoWidth);
@@ -271,66 +272,14 @@ namespace MiniLIS.Infrastructure.Services
                 var metaEntry = archive.CreateEntry("meta.xml");
                 using (var writer = new StreamWriter(metaEntry.Open()))
                 {
-                    writer.Write($@"<?xml version=""1.0"" encoding=""UTF-8""?><office:document-meta xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:meta=""urn:oasis:names:tc:opendocument:xmlns:meta:1.0""><office:meta><meta:generator>MiniLIS Suite</meta:generator><meta:creation-date>{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}</meta:creation-date></office:meta></office:document-meta>");
+                    writer.Write(GenerateOdtMetaXml());
                 }
 
                 // 4. styles.xml
                 var stylesEntry = archive.CreateEntry("styles.xml");
                 using (var writer = new StreamWriter(stylesEntry.Open()))
                 {
-                    var stylesText = @"<?xml version=""1.0"" encoding=""UTF-8""?>
-<office:document-styles xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"" office:version=""1.2"">
-  <office:styles>
-    <style:style style:name=""Standard"" style:family=""paragraph""/>
-    <style:style style:name=""Bold"" style:family=""text"">
-      <style:text-properties fo:font-weight=""bold"" style:font-weight-asian=""bold"" style:font-weight-complex=""bold""/>
-    </style:style>
-    <style:style style:name=""Italic"" style:family=""text"">
-      <style:text-properties fo:font-style=""italic""/>
-    </style:style>
-    <style:style style:name=""GreyText"" style:family=""text"">
-      <style:text-properties fo:color=""#808080"" fo:font-size=""11pt""/>
-    </style:style>
-    
-    <!-- Mono Font for Tabular Data -->
-    <style:style style:name=""MonoText"" style:family=""paragraph"">
-      <style:paragraph-properties fo:margin-top=""0.05in"" fo:margin-bottom=""0.05in""/>
-      <style:text-properties style:font-name=""Courier New"" fo:font-size=""9pt""/>
-    </style:style>
-
-    <!-- Alignment styles -->
-    <style:style style:name=""AlignLeft"" style:family=""paragraph"">
-      <style:paragraph-properties fo:text-align=""start""/>
-    </style:style>
-    <style:style style:name=""AlignCenter"" style:family=""paragraph"">
-      <style:paragraph-properties fo:text-align=""center""/>
-    </style:style>
-    <style:style style:name=""AlignRight"" style:family=""paragraph"">
-      <style:paragraph-properties fo:text-align=""end""/>
-    </style:style>
-
-    <!-- Table styles for borders -->
-    <style:style style:name=""CellTopBorder"" style:family=""table-cell"">
-      <style:table-cell-properties fo:border-top=""1.5pt solid #000000"" fo:padding-top=""0.05in"" fo:padding-bottom=""0.05in""/>
-    </style:style>
-    <style:style style:name=""CellBottomBorder"" style:family=""table-cell"">
-      <style:table-cell-properties fo:border-bottom=""1.5pt solid #000000"" fo:padding-top=""0.05in"" fo:padding-bottom=""0.05in""/>
-    </style:style>
-    <style:style style:name=""CellNoBorder"" style:family=""table-cell"">
-      <style:table-cell-properties fo:padding-top=""0.05in"" fo:padding-bottom=""0.05in""/>
-    </style:style>
-
-    <style:style style:name=""TitleBlue"" style:family=""paragraph"">
-      <style:paragraph-properties fo:margin-top=""0.2in"" fo:margin-bottom=""0.1in""/>
-      <style:text-properties fo:color=""#6d9eeb"" fo:font-size=""14pt"" fo:font-weight=""bold""/>
-    </style:style>
-    <style:style style:name=""SectionBlue"" style:family=""paragraph"">
-      <style:paragraph-properties fo:margin-top=""0.1in"" fo:margin-bottom=""0.05in""/>
-      <style:text-properties fo:color=""#6d9eeb"" fo:font-size=""11pt"" fo:font-weight=""bold""/>
-    </style:style>
-  </office:styles>
-</office:document-styles>";
-                    writer.Write(stylesText);
+                    writer.Write(GenerateOdtStylesXml());
                 }
 
                 // 5. content.xml
@@ -344,109 +293,68 @@ namespace MiniLIS.Infrastructure.Services
             return ms.ToArray();
         }
 
-        private string GenerateOdtContentXml(SampleReport report, bool hasLogo, string headerLine1, string headerLine2, string logoAlignment)
+        private string GenerateOdtContentXml(SampleReport report, bool hasLogo, string header1, string header2, string logoAlignment)
         {
-            var patient = report.Sample?.ClinicalRequest?.Patient;
-            var request = report.Sample?.ClinicalRequest;
-            var sample = report.Sample;
-
-            // Use the same logic as PDF to extract Tipo and Motivo
-            var rawDiag = sample?.Diagnosis ?? "";
-            var finalTipoMuestra = sample?.StudyPanel ?? "MO";
-            var finalMotivo = rawDiag;
-            var typeMatch = Regex.Match(rawDiag, @"^\[TIPO:\s*(.+?)\]\s*");
-            if (typeMatch.Success)
-            {
-                finalTipoMuestra = typeMatch.Groups[1].Value.Trim();
-                finalMotivo = rawDiag.Replace(typeMatch.Value, "").Trim();
-            }
-
-            var alignStyle = "AlignLeft";
-            if (logoAlignment == "Center") alignStyle = "AlignCenter";
-            else if (logoAlignment == "Right") alignStyle = "AlignRight";
-
             var sb = new StringBuilder();
             sb.Append(@"<?xml version=""1.0"" encoding=""UTF-8""?>");
-            sb.Append(@"<office:document-content ");
-            sb.Append(@"xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" ");
-            sb.Append(@"xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" ");
-            sb.Append(@"xmlns:text=""urn:oasis:names:tc:opendocument:xmlns:text:1.0"" ");
-            sb.Append(@"xmlns:table=""urn:oasis:names:tc:opendocument:xmlns:table:1.0"" ");
-            sb.Append(@"xmlns:draw=""urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"" ");
-            sb.Append(@"xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"" ");
-            sb.Append(@"xmlns:xlink=""http://www.w3.org/1999/xlink"" ");
-            sb.Append(@"xmlns:svg=""urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"" ");
-            sb.Append(@"office:version=""1.2"">");
+            sb.Append(@"<office:document-content xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" xmlns:text=""urn:oasis:names:tc:opendocument:xmlns:text:1.0"" xmlns:table=""urn:oasis:names:tc:opendocument:xmlns:table:1.0"" xmlns:draw=""urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"" xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"" xmlns:xlink=""http://www.w3.org/1999/xlink"" xmlns:dc=""http://purl.org/dc/elements/1.1/"" xmlns:meta=""urn:oasis:names:tc:opendocument:xmlns:meta:1.0"" xmlns:number=""urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0"" xmlns:svg=""http://www.w3.org/2000/svg"" xmlns:chart=""urn:oasis:names:tc:opendocument:xmlns:chart:1.0"" xmlns:dr3d=""urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0"" xmlns:math=""http://www.w3.org/1998/Math/MathML"" xmlns:form=""urn:oasis:names:tc:opendocument:xmlns:form:1.0"" xmlns:script=""urn:oasis:names:tc:opendocument:xmlns:script:1.0"" xmlns:ooo=""http://openoffice.org/2004/office"" xmlns:ooow=""http://openoffice.org/2004/writer"" xmlns:oooc=""http://openoffice.org/2004/calc"" xmlns:dom=""http://www.w3.org/2001/xml-events"" xmlns:xforms=""http://www.w3.org/2002/xforms"" xmlns:xsd=""http://www.w3.org/2001/XMLSchema"" xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance"" xmlns:rpt=""http://openoffice.org/2005/report"" xmlns:of=""urn:oasis:names:tc:opendocument:xmlns:of:1.2"" xmlns:xhtml=""http://www.w3.org/1999/xhtml"" xmlns:grddl=""http://www.w3.org/2003/g/data-view#"" xmlns:officeooo=""http://openoffice.org/2009/office"" xmlns:tableooo=""http://openoffice.org/2009/table"" xmlns:drawooo=""http://openoffice.org/2010/draw"" xmlns:calcext=""urn:oasis:names:tc:opendocument:xmlns:calculation-ext:1.0"" xmlns:loext=""urn:oasis:names:tc:opendocument:xmlns:ext:1.0"" xmlns:field=""urn:openoffice:names:experimental:ooo-ms-interop:xmlns:field:1.0"" office:version=""1.2"">");
             
             sb.Append("<office:body><office:text>");
-
-            // Limpiamos los textos para evitar espacios introducidos manualmente por el usuario
-            var safeLine1 = headerLine1?.Trim() ?? "";
-            var safeLine2 = headerLine2?.Trim() ?? "";
-
-            // --- TABLA UNIFICADA (CABECERA + DATOS PACIENTE) ---
-            // Integrar la cabecera dentro de esta tabla garantiza que Word la parsee estrictamente en filas
-            sb.Append(@"<table:table table:name=""UnifiedLayout"">");
             
-            // --- BLOQUE CABECERA ---
+            var alignStyle = logoAlignment == "Center" ? "AlignCenter" : (logoAlignment == "Right" ? "AlignRight" : "AlignLeft");
+
+            // Header Logo
             if (hasLogo)
             {
-                sb.Append(@"<table:table-row>");
-                sb.Append($@"<table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p text:style-name=""{alignStyle}""><draw:frame draw:name=""logo"" text:anchor-type=""as-char"" svg:width=""4cm"" svg:height=""1.5cm"" draw:z-index=""0""><draw:image xlink:href=""Pictures/logo.png"" xlink:type=""simple"" xlink:show=""embed"" xlink:actuate=""onLoad""/></draw:frame></text:p></table:table-cell>");
-                sb.Append(@"</table:table-row>");
-                
-                // Fila vacía de separación logo - texto clínico
-                sb.Append(@"<table:table-row><table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p /></table:table-cell></table:table-row>");
+                sb.Append($@"<text:p text:style-name=""{alignStyle}""><draw:frame draw:name=""logo"" text:anchor-type=""as-char"" svg:width=""3.5cm"" svg:height=""1.4cm"" draw:z-index=""0""><draw:image xlink:href=""Pictures/logo.png"" xlink:type=""simple"" xlink:show=""embed"" xlink:actuate=""onLoad""/></draw:frame></text:p>");
             }
-            sb.Append(@"<table:table-row>");
-            sb.Append($@"<table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{WebUtility.HtmlEncode(safeLine1)}</text:span></text:p></table:table-cell>");
-            sb.Append(@"</table:table-row>");
+
+            // Header Texts
+            sb.Append($@"<text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{EncodeForOdt(header1)}</text:span></text:p>");
+            sb.Append($@"<text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{EncodeForOdt(header2)}</text:span></text:p>");
+            sb.Append("<text:p text:style-name=\"Separator\" />");
+
+            // Demographics Table
+            var p = report.Sample?.ClinicalRequest?.Patient;
+            var r = report.Sample?.ClinicalRequest;
+            var s = report.Sample;
+
+            sb.Append(@"<table:table table:name=""Demographics"">");
+            sb.Append(@"<table:table-column table:style-name=""Col50""/>");
+            sb.Append(@"<table:table-column table:style-name=""Col30""/>");
+            sb.Append(@"<table:table-column table:style-name=""Col20""/>");
             
-            sb.Append(@"<table:table-row>");
-            sb.Append($@"<table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{WebUtility.HtmlEncode(safeLine2)}</text:span></text:p></table:table-cell>");
-            sb.Append(@"</table:table-row>");
-            
-            // Espacio entre cabecera y datos de paciente
-            sb.Append(@"<table:table-row><table:table-cell table:number-columns-spanned=""3"" table:style-name=""CellNoBorder""><text:p /></table:table-cell></table:table-row>");
-            
-            // Row 1: NOMBRE, NHC, NASI (Borde Superior)
+            // Row 1: Name, NHC, NASI
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell table:style-name=""CellTopBorder""><text:p><text:span text:style-name=""Bold"">NOMBRE: </text:span>{WebUtility.HtmlEncode(patient?.FullName ?? "")}</text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell table:style-name=""CellTopBorder""><text:p><text:span text:style-name=""Bold"">NHC: </text:span>{WebUtility.HtmlEncode(patient?.NHC ?? "")}</text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell table:style-name=""CellTopBorder""><text:p><text:span text:style-name=""Bold"">NASI: </text:span>{WebUtility.HtmlEncode(patient?.NASI ?? "")}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">NOMBRE: <text:span text:style-name=""Value"">{EncodeForOdt(p?.FullName ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">NHC: <text:span text:style-name=""Value"">{EncodeForOdt(p?.NHC ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">NASI: <text:span text:style-name=""Value"">{EncodeForOdt(p?.NASI ?? "")}</text:span></text:p></table:table-cell>");
             sb.Append("</table:table-row>");
 
-            // Row 2: FECHA MUESTRA, FECHA INFORME
+            // Row 2: Dates
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">FECHA DE MUESTRA: </text:span>{(sample != null ? sample.ReceptionDate.ToString("dd/MM/yyyy") : "")}</text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">FECHA INFORME: </text:span>{(report.ReportDate?.ToString("dd/MM/yyyy") ?? DateTime.Now.ToString("dd/MM/yyyy"))}</text:p></table:table-cell>");
-            sb.Append("<table:table-cell table:style-name=\"CellNoBorder\"><text:p /></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">FECHA MUESTRA: <text:span text:style-name=""Value"">{s?.ReceptionDate.ToString("dd/MM/yyyy")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">FECHA INFORME: <text:span text:style-name=""Value"">{report.ReportDate?.ToString("dd/MM/yyyy")}</text:span></text:p></table:table-cell>");
+            sb.Append("<table:table-cell />"); // Required to fill the row
             sb.Append("</table:table-row>");
 
-            // Row 3: Nº MUESTRA, TIPO, Nº PETICIÓN
+            // Row 3: Sample Number, Type, Request Number
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">Nº MUESTRA: </text:span>{WebUtility.HtmlEncode(sample?.SampleNumber ?? "")}</text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">TIPO DE MUESTRA: </text:span>{WebUtility.HtmlEncode(finalTipoMuestra)}</text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">Nº PETICIÓN: </text:span>{WebUtility.HtmlEncode(request?.RequestNumber ?? "")}</text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">Nº MUESTRA: <text:span text:style-name=""Value"">{EncodeForOdt(s?.SampleNumber ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">TIPO DE MUESTRA: <text:span text:style-name=""Value"">{EncodeForOdt(s?.Diagnosis ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">Nº PETICIÓN: <text:span text:style-name=""Value"">{EncodeForOdt(r?.RequestNumber ?? "")}</text:span></text:p></table:table-cell>");
             sb.Append("</table:table-row>");
 
-            // Row 4: SERVICIO, SOLICITANTE
+            // Row 4: Service, Solicitor
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">SERVICIO: </text:span>{WebUtility.HtmlEncode(request?.OriginService ?? "")}</text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell table:style-name=""CellNoBorder""><text:p><text:span text:style-name=""Bold"">SOLICITANTE: </text:span>{WebUtility.HtmlEncode(request?.DoctorName ?? "")}</text:p></table:table-cell>");
-            sb.Append("<table:table-cell table:style-name=\"CellNoBorder\"><text:p /></table:table-cell>");
-            sb.Append("</table:table-row>");
-
-            // Row 5: MOTIVO (Borde Inferior)
-            sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell table:style-name=""CellBottomBorder""><text:p><text:span text:style-name=""Bold"">MOTIVO: </text:span>{WebUtility.HtmlEncode(finalMotivo)}</text:p></table:table-cell>");
-            sb.Append("<table:table-cell table:style-name=\"CellBottomBorder\"><text:p /></table:table-cell>");
-            sb.Append("<table:table-cell table:style-name=\"CellBottomBorder\"><text:p /></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">SERVICIO: <text:span text:style-name=""Value"">{EncodeForOdt(r?.OriginService ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">SOLICITANTE: <text:span text:style-name=""Value"">{EncodeForOdt(r?.DoctorName ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append("<table:table-cell />");
             sb.Append("</table:table-row>");
 
             sb.Append("</table:table>");
-            sb.Append(@"<text:p />");
-
+            sb.Append("<text:p text:style-name=\"Separator\" />");
+            
             // --- CONTENIDO ---
             
             // INFORME
@@ -483,11 +391,12 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.Conclusions)}</text:p>");
             }
 
-            sb.Append("<text:p />");
-            sb.Append("<text:p>Validado por:</text:p>");
+            // Footer
+            sb.Append("<text:p text:style-name=\"Separator\" />");
+            sb.Append(@"<text:p text:style-name=""Label"">Validado por:</text:p>");
             foreach (var sig in report.Signatories)
             {
-                sb.Append($@"<text:p><text:span text:style-name=""Bold"">Dr. {WebUtility.HtmlEncode(sig.User?.FullName ?? "Firmante")}</text:span></text:p>");
+                sb.Append($@"<text:p text:style-name=""Value"">{EncodeForOdt(sig.User?.FullName ?? "")}</text:p>");
             }
             
             sb.Append("</office:text></office:body></office:document-content>");
@@ -516,6 +425,71 @@ namespace MiniLIS.Infrastructure.Services
             });
 
             return encoded;
+        }
+        private string GenerateOdtStylesXml()
+        {
+            return @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<office:document-styles xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" xmlns:text=""urn:oasis:names:tc:opendocument:xmlns:text:1.0"" xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"">
+  <office:styles>
+    <style:style style:name=""Header1"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0cm"" fo:margin-bottom=""0cm"" fo:text-align=""center""/>
+      <style:text-properties fo:font-size=""11pt"" fo:font-weight=""bold"" fo:color=""#334155""/>
+    </style:style>
+    <style:style style:name=""Header2"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0cm"" fo:margin-bottom=""0.2cm"" fo:text-align=""center""/>
+      <style:text-properties fo:font-size=""9pt"" fo:font-weight=""bold"" fo:color=""#64748b""/>
+    </style:style>
+    <style:style style:name=""GreyText"" style:family=""text"">
+      <style:text-properties fo:color=""#64748b"" fo:font-size=""8pt""/>
+    </style:style>
+    <style:style style:name=""Separator"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0.2cm"" fo:margin-bottom=""0.2cm"" fo:border-bottom=""0.5pt solid #cbd5e1""/>
+    </style:style>
+    <style:style style:name=""Label"" style:family=""paragraph"">
+      <style:text-properties fo:font-size=""9pt"" fo:font-weight=""bold"" fo:color=""#1e293b""/>
+    </style:style>
+    <style:style style:name=""Value"" style:family=""text"">
+      <style:text-properties fo:font-weight=""normal"" fo:color=""#334155""/>
+    </style:style>
+    <style:style style:name=""SectionBlue"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0.4cm"" fo:margin-bottom=""0.1cm""/>
+      <style:text-properties fo:font-size=""10pt"" fo:font-weight=""bold"" fo:color=""#2563eb"" fo:text-transform=""uppercase""/>
+    </style:style>
+    <style:style style:name=""MonoText"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-left=""0.5cm""/>
+      <style:text-properties fo:font-name=""Courier New"" fo:font-size=""9pt"" fo:color=""#334155""/>
+    </style:style>
+    <style:style style:name=""AlignCenter"" style:family=""paragraph""><style:paragraph-properties fo:text-align=""center""/></style:style>
+    <style:style style:name=""AlignRight"" style:family=""paragraph""><style:paragraph-properties fo:text-align=""end""/></style:style>
+    <style:style style:name=""AlignLeft"" style:family=""paragraph""><style:paragraph-properties fo:text-align=""start""/></style:style>
+    
+    <!-- Table Column Widths -->
+    <style:style style:name=""Col50"" style:family=""table-column"">
+      <style:table-column-properties style:column-width=""8.5cm""/>
+    </style:style>
+    <style:style style:name=""Col30"" style:family=""table-column"">
+      <style:table-column-properties style:column-width=""5.1cm""/>
+    </style:style>
+    <style:style style:name=""Col20"" style:family=""table-column"">
+      <style:table-column-properties style:column-width=""3.4cm""/>
+    </style:style>
+    <style:style style:name=""Col33"" style:family=""table-column"">
+      <style:table-column-properties style:column-width=""5.66cm""/>
+    </style:style>
+  </office:styles>
+</office:document-styles>";
+        }
+
+        private string GenerateOdtMetaXml()
+        {
+            return @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<office:document-meta xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:dc=""http://purl.org/dc/elements/1.1/"" xmlns:meta=""urn:oasis:names:tc:opendocument:xmlns:meta:1.0"">
+  <office:meta>
+    <dc:title>Informe MiniLIS</dc:title>
+    <dc:creator>MiniLIS Suite</dc:creator>
+    <dc:date>" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + @"</dc:date>
+  </office:meta>
+</office:document-meta>";
         }
     }
 }

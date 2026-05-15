@@ -24,12 +24,13 @@ namespace MiniLIS.Web.Controllers
             _sampleService = sampleService;
         }
 
-        [HttpGet("informe/{id}/pdf")]
-        public async Task<IActionResult> DownloadPdf(int id)
+        [HttpGet("informe/{id}/pdf/{fileName?}")]
+        public async Task<IActionResult> DownloadPdf(int id, string? fileName, [FromQuery] bool preview = false)
         {
             try
             {
                 var report = await _db.SampleReports
+                    .AsNoTracking()
                     .Include(r => r.Sample)
                     .FirstOrDefaultAsync(r => r.Id == id);
 
@@ -46,15 +47,17 @@ namespace MiniLIS.Web.Controllers
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
                 var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? id.ToString();
-                var fileName = $"Informe_{safeSampleName}_{timestamp}.pdf";
+                var finalFileName = string.IsNullOrWhiteSpace(fileName) ? $"Informe_{safeSampleName}_{timestamp}.pdf" : fileName;
                 
-                // Cache headers
+                var contentDisposition = new System.Net.Mime.ContentDisposition
+                {
+                    FileName = finalFileName,
+                    Inline = preview
+                };
+                Response.Headers.Append("Content-Disposition", contentDisposition.ToString());
                 Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-                Response.Headers.Append("Pragma", "no-cache");
-                Response.Headers.Append("Expires", "0");
                 
-                // AspNetCore automatically sets Content-Disposition when passing fileName
-                return File(bytes, "application/pdf", fileName);
+                return File(bytes, "application/pdf");
             }
             catch (Exception ex)
             {
@@ -62,8 +65,8 @@ namespace MiniLIS.Web.Controllers
             }
         }
 
-        [HttpGet("informe/{id}/odt")]
-        public async Task<IActionResult> DownloadOdt(int id)
+        [HttpGet("informe/{id}/odt/{fileName?}")]
+        public async Task<IActionResult> DownloadOdt(int id, string? fileName)
         {
             try
             {
@@ -84,13 +87,17 @@ namespace MiniLIS.Web.Controllers
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
                 var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? id.ToString();
-                var fileName = $"Informe_{safeSampleName}_{timestamp}.odt";
+                var finalFileName = string.IsNullOrWhiteSpace(fileName) ? $"Informe_{safeSampleName}_{timestamp}.odt" : fileName;
                 
+                var contentDisposition = new System.Net.Mime.ContentDisposition
+                {
+                    FileName = finalFileName,
+                    Inline = false
+                };
+                Response.Headers.Append("Content-Disposition", contentDisposition.ToString());
                 Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-                Response.Headers.Append("Pragma", "no-cache");
-                Response.Headers.Append("Expires", "0");
 
-                return File(bytes, "application/vnd.oasis.opendocument.text", fileName);
+                return File(bytes, "application/vnd.oasis.opendocument.text");
             }
             catch (Exception ex)
             {

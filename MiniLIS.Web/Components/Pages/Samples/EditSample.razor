@@ -161,7 +161,7 @@
             <div class="panel-selection-header">
                 <i class="bi bi-list-check" style="font-size:18px; color:#3b82f6;"></i>
                 <span style="font-weight:700; font-size:14px; color:#1e293b;">Paneles de Estudio</span>
-                <span class="panel-count-badge">@selectedPanelIds.Count seleccionados</span>
+                <span class="panel-count-badge">@(selectedPanelIds.Count + customPanels.Count) seleccionados</span>
             </div>
             <div class="panel-selection-body">
                 @foreach (var panel in allPanels)
@@ -187,6 +187,29 @@
                                 }
                             </div>
                         }
+                    </div>
+                }
+                <!-- Custom panel input -->
+                <div class="panel-item" style="border: 1px dashed #cbd5e1; background: #fafbfc;">
+                    <div class="d-flex align-items-center gap-2 w-100">
+                        <i class="bi bi-pencil-square text-muted"></i>
+                        <input type="text" style="border:none; background:transparent; font-size:13px; color:#334155; outline:none; flex:1;" placeholder="Añadir panel personalizado..." @bind="customPanelText" />
+                        <button type="button" style="background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; border:none; width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px;" @onclick="AddCustomPanel" disabled="@string.IsNullOrWhiteSpace(customPanelText)">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                @foreach (var cp in customPanels)
+                {
+                    <div class="panel-item panel-item-active" style="position:relative;">
+                        <label class="panel-item-header">
+                            <input type="checkbox" checked disabled />
+                            <span class="panel-item-name">@cp</span>
+                            <span class="tube-tag" style="background:#fef3c7; color:#92400e;">Personalizado</span>
+                        </label>
+                        <button type="button" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:#ef4444; cursor:pointer; font-size:16px;" @onclick="@(() => customPanels.Remove(cp))">
+                            <i class="bi bi-x"></i>
+                        </button>
                     </div>
                 }
             </div>
@@ -253,6 +276,8 @@
     // Panel selection
     private List<Panel> allPanels = new();
     private HashSet<int> selectedPanelIds = new();
+    private string customPanelText = "";
+    private List<string> customPanels = new();
 
     // Keep references to original entities for updating
     private Sample? originalSample;
@@ -331,9 +356,19 @@
         // Load panels
         allPanels = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name).ToList();
         var existingPanels = await SampleService.GetSamplePanelsAsync(SampleId);
-        selectedPanelIds = existingPanels.Select(sp => sp.PanelId).ToHashSet();
+        selectedPanelIds = existingPanels.Where(sp => sp.PanelId.HasValue).Select(sp => sp.PanelId!.Value).ToHashSet();
+        customPanels = existingPanels.Where(sp => !sp.PanelId.HasValue && !string.IsNullOrWhiteSpace(sp.CustomText)).Select(sp => sp.CustomText!).ToList();
 
         isLoading = false;
+    }
+
+    private void AddCustomPanel()
+    {
+        if (!string.IsNullOrWhiteSpace(customPanelText))
+        {
+            customPanels.Add(customPanelText.Trim());
+            customPanelText = "";
+        }
     }
 
     private void TogglePanel(int panelId, bool isChecked)
@@ -369,7 +404,8 @@
             originalSample.Diagnosis = $"[TIPO: {actualType}] {model.Diagnosis}";
             originalSample.ReceptionDate = model.ReceptionDate;
             // Build panel summary text
-            var panelNames = allPanels.Where(p => selectedPanelIds.Contains(p.Id)).Select(p => p.Name);
+            var panelNames = allPanels.Where(p => selectedPanelIds.Contains(p.Id)).Select(p => p.Name).ToList();
+            panelNames.AddRange(customPanels);
             originalSample.StudyPanel = string.Join(", ", panelNames);
             originalSample.HasIncident = model.HasIncident;
             originalSample.IncidentsNotes = model.IncidentNotes ?? string.Empty;
@@ -377,14 +413,27 @@
 
             await SampleService.UpdateSampleAsync(originalSample);
 
-            // Save panels
-            var panelEntities = selectedPanelIds.Select((pid, idx) => new SamplePanel
+            // Save catalog panels
+            int order = 1;
+            var panelEntities = selectedPanelIds.Select(pid => new SamplePanel
             {
                 PanelId = pid,
                 IsRequested = true,
                 IsRead = false,
-                DisplayOrder = idx + 1
+                DisplayOrder = order++
             }).ToList();
+            // Add custom panels
+            foreach (var cp in customPanels)
+            {
+                panelEntities.Add(new SamplePanel
+                {
+                    PanelId = null,
+                    CustomText = cp,
+                    IsRequested = true,
+                    IsRead = false,
+                    DisplayOrder = order++
+                });
+            }
             await SampleService.SetSamplePanelsAsync(originalSample.Id, panelEntities);
 
             successMessage = "Registro actualizado correctamente.";

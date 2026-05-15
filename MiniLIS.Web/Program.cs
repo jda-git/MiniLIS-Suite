@@ -43,7 +43,8 @@ builder.Services.AddScoped<ISampleService, SampleService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddHubOptions(options => options.MaximumReceiveMessageSize = 10 * 1024 * 1024);
 
 builder.Services.AddControllersWithViews(); // Required for AccountController and Antiforgery filters 
 
