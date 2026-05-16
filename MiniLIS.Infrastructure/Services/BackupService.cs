@@ -153,7 +153,6 @@ namespace MiniLIS.Infrastructure.Services
             {
                 if (string.IsNullOrWhiteSpace(path))
                 {
-                    // Return drives
                     result.AddRange(DriveInfo.GetDrives()
                         .Where(d => d.IsReady)
                         .Select(d => d.Name));
@@ -162,14 +161,18 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     if (Directory.Exists(path))
                     {
-                        result.AddRange(Directory.GetDirectories(path)
-                            .Select(Path.GetFullPath));
+                        var dirs = Directory.GetDirectories(path);
+                        result.AddRange(dirs);
                     }
                 }
             }
-            catch (Exception)
+            catch (UnauthorizedAccessException)
             {
-                // Access denied or other errors, return empty list for this path
+                throw new Exception("Acceso denegado a esta carpeta por permisos del sistema.");
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error al explorar: {ex.Message}");
             }
             return await Task.FromResult(result.OrderBy(s => s).ToList());
         }

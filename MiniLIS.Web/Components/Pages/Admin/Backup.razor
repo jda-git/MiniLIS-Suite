@@ -177,10 +177,13 @@
                     {
                         @foreach (var item in browserItems)
                         {
-                            <div class="browser-item" @onclick="() => NavigateTo(item)">
-                                <i class="@(string.IsNullOrEmpty(currentBrowserPath) ? "bi bi-hdd-fill" : "bi bi-folder-fill text-warning")"></i>
-                                <span>@GetItemName(item)</span>
-                            </div>
+                            <button type="button" class="browser-item w-100 border-0 text-start" @onclick="() => NavigateTo(item)">
+                                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                                    <i class="@(string.IsNullOrEmpty(currentBrowserPath) ? "bi bi-hdd-fill" : "bi bi-folder-fill text-warning")"></i>
+                                    <span>@GetItemName(item)</span>
+                                </div>
+                                <i class="bi bi-chevron-right text-muted" style="font-size: 10px;"></i>
+                            </button>
                         }
                     }
                 </div>
@@ -288,7 +291,7 @@
     .btn-path-up { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
     .current-path { font-size: 13px; color: #334155; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .browser-list { max-height: 400px; overflow-y: auto; padding: 8px; }
-    .browser-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 8px; cursor: pointer; transition: background 0.1s; font-size: 14px; color: #334155; }
+    .browser-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 8px; cursor: pointer; transition: background 0.1s; font-size: 14px; color: #334155; background: #fff; }
     .browser-item:hover { background: #f1f5f9; }
     .browser-item i { font-size: 18px; }
 </style>
@@ -326,11 +329,25 @@
     private async Task RefreshBrowser()
     {
         browserItems = null;
-        browserItems = await BackupService.GetDirectoriesAsync(currentBrowserPath);
+        StateHasChanged(); // Show spinner
+        
+        try 
+        {
+            browserItems = await BackupService.GetDirectoriesAsync(currentBrowserPath);
+        }
+        catch (Exception ex)
+        {
+            browserItems = new List<string>();
+            await JS.InvokeVoidAsync("alert", "No se pudo acceder a esta carpeta: " + ex.Message);
+        }
+        
+        StateHasChanged();
     }
 
     private async Task NavigateTo(string path)
     {
+        if (string.IsNullOrEmpty(path)) return;
+        
         currentBrowserPath = path;
         await RefreshBrowser();
     }
