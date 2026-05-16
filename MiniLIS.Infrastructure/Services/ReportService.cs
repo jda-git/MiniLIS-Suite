@@ -104,6 +104,7 @@ namespace MiniLIS.Infrastructure.Services
                 if (sb.Length > 0) sb.Append(", ");
                 
                 sb.Append(val.Marker?.Name ?? "Marker");
+                sb.Append(" ");
                 sb.Append(val.IntensityValue);
 
                 if (!string.IsNullOrWhiteSpace(val.Percentage))
