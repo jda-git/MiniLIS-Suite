@@ -23,7 +23,7 @@ namespace MiniLIS.Infrastructure.Services
             _patientService = patientService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null)
+        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
         {
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
@@ -61,6 +61,7 @@ namespace MiniLIS.Infrastructure.Services
                     StudyPanel = studyPanel ?? string.Empty,
                     HasIncident = hasIncident,
                     IncidentsNotes = incidentNotes ?? string.Empty,
+                    RegisteredByUserId = registeredByUserId
                 };
 
                 _db.Samples.Add(sample);
@@ -119,6 +120,10 @@ namespace MiniLIS.Infrastructure.Services
                     .ThenInclude(cr => cr.Patient)
                 .Include(s => s.Panels)
                     .ThenInclude(sp => sp.Panel)
+                .Include(s => s.Panels)
+                    .ThenInclude(sp => sp.ReadByUser)
+                .Include(s => s.RegisteredByUser)
+                .Include(s => s.FinalizedByUser)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -153,7 +158,7 @@ namespace MiniLIS.Infrastructure.Services
                 .ToListAsync();
         }
 
-        public async Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status)
+        public async Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status, int? userId = null)
         {
             var sample = await _db.Samples.FindAsync(sampleId);
             if (sample == null) return false;
@@ -163,10 +168,12 @@ namespace MiniLIS.Infrastructure.Services
             if (status == SampleStatus.Finalizada && sample.FinalizedAt == null)
             {
                 sample.FinalizedAt = DateTime.Now;
+                sample.FinalizedByUserId = userId;
             }
             else if (status != SampleStatus.Finalizada)
             {
-                sample.FinalizedAt = null; // Reset if downgraded? Usually safer
+                sample.FinalizedAt = null;
+                sample.FinalizedByUserId = null;
             }
 
             await _db.SaveChangesAsync();

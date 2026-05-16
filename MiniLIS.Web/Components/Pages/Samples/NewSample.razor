@@ -10,6 +10,10 @@
 @inject IMasterDataService MasterService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components.Authorization
+@using MiniLIS.Domain.Identity
+@inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>Registro de Nueva Muestra - MiniLIS Suite</PageTitle>
 
@@ -471,6 +475,9 @@
 </style>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
     private RegistrationModel model = new();
     private string nextSampleNumber = "Cargando...";
     private string? errorMessage;
@@ -563,7 +570,11 @@
             panelNames.AddRange(customPanels);
             string studyPanelText = string.Join(", ", panelNames);
 
-            var sample = await SampleRegistry.RegisterSampleAsync(patient, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, nextSampleNumber);
+            var authState = await AuthStateTask;
+            var userObj = await UserManager.GetUserAsync(authState.User);
+            int? currentUserId = userObj?.Id;
+
+            var sample = await SampleRegistry.RegisterSampleAsync(patient, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, nextSampleNumber, currentUserId);
             
             await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
             Nav.NavigateTo("/muestras");

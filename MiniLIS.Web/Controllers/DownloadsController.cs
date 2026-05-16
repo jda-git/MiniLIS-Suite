@@ -16,12 +16,14 @@ namespace MiniLIS.Web.Controllers
         private readonly ApplicationDbContext _db;
         private readonly IDocumentService _documentService;
         private readonly ISampleService _sampleService;
+        private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager)
         {
             _db = db;
             _documentService = documentService;
             _sampleService = sampleService;
+            _userManager = userManager;
         }
 
         [HttpGet("informe/{id}/pdf/{fileName?}")]
@@ -43,8 +45,8 @@ namespace MiniLIS.Web.Controllers
 
                 if (report.Sample != null)
                 {
-                    report.Sample.Status = SampleStatus.Finalizada;
-                    report.Sample.UpdatedAtUtc = DateTime.UtcNow;
+                    var user = await _userManager.GetUserAsync(User);
+                    await _sampleService.UpdateSampleStatusAsync(report.Sample.Id, SampleStatus.Finalizada, user?.Id);
                 }
 
                 await _db.SaveChangesAsync();
@@ -85,8 +87,8 @@ namespace MiniLIS.Web.Controllers
                 // Actualizar estado a Finalizada
                 if (report.Sample != null)
                 {
-                    report.Sample.Status = SampleStatus.Finalizada;
-                    await _db.SaveChangesAsync();
+                    var user = await _userManager.GetUserAsync(User);
+                    await _sampleService.UpdateSampleStatusAsync(report.Sample.Id, SampleStatus.Finalizada, user?.Id);
                 }
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");

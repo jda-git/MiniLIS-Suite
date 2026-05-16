@@ -31,6 +31,12 @@ namespace MiniLIS.Domain.Entities
         public SampleStatus Status { get; set; } = SampleStatus.Recibida;
         
         public DateTime? FinalizedAt { get; set; }
+        
+        public int? RegisteredByUserId { get; set; }
+        public virtual MiniLIS.Domain.Identity.ApplicationUser? RegisteredByUser { get; set; }
+
+        public int? FinalizedByUserId { get; set; }
+        public virtual MiniLIS.Domain.Identity.ApplicationUser? FinalizedByUser { get; set; }
 
         [MaxLength(500)]
         public string IncidentsNotes { get; set; } = string.Empty;
