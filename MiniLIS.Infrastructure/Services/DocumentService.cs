@@ -191,11 +191,12 @@ namespace MiniLIS.Infrastructure.Services
                         {
                             if (!string.IsNullOrWhiteSpace(fullReport.SelectedSignatures))
                             {
-                                var facs = fullReport.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                                foreach (var fac in facs)
-                                {
-                                    c.Item().Text($"{fac.Trim()}").FontSize(10);
-                                }
+                                var facs = fullReport.SelectedSignatures.Contains("|") 
+                                    ? fullReport.SelectedSignatures.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                                    : fullReport.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                                
+                                var signaturesText = string.Join("   -   ", facs.Select(f => f.Trim()));
+                                c.Item().Text(signaturesText).FontSize(8);
                             }
                         });
                         
@@ -400,11 +401,12 @@ namespace MiniLIS.Infrastructure.Services
             sb.Append(@"<text:p text:style-name=""Label"">Validado por:</text:p>");
             if (!string.IsNullOrWhiteSpace(report.SelectedSignatures))
             {
-                var facs = report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                foreach (var fac in facs)
-                {
-                    sb.Append($@"<text:p text:style-name=""Value"">{EncodeForOdt(fac.Trim())}</text:p>");
-                }
+                var facs = report.SelectedSignatures.Contains("|")
+                    ? report.SelectedSignatures.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                    : report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                
+                var signaturesText = string.Join("   -   ", facs.Select(f => f.Trim()));
+                sb.Append($@"<text:p text:style-name=""SmallValue"">{EncodeForOdt(signaturesText)}</text:p>");
             }
             
             sb.Append("</office:text></office:body></office:document-content>");
@@ -458,6 +460,9 @@ namespace MiniLIS.Infrastructure.Services
     </style:style>
     <style:style style:name=""Value"" style:family=""text"">
       <style:text-properties fo:font-weight=""normal"" fo:color=""#334155""/>
+    </style:style>
+    <style:style style:name=""SmallValue"" style:family=""paragraph"">
+      <style:text-properties fo:font-size=""8pt"" fo:color=""#334155""/>
     </style:style>
     <style:style style:name=""SectionBlue"" style:family=""paragraph"">
       <style:paragraph-properties fo:margin-top=""0.4cm"" fo:margin-bottom=""0.1cm""/>

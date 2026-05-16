@@ -166,7 +166,7 @@
     <!-- ═══════════════  SECCIÓN 5 · FIRMAS  ═══════════════ -->
     <fieldset class="rpt-fieldset mt-3">
         <legend>Firmas</legend>
-        <div class="d-flex flex-wrap gap-4 py-2 px-1">
+        <div class="d-flex flex-row flex-wrap gap-4 py-2 px-1 align-items-center">
             @if(facultativosList.Any())
             {
                 @foreach (var fac in facultativosList)
@@ -268,8 +268,8 @@
     .marker-clear { background: none; border: none; padding: 2px; cursor: pointer; font-size: 14px; }
 
     /* ── Signatories ── */
-    .rpt-signatory { font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; color: #334155; font-weight: 600; }
-    .circular-checkbox { position: relative; width: 18px; height: 18px; }
+    .rpt-signatory { font-size: 13px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; color: #334155; font-weight: 600; white-space: nowrap; }
+    .circular-checkbox { position: relative; width: 18px; height: 18px; flex-shrink: 0; }
     .circular-checkbox input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
     .circular-checkbox .checkmark { position: absolute; top: 0; left: 0; height: 18px; width: 18px; background-color: #fff; border: 1.5px solid #cbd5e1; border-radius: 50%; transition: all 0.2s; }
     .circular-checkbox:hover input ~ .checkmark { border-color: #94a3b8; }
@@ -365,7 +365,12 @@
 
         // Load existing custom signatories
         if (!string.IsNullOrWhiteSpace(report.SelectedSignatures))
-            selectedFacultativos = report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
+        {
+            if (report.SelectedSignatures.Contains("|"))
+                selectedFacultativos = report.SelectedSignatures.Split('|', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
+            else
+                selectedFacultativos = report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
+        }
 
         // Load conclusions if template already selected
         if (report.TemplateId.HasValue)
@@ -468,7 +473,7 @@
                 report.Sample.Diagnosis = string.IsNullOrWhiteSpace(t) ? motivoSolicitud : $"[TIPO: {t}] {motivoSolicitud}";
             }
 
-            report.SelectedSignatures = selectedFacultativos.Any() ? string.Join(", ", selectedFacultativos) : null;
+            report.SelectedSignatures = selectedFacultativos.Any() ? string.Join("|", selectedFacultativos) : null;
             await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), new List<int>());
         }
         finally
