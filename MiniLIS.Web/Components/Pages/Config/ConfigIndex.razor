@@ -37,6 +37,9 @@
         <button class="config-tab @(activeTab == "header" ? "active" : "")" @onclick='() => SetTab("header")'>
             <i class="bi bi-image"></i> Cabecera Informe
         </button>
+        <button class="config-tab @(activeTab == "signatures" ? "active" : "")" @onclick='() => SetTab("signatures")'>
+            <i class="bi bi-pen"></i> Firmas
+        </button>
     </div>
 
     <!-- Content Area -->
@@ -348,6 +351,36 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        }
+
+        @* ════════ TAB: FIRMAS ════════ *@
+        else if (activeTab == "signatures")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Facultativos Firmantes</h2>
+                    <p class="section-subtitle">Configura la lista de facultativos que podrán firmar los informes. (Escribe uno por línea)</p>
+                </div>
+                <button class="btn-config btn-config-primary" @onclick="SaveSignatures">
+                    <i class="bi bi-save"></i> Guardar Firmas
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div class="status-banner @(isError ? "status-error" : "status-ok")">
+                    <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle")"></i>
+                    <span>@statusMessage</span>
+                    <button class="status-close" @onclick="() => statusMessage = null"><i class="bi bi-x"></i></button>
+                </div>
+            }
+
+            <div class="header-settings-panel" style="max-width: 600px;">
+                <div class="form-field">
+                    <label class="field-label">Facultativos (uno por línea)</label>
+                    <textarea class="field-input field-textarea" rows="10" @bind="facultativosText" placeholder="Dr. Juan Pérez&#10;Dra. Ana Gómez&#10;Dr. Luis Sánchez"></textarea>
                 </div>
             </div>
         }
@@ -840,10 +873,14 @@
     private string headerLine1 = "";
     private string headerLine2 = "";
 
+    // Signatures
+    private string facultativosText = "";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
         await LoadHeaderSettings();
+        await LoadSignatures();
     }
 
     private async Task LoadData()
@@ -983,6 +1020,27 @@
             await MasterService.SaveSettingAsync("Header:Line1", headerLine1, "Cabecera Línea 1");
             await MasterService.SaveSettingAsync("Header:Line2", headerLine2, "Cabecera Línea 2");
             statusMessage = "Configuración de cabecera guardada con éxito.";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error al guardar: " + ex.Message;
+            isError = true;
+        }
+    }
+
+    // ── SIGNATURES ──
+    private async Task LoadSignatures()
+    {
+        facultativosText = await MasterService.GetSettingAsync("Signatures:Facultativos") ?? "";
+    }
+
+    private async Task SaveSignatures()
+    {
+        try
+        {
+            await MasterService.SaveSettingAsync("Signatures:Facultativos", facultativosText, "Lista de Facultativos Firmantes (separados por línea)");
+            statusMessage = "Facultativos guardados con éxito.";
             isError = false;
         }
         catch (Exception ex)

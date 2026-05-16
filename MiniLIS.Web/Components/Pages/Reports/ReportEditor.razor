@@ -167,13 +167,23 @@
     <fieldset class="rpt-fieldset mt-3">
         <legend>Firmas</legend>
         <div class="d-flex flex-wrap gap-4 py-2 px-1">
-            @foreach (var user in availableSignatories)
+            @if(facultativosList.Any())
             {
-                <label class="rpt-signatory">
-                    <input type="checkbox" checked="@selectedSignatoryIds.Contains(user.Id)"
-                           @onchange="@(e => ToggleSignatory(user.Id, e.Value))" />
-                    @user.FullName
-                </label>
+                @foreach (var fac in facultativosList)
+                {
+                    <label class="rpt-signatory">
+                        <div class="circular-checkbox">
+                            <input type="checkbox" checked="@selectedFacultativos.Contains(fac)"
+                                   @onchange="@(e => ToggleFacultativo(fac, e.Value))" />
+                            <span class="checkmark"></span>
+                        </div>
+                        @fac
+                    </label>
+                }
+            }
+            else
+            {
+                <span class="text-muted small">No hay facultativos configurados en Ajustes.</span>
             }
         </div>
     </fieldset>
@@ -258,8 +268,14 @@
     .marker-clear { background: none; border: none; padding: 2px; cursor: pointer; font-size: 14px; }
 
     /* ── Signatories ── */
-    .rpt-signatory { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; }
-    .rpt-signatory input { accent-color: #0d6efd; }
+    .rpt-signatory { font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; color: #334155; font-weight: 600; }
+    .circular-checkbox { position: relative; width: 18px; height: 18px; }
+    .circular-checkbox input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
+    .circular-checkbox .checkmark { position: absolute; top: 0; left: 0; height: 18px; width: 18px; background-color: #fff; border: 1.5px solid #cbd5e1; border-radius: 50%; transition: all 0.2s; }
+    .circular-checkbox:hover input ~ .checkmark { border-color: #94a3b8; }
+    .circular-checkbox input:checked ~ .checkmark { background-color: #3b82f6; border-color: #3b82f6; }
+    .circular-checkbox .checkmark:after { content: ""; position: absolute; display: none; }
+    .circular-checkbox input:checked ~ .checkmark:after { display: block; left: 6px; top: 3px; width: 4px; height: 8px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 
     /* ── Actions ── */
     .rpt-actions { display: flex; justify-content: space-between; align-items: center; }
@@ -271,9 +287,9 @@
     private SampleReport? report;
     private List<ReportTemplate> availableTemplates = new();
     private List<Panel> availablePanels = new();
-    private List<ApplicationUser> availableSignatories = new();
     private List<TemplateConclusion> templateConclusions = new();
-    private List<int> selectedSignatoryIds = new();
+    private List<string> facultativosList = new();
+    private List<string> selectedFacultativos = new();
     private List<string> intensityOptions = new();
     private bool isSaving = false;
     private List<string> readPanelNames = new();
@@ -295,7 +311,12 @@
         report = await ReportService.GetOrCreateReportAsync(SampleId);
         availableTemplates = await MasterService.GetAllTemplatesAsync();
         availablePanels = await MasterService.GetAllPanelsAsync();
-        availableSignatories = await ReportService.GetAvailableSignatoriesAsync();
+
+        var facSetting = await MasterService.GetSettingAsync("Signatures:Facultativos");
+        if (!string.IsNullOrWhiteSpace(facSetting))
+        {
+            facultativosList = facSetting.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
+        }
 
         var intensities = await MasterService.GetIntensitySettingsAsync();
         intensityOptions = intensities.Select(i => i.Value).ToList();
@@ -342,9 +363,9 @@
             report.PanelsUsedText = string.Join("\n", tubeLines);
         }
 
-        // Load existing signatories
-        if (report.Signatories.Any())
-            selectedSignatoryIds = report.Signatories.Select(s => s.UserId).ToList();
+        // Load existing custom signatories
+        if (!string.IsNullOrWhiteSpace(report.SelectedSignatures))
+            selectedFacultativos = report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
 
         // Load conclusions if template already selected
         if (report.TemplateId.HasValue)
@@ -396,15 +417,15 @@
     }
 
 
-    private void ToggleSignatory(int userId, object? isChecked)
+    private void ToggleFacultativo(string name, object? isChecked)
     {
         if (isChecked is bool checkedValue && checkedValue)
         {
-            if (!selectedSignatoryIds.Contains(userId)) selectedSignatoryIds.Add(userId);
+            if (!selectedFacultativos.Contains(name)) selectedFacultativos.Add(name);
         }
         else
         {
-            selectedSignatoryIds.Remove(userId);
+            selectedFacultativos.Remove(name);
         }
     }
 
@@ -447,7 +468,8 @@
                 report.Sample.Diagnosis = string.IsNullOrWhiteSpace(t) ? motivoSolicitud : $"[TIPO: {t}] {motivoSolicitud}";
             }
 
-            await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), selectedSignatoryIds);
+            report.SelectedSignatures = selectedFacultativos.Any() ? string.Join(", ", selectedFacultativos) : null;
+            await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), new List<int>());
         }
         finally
         {

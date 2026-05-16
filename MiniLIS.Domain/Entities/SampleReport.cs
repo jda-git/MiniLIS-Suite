@@ -32,6 +32,9 @@ namespace MiniLIS.Domain.Entities
 
         public DateTime? ReportDate { get; set; }
         public bool IsFinalized { get; set; } = false;
+        
+        /// <summary>Comma-separated list of selected facultativos for signatures.</summary>
+        public string? SelectedSignatures { get; set; }
 
         public ICollection<ReportMarkerValue> MarkerValues { get; set; } = new List<ReportMarkerValue>();
         public ICollection<ReportSignatory> Signatories { get; set; } = new List<ReportSignatory>();

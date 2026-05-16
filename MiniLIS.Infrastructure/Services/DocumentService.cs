@@ -189,9 +189,13 @@ namespace MiniLIS.Infrastructure.Services
                     {
                         r.RelativeItem().Column(c =>
                         {
-                            foreach (var sig in fullReport.Signatories)
+                            if (!string.IsNullOrWhiteSpace(fullReport.SelectedSignatures))
                             {
-                                c.Item().Text($"Dr. {sig.User?.FullName ?? "Firmante"}").FontSize(10);
+                                var facs = fullReport.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                                foreach (var fac in facs)
+                                {
+                                    c.Item().Text($"{fac.Trim()}").FontSize(10);
+                                }
                             }
                         });
                         
@@ -394,9 +398,13 @@ namespace MiniLIS.Infrastructure.Services
             // Footer
             sb.Append("<text:p text:style-name=\"Separator\" />");
             sb.Append(@"<text:p text:style-name=""Label"">Validado por:</text:p>");
-            foreach (var sig in report.Signatories)
+            if (!string.IsNullOrWhiteSpace(report.SelectedSignatures))
             {
-                sb.Append($@"<text:p text:style-name=""Value"">{EncodeForOdt(sig.User?.FullName ?? "")}</text:p>");
+                var facs = report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var fac in facs)
+                {
+                    sb.Append($@"<text:p text:style-name=""Value"">{EncodeForOdt(fac.Trim())}</text:p>");
+                }
             }
             
             sb.Append("</office:text></office:body></office:document-content>");
