@@ -1,0 +1,389 @@
+@page "/usuarios"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MiniLIS.Domain.Identity
+@attribute [Authorize(Roles = "Administrador")]
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<ApplicationRole> RoleManager
+
+<PageTitle>Gestión de Usuarios - MiniLIS Suite</PageTitle>
+
+<div class="usr-container">
+    <!-- Header -->
+    <div class="usr-header">
+        <div>
+            <h1 class="usr-title"><i class="bi bi-people-fill me-2 text-info"></i>Gestión de Usuarios</h1>
+            <p class="usr-subtitle">Altas, bajas y modificación de cuentas del sistema</p>
+        </div>
+        <button class="btn-usr-new" @onclick="ShowCreateForm">
+            <i class="bi bi-person-plus me-2"></i>Nuevo Usuario
+        </button>
+    </div>
+
+    <!-- Feedback -->
+    @if (!string.IsNullOrEmpty(SuccessMsg))
+    {
+        <div class="alert alert-success animate-fade-in mb-4">
+            <i class="bi bi-check-circle me-2"></i>@SuccessMsg
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(ErrorMsg))
+    {
+        <div class="alert alert-danger animate-fade-in mb-4">
+            <i class="bi bi-exclamation-triangle me-2"></i>@ErrorMsg
+        </div>
+    }
+
+    <!-- User table -->
+    <div class="usr-card">
+        <table class="usr-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Usuario / Email</th>
+                    <th>Rol</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in users)
+                {
+                    <tr class="@(u.IsActive ? "" : "row-inactive")">
+                        <td><strong>@(u.FullName ?? "—")</strong></td>
+                        <td class="text-muted">@u.UserName</td>
+                        <td>
+                            @foreach (var r in userRoles.GetValueOrDefault(u.Id, new List<string>()))
+                            {
+                                <span class="badge-role">@r</span>
+                            }
+                        </td>
+                        <td>
+                            @if (u.IsActive)
+                            {
+                                <span class="badge-active">Activo</span>
+                            }
+                            else
+                            {
+                                <span class="badge-inactive">Inactivo</span>
+                            }
+                        </td>
+                        <td class="actions-cell">
+                            <button class="btn-usr-action btn-edit" @onclick="() => ShowEditForm(u)" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn-usr-action btn-pwd" @onclick="() => ShowPwdForm(u)" title="Cambiar contraseña">
+                                <i class="bi bi-key"></i>
+                            </button>
+                            <button class="btn-usr-action @(u.IsActive ? "btn-disable" : "btn-enable")"
+                                    @onclick="() => ToggleActive(u)"
+                                    title="@(u.IsActive ? "Desactivar" : "Activar")">
+                                <i class="bi @(u.IsActive ? "bi-person-slash" : "bi-person-check")"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal overlay -->
+    @if (showModal)
+    {
+        <div class="modal-overlay" @onclick="CloseModal">
+            <div class="modal-panel" @onclick:stopPropagation>
+
+                @if (modalMode == "create" || modalMode == "edit")
+                {
+                    <div class="modal-header">
+                        <h2>@(modalMode == "create" ? "Nuevo Usuario" : "Editar Usuario")</h2>
+                        <button class="btn-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label-dark">Nombre completo</label>
+                            <input class="input-dark" type="text" @bind="editFullName" placeholder="Dr. Nombre Apellido" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label-dark">Usuario (email)</label>
+                            <input class="input-dark" type="email" @bind="editEmail"
+                                   placeholder="usuario@hospital.es"
+                                   disabled="@(modalMode == "edit")" />
+                        </div>
+                        @if (modalMode == "create")
+                        {
+                            <div class="mb-3">
+                                <label class="form-label-dark">Contraseña inicial</label>
+                                <input class="input-dark" type="password" @bind="editPassword" placeholder="Mínimo 6 caracteres" />
+                                <small class="text-muted">El usuario deberá cambiarla en el primer acceso.</small>
+                            </div>
+                        }
+                        <div class="mb-4">
+                            <label class="form-label-dark">Rol</label>
+                            <select class="input-dark" @bind="editRole">
+                                <option value="">-- Seleccionar rol --</option>
+                                <option value="Administrador">Administrador</option>
+                                <option value="Facultativo">Facultativo</option>
+                                <option value="Técnico">Técnico</option>
+                            </select>
+                        </div>
+                        <button class="btn-usr-save" @onclick="SaveUser">
+                            <i class="bi bi-floppy me-2"></i>Guardar
+                        </button>
+                    </div>
+                }
+
+                @if (modalMode == "pwd")
+                {
+                    <div class="modal-header">
+                        <h2>Cambiar contraseña — @selectedUser?.FullName</h2>
+                        <button class="btn-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label-dark">Nueva contraseña</label>
+                            <input class="input-dark" type="password" @bind="editPassword" placeholder="Mínimo 6 caracteres" />
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label-dark">Confirmar contraseña</label>
+                            <input class="input-dark" type="password" @bind="editPassword2" placeholder="Repite la contraseña" />
+                        </div>
+                        <div class="form-check mb-4">
+                            <input class="form-check-input" type="checkbox" id="chkForce" @bind="forceChangeOnLogin" />
+                            <label class="form-check-label text-muted" for="chkForce">Obligar al usuario a cambiarla en el próximo acceso</label>
+                        </div>
+                        <button class="btn-usr-save" @onclick="SavePassword">
+                            <i class="bi bi-key me-2"></i>Actualizar contraseña
+                        </button>
+                    </div>
+                }
+
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .usr-container { padding: 32px; max-width: 1100px; margin: 0 auto; }
+
+    .usr-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 28px;
+    }
+    .usr-title { font-size: 1.6rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .usr-subtitle { color: #64748b; font-size: 0.85rem; margin: 4px 0 0 0; }
+
+    .btn-usr-new {
+        background: #0ea5e9; color: white; border: none; border-radius: 8px;
+        padding: 11px 20px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        display: flex; align-items: center;
+    }
+    .btn-usr-new:hover { background: #0284c7; transform: translateY(-1px); box-shadow: 0 4px 15px rgba(14,165,233,0.3); }
+
+    .usr-card {
+        background: white; border-radius: 12px; border: 1px solid #e2e8f0;
+        overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+
+    .usr-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .usr-table thead th {
+        background: #f8fafc; color: #475569; font-size: 0.75rem;
+        font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+        padding: 14px 20px; text-align: left; border-bottom: 1px solid #e2e8f0;
+    }
+    .usr-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
+    .usr-table tbody tr:hover { background: #f8fafc; }
+    .usr-table tbody td { padding: 14px 20px; color: #334155; vertical-align: middle; }
+    .row-inactive { opacity: 0.55; }
+
+    .badge-role {
+        background: #dbeafe; color: #1d4ed8; font-size: 0.72rem;
+        font-weight: 600; padding: 3px 10px; border-radius: 20px;
+        display: inline-block; margin-right: 4px;
+    }
+    .badge-active { background: #dcfce7; color: #15803d; font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+    .badge-inactive { background: #fee2e2; color: #dc2626; font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+
+    .actions-cell { display: flex; gap: 6px; }
+    .btn-usr-action {
+        border: none; border-radius: 6px; width: 32px; height: 32px;
+        cursor: pointer; font-size: 14px; display: flex; align-items: center;
+        justify-content: center; transition: all 0.2s;
+    }
+    .btn-edit   { background: #eff6ff; color: #2563eb; } .btn-edit:hover   { background: #2563eb; color: white; }
+    .btn-pwd    { background: #fefce8; color: #a16207; } .btn-pwd:hover    { background: #ca8a04; color: white; }
+    .btn-disable{ background: #fff1f2; color: #e11d48; } .btn-disable:hover{ background: #e11d48; color: white; }
+    .btn-enable { background: #f0fdf4; color: #16a34a; } .btn-enable:hover { background: #16a34a; color: white; }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 9999; padding: 20px;
+    }
+    .modal-panel {
+        background: #1e293b; border: 1px solid #334155; border-radius: 16px;
+        width: 100%; max-width: 480px; box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+        overflow: hidden;
+    }
+    .modal-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 24px 28px; border-bottom: 1px solid #334155;
+    }
+    .modal-header h2 { color: #f1f5f9; font-size: 1.1rem; font-weight: 700; margin: 0; }
+    .btn-modal-close {
+        background: none; border: none; color: #94a3b8; font-size: 18px;
+        cursor: pointer; transition: color 0.2s;
+    }
+    .btn-modal-close:hover { color: #f1f5f9; }
+    .modal-body { padding: 28px; }
+    .form-label-dark { display: block; color: #94a3b8; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .input-dark {
+        width: 100%; background: rgba(15,23,42,0.6); border: 1px solid #334155;
+        border-radius: 6px; padding: 11px 14px; color: #f1f5f9; font-size: 0.95rem;
+        outline: none; transition: border-color 0.2s; box-sizing: border-box;
+    }
+    .input-dark:focus { border-color: #0ea5e9; }
+    .input-dark:disabled { opacity: 0.5; }
+    .btn-usr-save {
+        width: 100%; padding: 13px; background: #0ea5e9; color: white;
+        border: none; border-radius: 8px; font-weight: 700; cursor: pointer;
+        font-size: 0.9rem; transition: all 0.2s; display: flex; align-items: center; justify-content: center;
+    }
+    .btn-usr-save:hover { background: #0284c7; box-shadow: 0 0 20px rgba(14,165,233,0.3); }
+
+    .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+
+@code {
+    private List<ApplicationUser> users = new();
+    private Dictionary<int, List<string>> userRoles = new();
+    private string? SuccessMsg;
+    private string? ErrorMsg;
+    private bool showModal = false;
+    private string modalMode = "create";  // create | edit | pwd
+    private ApplicationUser? selectedUser;
+
+    // Form fields
+    private string editFullName = "";
+    private string editEmail = "";
+    private string editPassword = "";
+    private string editPassword2 = "";
+    private string editRole = "";
+    private bool forceChangeOnLogin = true;
+
+    protected override async Task OnInitializedAsync() => await LoadUsers();
+
+    private async Task LoadUsers()
+    {
+        users = UserManager.Users.OrderBy(u => u.FullName).ToList();
+        userRoles.Clear();
+        foreach (var u in users)
+        {
+            var roles = await UserManager.GetRolesAsync(u);
+            userRoles[u.Id] = roles.ToList();
+        }
+    }
+
+    private void ShowCreateForm()
+    {
+        selectedUser = null;
+        editFullName = editEmail = editPassword = editPassword2 = editRole = "";
+        modalMode = "create";
+        showModal = true;
+        ClearMessages();
+    }
+
+    private async Task ShowEditForm(ApplicationUser u)
+    {
+        selectedUser = u;
+        editFullName = u.FullName ?? "";
+        editEmail = u.Email ?? "";
+        editRole = (await UserManager.GetRolesAsync(u)).FirstOrDefault() ?? "";
+        modalMode = "edit";
+        showModal = true;
+        ClearMessages();
+    }
+
+    private void ShowPwdForm(ApplicationUser u)
+    {
+        selectedUser = u;
+        editPassword = editPassword2 = "";
+        forceChangeOnLogin = false;
+        modalMode = "pwd";
+        showModal = true;
+        ClearMessages();
+    }
+
+    private void CloseModal() { showModal = false; }
+
+    private void ClearMessages() { SuccessMsg = null; ErrorMsg = null; }
+
+    private async Task SaveUser()
+    {
+        ClearMessages();
+        if (modalMode == "create")
+        {
+            if (string.IsNullOrWhiteSpace(editEmail) || string.IsNullOrWhiteSpace(editPassword))
+            { ErrorMsg = "El email y la contraseña son obligatorios."; return; }
+
+            var newUser = new ApplicationUser
+            {
+                UserName = editEmail,
+                Email = editEmail,
+                FullName = editFullName,
+                EmailConfirmed = true,
+                IsActive = true,
+                MustChangePassword = true
+            };
+            var result = await UserManager.CreateAsync(newUser, editPassword);
+            if (!result.Succeeded) { ErrorMsg = string.Join(" ", result.Errors.Select(e => e.Description)); return; }
+            if (!string.IsNullOrEmpty(editRole)) await UserManager.AddToRoleAsync(newUser, editRole);
+            SuccessMsg = $"Usuario '{editEmail}' creado. Deberá cambiar la contraseña en el primer acceso.";
+        }
+        else if (modalMode == "edit" && selectedUser != null)
+        {
+            selectedUser.FullName = editFullName;
+            var result = await UserManager.UpdateAsync(selectedUser);
+            if (!result.Succeeded) { ErrorMsg = string.Join(" ", result.Errors.Select(e => e.Description)); return; }
+
+            // Update role
+            var currentRoles = await UserManager.GetRolesAsync(selectedUser);
+            await UserManager.RemoveFromRolesAsync(selectedUser, currentRoles);
+            if (!string.IsNullOrEmpty(editRole)) await UserManager.AddToRoleAsync(selectedUser, editRole);
+            SuccessMsg = "Usuario actualizado correctamente.";
+        }
+
+        await LoadUsers();
+        showModal = false;
+    }
+
+    private async Task SavePassword()
+    {
+        ClearMessages();
+        if (selectedUser == null) return;
+        if (editPassword != editPassword2) { ErrorMsg = "Las contraseñas no coinciden."; return; }
+        if (string.IsNullOrWhiteSpace(editPassword)) { ErrorMsg = "Introduce una contraseña."; return; }
+
+        var token = await UserManager.GeneratePasswordResetTokenAsync(selectedUser);
+        var result = await UserManager.ResetPasswordAsync(selectedUser, token, editPassword);
+        if (!result.Succeeded) { ErrorMsg = string.Join(" ", result.Errors.Select(e => e.Description)); return; }
+
+        selectedUser.MustChangePassword = forceChangeOnLogin;
+        await UserManager.UpdateAsync(selectedUser);
+
+        SuccessMsg = $"Contraseña de '{selectedUser.FullName ?? selectedUser.UserName}' actualizada.";
+        await LoadUsers();
+        showModal = false;
+    }
+
+    private async Task ToggleActive(ApplicationUser u)
+    {
+        ClearMessages();
+        u.IsActive = !u.IsActive;
+        await UserManager.UpdateAsync(u);
+        SuccessMsg = u.IsActive ? $"Usuario '{u.FullName ?? u.UserName}' activado." : $"Usuario '{u.FullName ?? u.UserName}' desactivado.";
+        await LoadUsers();
+    }
+}

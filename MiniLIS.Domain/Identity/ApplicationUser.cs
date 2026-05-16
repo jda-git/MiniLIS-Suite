@@ -7,5 +7,6 @@ namespace MiniLIS.Domain.Identity
         public string? FullName { get; set; }
         public string? SignatureData { get; set; }
         public bool IsActive { get; set; } = true;
+        public bool MustChangePassword { get; set; } = false;
     }
 }

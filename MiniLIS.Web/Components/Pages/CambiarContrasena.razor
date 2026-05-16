@@ -1,0 +1,191 @@
+@page "/cambiar-contrasena"
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject NavigationManager Nav
+
+<PageTitle>Cambiar Contraseña - MiniLIS Suite</PageTitle>
+
+<div class="chpwd-overlay">
+    <div class="chpwd-card animate-fade-in">
+        <div class="chpwd-header">
+            <i class="bi bi-shield-lock text-info" style="font-size:2rem;"></i>
+            <div>
+                <h1 class="chpwd-title">Cambiar Contraseña</h1>
+                <p class="chpwd-subtitle">
+                    @if (IsForcedChange)
+                    {
+                        <span class="badge bg-warning text-dark">⚠ Cambio obligatorio en primer acceso</span>
+                    }
+                    else
+                    {
+                        <span>Actualiza tu clave de acceso</span>
+                    }
+                </p>
+            </div>
+        </div>
+
+        <div class="chpwd-body">
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger mb-4">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i> @ErrorMessage
+                </div>
+            }
+
+            <form action="/account/change-password" method="post">
+                <AntiforgeryToken />
+
+                @if (!IsForcedChange)
+                {
+                    <div class="mb-4">
+                        <label class="chpwd-label">Contraseña actual</label>
+                        <input type="password" name="CurrentPassword" class="chpwd-input" placeholder="••••••••" required />
+                    </div>
+                }
+
+                <div class="mb-4">
+                    <label class="chpwd-label">Nueva contraseña</label>
+                    <input type="password" name="NewPassword" class="chpwd-input" placeholder="Mínimo 6 caracteres" required />
+                </div>
+
+                <div class="mb-5">
+                    <label class="chpwd-label">Confirmar nueva contraseña</label>
+                    <input type="password" name="ConfirmPassword" class="chpwd-input" placeholder="Repite la contraseña" required />
+                </div>
+
+                <button type="submit" class="btn-chpwd-action">
+                    <i class="bi bi-check-circle me-2"></i> GUARDAR NUEVA CONTRASEÑA
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .chpwd-overlay {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        padding: 20px;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    .chpwd-card {
+        background: rgba(30,41,59,0.85);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(51,65,85,0.8);
+        border-radius: 12px;
+        width: 100%;
+        max-width: 460px;
+        padding: 40px;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }
+
+    .chpwd-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 32px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid rgba(51,65,85,0.6);
+    }
+
+    .chpwd-title {
+        color: #f1f5f9;
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin: 0;
+    }
+
+    .chpwd-subtitle {
+        color: #94a3b8;
+        font-size: 0.8rem;
+        margin: 4px 0 0 0;
+    }
+
+    .chpwd-body { }
+
+    .chpwd-label {
+        display: block;
+        color: #94a3b8;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }
+
+    .chpwd-input {
+        width: 100%;
+        background: rgba(15,23,42,0.5);
+        border: 1px solid rgba(51,65,85,0.8);
+        border-radius: 6px;
+        padding: 13px 16px;
+        color: #f1f5f9;
+        font-size: 1rem;
+        outline: none;
+        transition: all 0.2s;
+        box-sizing: border-box;
+    }
+
+    .chpwd-input:focus {
+        border-color: #0ea5e9;
+        background: rgba(15,23,42,0.7);
+    }
+
+    .btn-chpwd-action {
+        width: 100%;
+        padding: 15px;
+        background: #0ea5e9;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        font-size: 0.9rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-chpwd-action:hover {
+        background: #0284c7;
+        box-shadow: 0 0 25px rgba(14,165,233,0.4);
+        transform: translateY(-2px);
+    }
+
+    .animate-fade-in {
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Error { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private string? ErrorMessage => Error;
+    private bool IsForcedChange { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthStateTask != null)
+        {
+            var state = await AuthStateTask;
+            // The page URL itself signals forced change; AccountController sets the flag
+            // We check the query string or just always show forced layout when navigated from login
+            IsForcedChange = Nav.Uri.Contains("/cambiar-contrasena") && string.IsNullOrEmpty(Error);
+        }
+    }
+}

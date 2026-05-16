@@ -40,7 +40,8 @@ namespace MiniLIS.Infrastructure.Seed
                     Email = adminEmail,
                     FullName = "Administrador del Sistema",
                     EmailConfirmed = true,
-                    IsActive = true
+                    IsActive = true,
+                    MustChangePassword = true
                 };
 
                 var createPowerUser = await userManager.CreateAsync(admin, "Admin123!");

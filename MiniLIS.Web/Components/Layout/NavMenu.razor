@@ -24,9 +24,15 @@
         <i class="bi bi-bell"></i> Notificaciones
     </NavLink>
     
-    <div class="iso-nav-link text-warning mt-2" style="cursor:pointer">
-        <i class="bi bi-shield-check"></i> Panel Avanzado
-    </div>
+    <div class="nav-section-title">PANEL AVANZADO</div>
+
+    <AuthorizeView Roles="Administrador">
+        <Authorized>
+            <NavLink class="iso-nav-link" href="usuarios">
+                <i class="bi bi-people"></i> Usuarios
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
 </nav>
 
 <style>

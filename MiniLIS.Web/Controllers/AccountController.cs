@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using MiniLIS.Domain.Identity;
@@ -30,6 +31,13 @@ namespace MiniLIS.Web.Controllers
                 var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password, model.RememberMe, lockoutOnFailure: false);
                 if (result.Succeeded)
                 {
+                    // Check if user must change password
+                    var user = await _userManager.FindByNameAsync(model.Username);
+                    if (user != null && user.MustChangePassword)
+                    {
+                        return LocalRedirect("/cambiar-contrasena");
+                    }
+
                     return LocalRedirect(model.ReturnUrl ?? "/");
                 }
                 
@@ -53,6 +61,41 @@ namespace MiniLIS.Web.Controllers
             await _signInManager.SignOutAsync();
             return LocalRedirect("/");
         }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ChangePassword([FromForm] ChangePasswordViewModel model)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return Redirect("/login");
+
+            if (model.NewPassword != model.ConfirmPassword)
+                return Redirect("/cambiar-contrasena?error=Las contraseñas no coinciden");
+
+            IdentityResult result;
+            if (user.MustChangePassword)
+            {
+                // Force-reset without knowing old password
+                var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                result = await _userManager.ResetPasswordAsync(user, token, model.NewPassword);
+            }
+            else
+            {
+                result = await _userManager.ChangePasswordAsync(user, model.CurrentPassword ?? "", model.NewPassword);
+            }
+
+            if (result.Succeeded)
+            {
+                user.MustChangePassword = false;
+                await _userManager.UpdateAsync(user);
+                await _signInManager.RefreshSignInAsync(user);
+                return LocalRedirect("/?notice=password_changed");
+            }
+
+            var errors = string.Join("; ", result.Errors.Select(e => e.Description));
+            return Redirect($"/cambiar-contrasena?error={Uri.EscapeDataString(errors)}");
+        }
     }
 
     public class LoginViewModel
@@ -66,5 +109,16 @@ namespace MiniLIS.Web.Controllers
 
         public bool RememberMe { get; set; }
         public string? ReturnUrl { get; set; }
+    }
+
+    public class ChangePasswordViewModel
+    {
+        public string? CurrentPassword { get; set; }
+
+        [Required]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required]
+        public string ConfirmPassword { get; set; } = string.Empty;
     }
 }
