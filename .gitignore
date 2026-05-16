@@ -29,6 +29,7 @@ secrets.json
 ## [EF Core]
 *.db
 *.sqlite
+*.bak
 
 ## [OS specific]
 .DS_Store
