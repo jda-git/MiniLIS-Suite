@@ -54,7 +54,7 @@
             <div class="clin-row">
                 <div class="clin-field" style="width: 220px;">
                     <label>Nº MUESTRA</label>
-                    <input type="text" class="clin-input bg-light text-primary fw-bold" value="@model.SampleNumber" readonly tabindex="-1" />
+                    <input type="text" class="clin-input bg-light text-primary fw-bold" @bind="model.SampleNumber" />
                 </div>
                 <div class="clin-field" style="width: 200px;">
                     <label>NHC <span class="text-danger ms-1">*</span></label>
@@ -400,6 +400,7 @@
             originalRequest.RequestNumber = model.RequestNumber ?? "";
 
             // Update sample
+            originalSample.SampleNumber = model.SampleNumber;
             string actualType = model.SampleTypeRadio == "OTROS" ? model.SampleTypeOtherText! : model.SampleTypeRadio;
             originalSample.Diagnosis = $"[TIPO: {actualType}] {model.Diagnosis}";
             originalSample.ReceptionDate = model.ReceptionDate;

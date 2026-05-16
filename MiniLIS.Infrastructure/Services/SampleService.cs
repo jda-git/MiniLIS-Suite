@@ -23,7 +23,7 @@ namespace MiniLIS.Infrastructure.Services
             _patientService = patientService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null)
+        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null)
         {
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
@@ -37,8 +37,19 @@ namespace MiniLIS.Infrastructure.Services
                 _db.ClinicalRequests.Add(request);
                 await _db.SaveChangesAsync();
 
-                // 3. Create Sample with auto-numbering
-                var sampleNumber = await _numberingService.GetNextSampleNumberAsync();
+                // 3. Create Sample with auto-numbering or manual
+                string sampleNumber;
+                if (!string.IsNullOrWhiteSpace(manualSampleNumber))
+                {
+                    sampleNumber = manualSampleNumber.Trim();
+                    // If manual, update sequence if it's higher
+                    await _numberingService.UpdateSequenceIfHigherAsync(sampleNumber);
+                }
+                else
+                {
+                    sampleNumber = await _numberingService.GetNextSampleNumberAsync();
+                }
+
                 var sample = new Sample
                 {
                     SampleNumber = sampleNumber,
@@ -181,6 +192,10 @@ namespace MiniLIS.Infrastructure.Services
         {
             _db.Samples.Update(sample);
             sample.RowVersion = Guid.NewGuid().ToByteArray();
+            
+            // Ensure sequence is updated if the sample number was changed to something higher
+            await _numberingService.UpdateSequenceIfHigherAsync(sample.SampleNumber);
+
             await _db.SaveChangesAsync();
             return true;
         }

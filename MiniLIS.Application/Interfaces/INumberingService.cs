@@ -21,5 +21,10 @@ namespace MiniLIS.Application.Interfaces
         /// Manually sets the next sequence number (useful for mid-year migrations).
         /// </summary>
         Task SetNextSequenceAsync(int year, int nextSequence);
+
+        /// <summary>
+        /// Updates the sequence number in system settings if the provided number is higher than current.
+        /// </summary>
+        Task UpdateSequenceIfHigherAsync(string sampleNumber);
     }
 }
