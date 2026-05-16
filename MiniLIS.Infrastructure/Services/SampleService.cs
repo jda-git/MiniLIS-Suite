@@ -124,6 +124,9 @@ namespace MiniLIS.Infrastructure.Services
                     .ThenInclude(sp => sp.ReadByUser)
                 .Include(s => s.RegisteredByUser)
                 .Include(s => s.FinalizedByUser)
+                .Include(s => s.Report)
+                    .ThenInclude(r => r.Signatories)
+                        .ThenInclude(rs => rs.User)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(searchTerm))

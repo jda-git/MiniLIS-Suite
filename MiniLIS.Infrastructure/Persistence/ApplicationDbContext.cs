@@ -53,6 +53,11 @@ namespace MiniLIS.Infrastructure.Persistence
                 .HasOne(sp => sp.Panel)
                 .WithMany()
                 .HasForeignKey(sp => sp.PanelId);
+
+            modelBuilder.Entity<SampleReport>()
+                .HasOne(r => r.Sample)
+                .WithOne(s => s.Report)
+                .HasForeignKey<SampleReport>(r => r.SampleId);
         }
 
         public override int SaveChanges()

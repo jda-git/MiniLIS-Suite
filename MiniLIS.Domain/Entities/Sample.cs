@@ -55,6 +55,9 @@ namespace MiniLIS.Domain.Entities
 
         /// <summary>Panels requested/read for this sample.</summary>
         public ICollection<SamplePanel> Panels { get; set; } = new List<SamplePanel>();
+
+        /// <summary>Optional report associated with the sample.</summary>
+        public virtual SampleReport? Report { get; set; }
     }
 
     /// <summary>
