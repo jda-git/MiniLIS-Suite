@@ -159,6 +159,16 @@ namespace MiniLIS.Infrastructure.Services
             if (sample == null) return false;
 
             sample.Status = status;
+
+            if (status == SampleStatus.Finalizada && sample.FinalizedAt == null)
+            {
+                sample.FinalizedAt = DateTime.Now;
+            }
+            else if (status != SampleStatus.Finalizada)
+            {
+                sample.FinalizedAt = null; // Reset if downgraded? Usually safer
+            }
+
             await _db.SaveChangesAsync();
             return true;
         }

@@ -30,6 +30,8 @@ namespace MiniLIS.Domain.Entities
         
         public SampleStatus Status { get; set; } = SampleStatus.Recibida;
         
+        public DateTime? FinalizedAt { get; set; }
+
         [MaxLength(500)]
         public string IncidentsNotes { get; set; } = string.Empty;
 
