@@ -145,5 +145,33 @@ namespace MiniLIS.Infrastructure.Services
             }
             await _db.SaveChangesAsync();
         }
+
+        public async Task<List<string>> GetDirectoriesAsync(string path)
+        {
+            var result = new List<string>();
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    // Return drives
+                    result.AddRange(DriveInfo.GetDrives()
+                        .Where(d => d.IsReady)
+                        .Select(d => d.Name));
+                }
+                else
+                {
+                    if (Directory.Exists(path))
+                    {
+                        result.AddRange(Directory.GetDirectories(path)
+                            .Select(Path.GetFullPath));
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Access denied or other errors, return empty list for this path
+            }
+            return await Task.FromResult(result.OrderBy(s => s).ToList());
+        }
     }
 }

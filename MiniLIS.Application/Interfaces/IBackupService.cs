@@ -10,6 +10,7 @@ namespace MiniLIS.Application.Interfaces
         Task<List<BackupInfo>> GetAvailableBackupsAsync();
         Task<BackupSettings> GetSettingsAsync();
         Task SaveSettingsAsync(BackupSettings settings);
+        Task<List<string>> GetDirectoriesAsync(string path);
     }
 
     public class BackupInfo
