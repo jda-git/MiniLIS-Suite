@@ -6,6 +6,10 @@
 @inject ISampleService SampleService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components.Authorization
+@using MiniLIS.Domain.Identity
+@inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>Bandeja Técnica - MiniLIS Suite</PageTitle>
 
@@ -240,7 +244,14 @@
                                         <input type="checkbox" checked="@sp.IsRequested" @onchange="@((ChangeEventArgs e) => sp.IsRequested = (bool)(e.Value ?? false))" style="accent-color:#3b82f6; width:16px; height:16px;" />
                                     </td>
                                     <td class="text-center">
-                                        <input type="checkbox" checked="@sp.IsRead" @onchange="@((ChangeEventArgs e) => sp.IsRead = (bool)(e.Value ?? false))" style="accent-color:#16a34a; width:16px; height:16px;" />
+                                        <input type="checkbox" checked="@sp.IsRead" @onchange="@((ChangeEventArgs e) => ToggleReadInModal(sp, (bool)(e.Value ?? false)))" style="accent-color:#16a34a; width:16px; height:16px;" />
+                                        @if (sp.IsRead && (sp.ReadByUser != null || !string.IsNullOrEmpty(currentUserName)))
+                                        {
+                                            <div style="font-size: 9px; color: #16a34a; font-weight: bold; line-height: 1; margin-top: 2px;">
+                                                @(sp.ReadByUser?.FullName ?? currentUserName)
+                                            </div>
+                                            <div style="font-size: 8px; color: #94a3b8;">@(sp.ReadAt?.ToString("dd/MM HH:mm"))</div>
+                                        }
                                     </td>
                                     <td>
                                         <button type="button" class="btn btn-sm text-danger p-0" @onclick="@(() => modalPanels.Remove(sp))"><i class="bi bi-trash3"></i></button>
@@ -586,6 +597,9 @@
 </style>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
     private List<Sample> samples = new();
     private bool isLoading = true;
     private Patient? previewPatient;
@@ -600,6 +614,31 @@
     private List<SamplePanel> modalPanels = new();
     private List<Panel> allPanelsForModal = new();
     private int modalAddPanelId = 0;
+    private int? currentUserId;
+    private string? currentUserName;
+
+    private async Task ToggleReadInModal(SamplePanel sp, bool isRead)
+    {
+        sp.IsRead = isRead;
+        if (isRead)
+        {
+            if (!currentUserId.HasValue)
+            {
+                var authState = await AuthStateTask;
+                var user = await UserManager.GetUserAsync(authState.User);
+                currentUserId = user?.Id;
+                currentUserName = user?.FullName ?? user?.UserName;
+            }
+            sp.ReadByUserId = currentUserId;
+            sp.ReadAt = DateTime.Now;
+        }
+        else
+        {
+            sp.ReadByUserId = null;
+            sp.ReadAt = null;
+            sp.ReadByUser = null;
+        }
+    }
 
     [Inject] private IMasterDataService MasterService { get; set; } = default!;
 
@@ -647,6 +686,9 @@
             Panel = p.Panel,
             IsRequested = p.IsRequested,
             IsRead = p.IsRead,
+            ReadByUserId = p.ReadByUserId,
+            ReadAt = p.ReadAt,
+            ReadByUser = p.ReadByUser,
             DisplayOrder = p.DisplayOrder,
             CustomText = p.CustomText
         }).ToList();

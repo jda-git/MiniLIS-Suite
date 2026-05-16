@@ -17,6 +17,6 @@ namespace MiniLIS.Application.Interfaces
         // --- Panel management ---
         Task<List<SamplePanel>> GetSamplePanelsAsync(int sampleId);
         Task SetSamplePanelsAsync(int sampleId, List<SamplePanel> panels);
-        Task TogglePanelReadAsync(int samplePanelId, bool isRead);
+        Task TogglePanelReadAsync(int samplePanelId, bool isRead, int? userId = null);
     }
 }

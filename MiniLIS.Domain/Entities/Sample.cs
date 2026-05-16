@@ -70,6 +70,10 @@ namespace MiniLIS.Domain.Entities
         /// <summary>True if this panel/tube has been read on the cytometer by a technician.</summary>
         public bool IsRead { get; set; } = false;
 
+        public int? ReadByUserId { get; set; }
+        public DateTime? ReadAt { get; set; }
+        public virtual MiniLIS.Domain.Identity.ApplicationUser? ReadByUser { get; set; }
+
         /// <summary>Display order within the sample's panel list.</summary>
         public int DisplayOrder { get; set; } = 0;
 

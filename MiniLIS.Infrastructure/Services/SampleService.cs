@@ -216,6 +216,7 @@ namespace MiniLIS.Infrastructure.Services
         {
             return await _db.SamplePanels
                 .Include(sp => sp.Panel)
+                .Include(sp => sp.ReadByUser)
                 .Where(sp => sp.SampleId == sampleId)
                 .OrderBy(sp => sp.DisplayOrder)
                 .ToListAsync();
@@ -253,6 +254,8 @@ namespace MiniLIS.Infrastructure.Services
                         PanelId = sp.PanelId,
                         IsRequested = sp.IsRequested,
                         IsRead = sp.IsRead,
+                        ReadByUserId = sp.ReadByUserId,
+                        ReadAt = sp.ReadAt,
                         DisplayOrder = order++,
                         CustomText = sp.CustomText
                     };
@@ -271,12 +274,22 @@ namespace MiniLIS.Infrastructure.Services
             }
         }
 
-        public async Task TogglePanelReadAsync(int samplePanelId, bool isRead)
+        public async Task TogglePanelReadAsync(int samplePanelId, bool isRead, int? userId = null)
         {
             var sp = await _db.SamplePanels.FindAsync(samplePanelId);
             if (sp != null)
             {
                 sp.IsRead = isRead;
+                if (isRead)
+                {
+                    sp.ReadByUserId = userId;
+                    sp.ReadAt = DateTime.Now;
+                }
+                else
+                {
+                    sp.ReadByUserId = null;
+                    sp.ReadAt = null;
+                }
                 await _db.SaveChangesAsync();
             }
         }
