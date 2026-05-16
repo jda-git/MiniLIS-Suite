@@ -195,8 +195,19 @@ namespace MiniLIS.Infrastructure.Services
                                     ? fullReport.SelectedSignatures.Split('|', StringSplitOptions.RemoveEmptyEntries)
                                     : fullReport.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
                                 
-                                var signaturesText = string.Join("   -   ", facs.Select(f => f.Trim()));
-                                c.Item().Text(signaturesText).FontSize(8);
+                                c.Item().PaddingBottom(4).Text("Validado por:").FontSize(9).Bold();
+
+                                c.Item().Row(sigRow => {
+                                    foreach (var fac in facs) {
+                                        sigRow.RelativeItem().Column(facCol => {
+                                            facCol.Item().Text(fac.Trim()).FontSize(8).Bold();
+                                            facCol.Item().Text("F.E.A. Hematología").FontSize(8);
+                                        });
+                                    }
+                                });
+
+                                var saveDate = (fullReport.UpdatedAtUtc ?? fullReport.CreatedAtUtc).ToLocalTime();
+                                c.Item().PaddingTop(8).Text($"Fecha: {saveDate:dd-MM-yyyy, HH:mm}").FontSize(8);
                             }
                         });
                         
@@ -405,8 +416,26 @@ namespace MiniLIS.Infrastructure.Services
                     ? report.SelectedSignatures.Split('|', StringSplitOptions.RemoveEmptyEntries)
                     : report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries);
                 
-                var signaturesText = string.Join("   -   ", facs.Select(f => f.Trim()));
-                sb.Append($@"<text:p text:style-name=""SmallValue"">{EncodeForOdt(signaturesText)}</text:p>");
+                sb.Append("<table:table>");
+                sb.Append($@"<table:table-column table:number-columns-repeated=""{facs.Length}"" />");
+                
+                sb.Append("<table:table-row>");
+                foreach (var fac in facs)
+                {
+                    sb.Append($@"<table:table-cell><text:p text:style-name=""Label""><text:span text:style-name=""SmallValue"">{EncodeForOdt(fac.Trim())}</text:span></text:p></table:table-cell>");
+                }
+                sb.Append("</table:table-row>");
+                
+                sb.Append("<table:table-row>");
+                foreach (var fac in facs)
+                {
+                    sb.Append($@"<table:table-cell><text:p text:style-name=""SmallValue"">F.E.A. Hematología</text:p></table:table-cell>");
+                }
+                sb.Append("</table:table-row>");
+                sb.Append("</table:table>");
+
+                var saveDate = (report.UpdatedAtUtc ?? report.CreatedAtUtc).ToLocalTime();
+                sb.Append($@"<text:p text:style-name=""SmallValue"">Fecha: {saveDate:dd-MM-yyyy, HH:mm}</text:p>");
             }
             
             sb.Append("</office:text></office:body></office:document-content>");
