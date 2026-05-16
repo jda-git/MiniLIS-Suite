@@ -23,6 +23,8 @@ namespace MiniLIS.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login([FromForm] LoginViewModel model)
         {
+            Console.WriteLine($"[DIAG] Login POST: Username='{model.Username}', RememberMe={model.RememberMe}");
+            
             if (ModelState.IsValid)
             {
                 var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password, model.RememberMe, lockoutOnFailure: false);
@@ -32,6 +34,14 @@ namespace MiniLIS.Web.Controllers
                 }
                 
                 return Redirect($"/login?error=Invalid login attempt");
+            }
+
+            foreach (var state in ModelState)
+            {
+                foreach (var error in state.Value.Errors)
+                {
+                    Console.WriteLine($"[DIAG] ModelState Error in {state.Key}: {error.ErrorMessage}");
+                }
             }
 
             return Redirect($"/login?error=Please provide username and password");
