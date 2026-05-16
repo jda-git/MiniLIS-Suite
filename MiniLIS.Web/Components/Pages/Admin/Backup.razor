@@ -1,0 +1,345 @@
+@page "/backup"
+@using MiniLIS.Application.Interfaces
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+@inject IBackupService BackupService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Copias de Seguridad - MiniLIS Suite</PageTitle>
+
+<div class="backup-page">
+    <div class="backup-header">
+        <h1 class="backup-title">
+            <i class="bi bi-cloud-arrow-up-fill"></i> Gestión de Backups
+        </h1>
+        <p class="backup-subtitle">Configuración de copias de seguridad automáticas y restauración</p>
+    </div>
+
+    <div class="row">
+        <!-- Configuration Card -->
+        <div class="col-lg-5">
+            <div class="backup-card">
+                <div class="card-title-box">
+                    <i class="bi bi-gear-fill"></i> Configuración
+                </div>
+                
+                <div class="mt-4">
+                    <div class="mb-3">
+                        <label class="form-label-audit">Directorio de Destino</label>
+                        <div class="input-group-audit">
+                            <i class="bi bi-folder2-open"></i>
+                            <input type="text" @bind="settings.BackupPath" placeholder="C:\Backups\MiniLIS" />
+                        </div>
+                        <small class="text-muted">Especifique la ruta absoluta donde se guardarán los archivos .db</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label-audit">Frecuencia Automática (Días)</label>
+                        <div class="input-group-audit">
+                            <i class="bi bi-calendar-event"></i>
+                            <input type="number" @bind="settings.FrequencyDays" min="1" max="365" />
+                        </div>
+                        <small class="text-muted">Frecuencia con la que el sistema realizará copias en segundo plano.</small>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button class="btn-backup-save" @onclick="SaveSettings" disabled="@isBusy">
+                            @if(isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                            <i class="bi bi-save me-2"></i> Guardar Cambios
+                        </button>
+                        <button class="btn-backup-now" @onclick="ManualBackup" disabled="@isBusy">
+                            @if(isBackingUp) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                            <i class="bi bi-play-fill me-2"></i> Forzar Backup Ahora
+                        </button>
+                    </div>
+                </div>
+
+                @if (settings.LastBackupAt.HasValue)
+                {
+                    <div class="last-backup-badge mt-4">
+                        <i class="bi bi-check-circle-fill"></i>
+                        Última copia exitosa: <strong>@settings.LastBackupAt.Value.ToString("dd/MM/yyyy HH:mm")</strong>
+                    </div>
+                }
+            </div>
+
+            <!-- Important Notes -->
+            <div class="alert-audit mt-4">
+                <div class="alert-title"><i class="bi bi-info-circle-fill"></i> Información Importante</div>
+                <p>Las copias de seguridad utilizan la API de Backup Online de SQLite, lo que permite realizarlas mientras el sistema está en uso sin riesgo de corrupción.</p>
+                <p class="mb-0"><strong>Nota sobre restauración:</strong> Al restaurar una copia, el sistema reemplazará la base de datos actual. Se recomienda reiniciar la aplicación tras el proceso.</p>
+            </div>
+        </div>
+
+        <!-- History Card -->
+        <div class="col-lg-7">
+            <div class="backup-card">
+                <div class="card-title-box">
+                    <i class="bi bi-clock-history"></i> Historial de Copias Disponibles
+                </div>
+
+                <div class="backup-list mt-4">
+                    @if (backups == null)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                        </div>
+                    }
+                    else if (!backups.Any())
+                    {
+                        <div class="empty-state">
+                            <i class="bi bi-folder-x"></i>
+                            <p>No se han encontrado copias de seguridad en el directorio configurado.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Archivo</th>
+                                        <th>Tamaño</th>
+                                        <th class="text-end">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var b in backups)
+                                    {
+                                        <tr>
+                                            <td>@b.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                                            <td><code class="file-name">@b.FileName</code></td>
+                                            <td>@FormatSize(b.SizeBytes)</td>
+                                            <td class="text-end">
+                                                <button class="btn-restore-mini" @onclick="() => ConfirmRestore(b)" title="Restaurar esta copia">
+                                                    <i class="bi bi-arrow-counterclockwise"></i> Restaurar
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (showRestoreModal)
+{
+    <div class="audit-modal-backdrop">
+        <div class="audit-modal">
+            <div class="modal-header-audit danger">
+                <i class="bi bi-exclamation-triangle-fill"></i> Confirmar Restauración
+            </div>
+            <div class="modal-body-audit">
+                <p>¿Está seguro de que desea restaurar la base de datos desde el archivo seleccionado?</p>
+                <div class="restore-warning">
+                    <strong>Advertencia:</strong> Se perderán todos los datos actuales y serán reemplazados por los de la copia:
+                    <div class="mt-2 text-primary fw-bold">@selectedBackup?.FileName</div>
+                </div>
+            </div>
+            <div class="modal-footer-audit">
+                <button class="btn-audit-cancel" @onclick="() => showRestoreModal = false">Cancelar</button>
+                <button class="btn-audit-danger" @onclick="Restore">Restaurar Ahora</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .backup-page { padding: 32px; background: #f8fafc; min-height: 100vh; }
+    .backup-header { margin-bottom: 32px; }
+    .backup-title { font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+    .backup-title i { color: #3b82f6; }
+    .backup-subtitle { color: #64748b; font-size: 15px; }
+
+    .backup-card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        margin-bottom: 24px;
+    }
+    .card-title-box {
+        font-weight: 700;
+        color: #1e293b;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .card-title-box i { color: #64748b; }
+
+    .form-label-audit { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .input-group-audit {
+        display: flex;
+        align-items: center;
+        background: #f8fafc;
+        border: 2px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 8px 16px;
+        transition: all 0.2s;
+    }
+    .input-group-audit:focus-within { border-color: #3b82f6; background: #fff; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+    .input-group-audit i { color: #94a3b8; font-size: 18px; margin-right: 12px; }
+    .input-group-audit input { border: none; background: transparent; flex: 1; outline: none; font-size: 14px; color: #1e293b; }
+
+    .btn-backup-save {
+        background: #1e293b; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 600; font-size: 14px;
+        display: flex; align-items: center; transition: all 0.2s;
+    }
+    .btn-backup-save:hover { background: #0f172a; transform: translateY(-1px); }
+
+    .btn-backup-now {
+        background: #3b82f6; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 600; font-size: 14px;
+        display: flex; align-items: center; transition: all 0.2s;
+    }
+    .btn-backup-now:hover { background: #2563eb; transform: translateY(-1px); }
+
+    .last-backup-badge {
+        background: #f0fdf4; color: #166534; padding: 12px 16px; border-radius: 10px; font-size: 13px;
+        display: flex; align-items: center; gap: 10px; border: 1px solid #dcfce7;
+    }
+
+    .alert-audit { background: #fff; border-radius: 16px; padding: 20px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .alert-title { font-weight: 700; color: #1e293b; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .alert-audit p { font-size: 13px; color: #64748b; margin-bottom: 8px; }
+
+    .audit-table th { font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .audit-table td { font-size: 13px; color: #334155; padding: 12px 8px; vertical-align: middle; }
+    .file-name { background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+    .btn-restore-mini {
+        background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+        transition: all 0.2s;
+    }
+    .btn-restore-mini:hover { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+
+    .empty-state { text-align: center; padding: 48px; color: #94a3b8; }
+    .empty-state i { font-size: 40px; display: block; margin-bottom: 12px; opacity: 0.5; }
+
+    /* Modals */
+    .audit-modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .audit-modal { background: #fff; border-radius: 16px; width: 100%; max-width: 450px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    .modal-header-audit { padding: 20px; font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 12px; }
+    .modal-header-audit.danger { background: #fee2e2; color: #991b1b; }
+    .modal-body-audit { padding: 24px; font-size: 14px; color: #475569; }
+    .restore-warning { background: #fff7ed; color: #9a3412; padding: 16px; border-radius: 10px; border: 1px solid #ffedd5; margin-top: 16px; font-size: 13px; }
+    .modal-footer-audit { padding: 16px 24px; background: #f8fafc; display: flex; justify-content: flex-end; gap: 12px; }
+    .btn-audit-cancel { background: #fff; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; font-weight: 600; }
+    .btn-audit-danger { background: #ef4444; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; font-weight: 600; }
+</style>
+
+@code {
+    private BackupSettings settings = new();
+    private List<BackupInfo> backups = null;
+    private bool isSaving = false;
+    private bool isBackingUp = false;
+    private bool isBusy => isSaving || isBackingUp;
+    private bool showRestoreModal = false;
+    private BackupInfo selectedBackup = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = await BackupService.GetSettingsAsync();
+        await LoadBackups();
+    }
+
+    private async Task LoadBackups()
+    {
+        backups = await BackupService.GetAvailableBackupsAsync();
+    }
+
+    private async Task SaveSettings()
+    {
+        isSaving = true;
+        try
+        {
+            await BackupService.SaveSettingsAsync(settings);
+            await JS.InvokeVoidAsync("alert", "Configuración guardada correctamente.");
+            await LoadBackups(); // Path might have changed
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error: " + ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ManualBackup()
+    {
+        if (string.IsNullOrWhiteSpace(settings.BackupPath))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe configurar una ruta de destino primero.");
+            return;
+        }
+
+        isBackingUp = true;
+        try
+        {
+            await BackupService.CreateBackupAsync();
+            settings = await BackupService.GetSettingsAsync(); // Refresh last backup date
+            await LoadBackups();
+            await JS.InvokeVoidAsync("alert", "Copia de seguridad realizada con éxito.");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error: " + ex.Message);
+        }
+        finally
+        {
+            isBackingUp = false;
+        }
+    }
+
+    private void ConfirmRestore(BackupInfo b)
+    {
+        selectedBackup = b;
+        showRestoreModal = true;
+    }
+
+    private async Task Restore()
+    {
+        showRestoreModal = false;
+        try
+        {
+            var success = await BackupService.RestoreBackupAsync(selectedBackup.FullPath);
+            if (success)
+            {
+                await JS.InvokeVoidAsync("alert", "Base de datos restaurada correctamente. La aplicación debe reiniciarse para aplicar los cambios.");
+                // Potentially force a reload or navigate
+                Nav.NavigateTo("/", true);
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Error al restaurar la base de datos.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error crítico: " + ex.Message);
+        }
+    }
+
+    private string FormatSize(long bytes)
+    {
+        string[] suffix = { "B", "KB", "MB", "GB", "TB" };
+        int i;
+        double dblSByte = bytes;
+        for (i = 0; i < suffix.Length && bytes >= 1024; i++, bytes /= 1024)
+        {
+            dblSByte = bytes / 1024.0;
+        }
+        return $"{dblSByte:0.##} {suffix[i]}";
+    }
+}
