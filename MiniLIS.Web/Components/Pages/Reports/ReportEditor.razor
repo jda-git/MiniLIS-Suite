@@ -90,19 +90,13 @@
                         <div class="marker-intensities">
                             @foreach (var intensity in intensityOptions)
                             {
-                                <label class="intensity-radio">
+                                <label class="intensity-radio @(intensity == "Heterogéneo" ? "intensity-het" : "")">
                                     <input type="radio" name="mk-@val.MarkerId-@val.DisplayOrder"
                                            checked="@(val.IntensityValue == intensity)"
                                            @onchange="@(() => { val.IntensityValue = intensity; RecalculateSummary(); })" />
                                     @intensity
                                 </label>
                             }
-                            <label class="intensity-radio intensity-het">
-                                <input type="radio" name="mk-@val.MarkerId-@val.DisplayOrder"
-                                       checked="@(val.IntensityValue == "Heterogéneo")"
-                                       @onchange="@(() => { val.IntensityValue = "Heterogéneo"; RecalculateSummary(); })" />
-                                Heterogéneo
-                            </label>
                         </div>
                         <div class="marker-pct">
                             <input type="text" class="pct-input" placeholder="%" @bind="val.Percentage" @bind:event="oninput" @onkeyup="RecalculateSummary" />

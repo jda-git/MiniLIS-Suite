@@ -51,13 +51,68 @@ namespace MiniLIS.Infrastructure.Seed
                 }
             }
 
-            // 3. Seed Intensities
-            string[] intensities = { "-", "+", "++", "+d", "-/+d", "-/+", "+d/+", "+/++", "Heterogéneo" };
-            for (int i = 0; i < intensities.Length; i++)
+            // 2.5 Cleanup duplicate/malformed intensities and marker values
+            var dbIntensities = await context.SystemSettings
+                .Where(s => s.Key.StartsWith("Config:Intensity:"))
+                .ToListAsync();
+
+            var heteroSettings = dbIntensities
+                .Where(s => s.Value != null && 
+                           (s.Value.Contains("Hetero", StringComparison.OrdinalIgnoreCase) || 
+                            s.Value.Contains("Heterog", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (heteroSettings.Count > 1)
             {
-                string key = $"Config:Intensity:{i}";
-                if (!await context.SystemSettings.AnyAsync(s => s.Key == key))
+                var keep = heteroSettings.FirstOrDefault(s => s.Value == "Heterogéneo") ?? heteroSettings.First();
+                keep.Value = "Heterogéneo";
+                context.SystemSettings.Update(keep);
+
+                foreach (var remove in heteroSettings.Where(s => s.Id != keep.Id))
                 {
+                    context.SystemSettings.Remove(remove);
+                }
+                await context.SaveChangesAsync();
+            }
+            else if (heteroSettings.Count == 1)
+            {
+                var single = heteroSettings.First();
+                if (single.Value != "Heterogéneo")
+                {
+                    single.Value = "Heterogéneo";
+                    context.SystemSettings.Update(single);
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            var markerValuesToFix = await context.ReportMarkerValues
+                .Where(v => v.IntensityValue != null && 
+                           (v.IntensityValue.Contains("Hetero") || v.IntensityValue.Contains("Heterog")))
+                .ToListAsync();
+
+            bool fixedAnyMarkerValues = false;
+            foreach (var mv in markerValuesToFix)
+            {
+                if (mv.IntensityValue != "Heterogéneo")
+                {
+                    mv.IntensityValue = "Heterogéneo";
+                    context.ReportMarkerValues.Update(mv);
+                    fixedAnyMarkerValues = true;
+                }
+            }
+
+            if (fixedAnyMarkerValues)
+            {
+                await context.SaveChangesAsync();
+            }
+
+            // 3. Seed Intensities
+            if (!await context.SystemSettings.AnyAsync(s => s.Key.StartsWith("Config:Intensity:")))
+            {
+                string[] intensities = { "-", "+", "++", "+d", "-/+d", "-/+", "+d/+", "+/++", "Heterogéneo" };
+                for (int i = 0; i < intensities.Length; i++)
+                {
+                    string key = $"Config:Intensity:{i}";
                     context.SystemSettings.Add(new SystemSetting { Key = key, Value = intensities[i], Description = "Nivel de Intensidad" });
                 }
             }

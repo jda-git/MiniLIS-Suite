@@ -968,8 +968,16 @@
 
     private void AddIntensity()
     {
-        var nextIndex = intensitySettings.Count + 1;
-        intensitySettings.Add(new SystemSetting { Key = $"Config:Intensity:{nextIndex}", Value = "" });
+        int maxIndex = -1;
+        foreach (var s in intensitySettings)
+        {
+            if (s.Key.StartsWith("Config:Intensity:") && int.TryParse(s.Key.Substring("Config:Intensity:".Length), out int idx))
+            {
+                if (idx > maxIndex) maxIndex = idx;
+            }
+        }
+        var nextIndex = maxIndex + 1;
+        intensitySettings.Add(new SystemSetting { Key = $"Config:Intensity:{nextIndex}", Value = "", Description = "Nivel de Intensidad" });
     }
 
     private void RemoveIntensity(SystemSetting setting)

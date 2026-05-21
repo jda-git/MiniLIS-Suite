@@ -153,10 +153,36 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task UpdateIntensitySettingsAsync(List<SystemSetting> settings)
         {
+            // Get all current intensities in DB
+            var existing = await _db.SystemSettings
+                .Where(s => s.Key.StartsWith("Config:Intensity:"))
+                .ToListAsync();
+
+            // Find which ones to delete (in DB but not in the new list)
+            var newKeys = settings.Select(s => s.Key).ToHashSet();
+            var toDelete = existing.Where(e => !newKeys.Contains(e.Key)).ToList();
+
+            if (toDelete.Any())
+            {
+                _db.SystemSettings.RemoveRange(toDelete);
+            }
+
+            // Update or Add remaining settings
             foreach (var s in settings)
             {
-                _db.SystemSettings.Update(s);
+                var dbSetting = existing.FirstOrDefault(e => e.Key == s.Key);
+                if (dbSetting != null)
+                {
+                    dbSetting.Value = s.Value;
+                    dbSetting.Description = s.Description;
+                    _db.SystemSettings.Update(dbSetting);
+                }
+                else
+                {
+                    _db.SystemSettings.Add(s);
+                }
             }
+
             await _db.SaveChangesAsync();
         }
 
