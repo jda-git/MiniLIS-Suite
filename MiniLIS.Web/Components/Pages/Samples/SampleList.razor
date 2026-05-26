@@ -214,70 +214,104 @@
 @if (panelModalSample != null)
 {
     <div class="modal-backdrop-custom" @onclick="ClosePanelModal">
-        <div class="modal-card" style="width: 600px;" @onclick:stopPropagation="true">
-            <div class="modal-card-header" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">
-                <h5><i class="bi bi-clipboard2-pulse me-2"></i>Paneles — @panelModalSample.SampleNumber</h5>
-                <button type="button" class="btn-close btn-close-white" @onclick="ClosePanelModal"></button>
+        <div class="modal-card animate-fade-in" @onclick:stopPropagation="true">
+            <div class="modal-card-header d-flex align-items-center justify-content-between">
+                <h5 class="d-flex align-items-center m-0 text-white font-weight-bold">
+                    <i class="bi bi-clipboard2-pulse-fill text-info me-2 fs-5"></i>
+                    Paneles de Estudio
+                    <span class="badge bg-info bg-opacity-25 border border-info border-opacity-50 text-info ms-3 px-2.5 py-1 rounded fs-7 font-family-monospace">
+                        @panelModalSample.SampleNumber
+                    </span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white opacity-75 hover-opacity-100 shadow-none" @onclick="ClosePanelModal"></button>
             </div>
             <div class="modal-card-body">
                 @if (!modalPanels.Any())
                 {
-                    <p class="text-muted text-center py-3">No hay paneles asignados a esta muestra.</p>
+                    <div class="text-center py-5 bg-light rounded-3 border border-dashed border-secondary-subtle mb-3">
+                        <i class="bi bi-clipboard2-minus text-muted fs-1 mb-2 d-block"></i>
+                        <p class="text-muted mb-1 fw-semibold">No hay paneles asignados a esta muestra.</p>
+                        <span class="text-xs text-secondary opacity-75">Utiliza el selector de abajo para añadir uno nuevo.</span>
+                    </div>
                 }
                 else
                 {
-                    <table class="table table-sm table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th style="font-size:11px;" class="text-uppercase text-muted">Panel</th>
-                                <th style="font-size:11px; width:90px;" class="text-center text-uppercase text-muted">Solicitado</th>
-                                <th style="font-size:11px; width:90px;" class="text-center text-uppercase text-muted">Leído</th>
-                                <th style="width:40px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var sp in modalPanels)
-                            {
-                                <tr>
-                                    <td class="fw-semibold" style="font-size:13px;">@(sp.Panel?.Name ?? sp.CustomText ?? "—")</td>
-                                    <td class="text-center">
-                                        <input type="checkbox" checked="@sp.IsRequested" @onchange="@((ChangeEventArgs e) => sp.IsRequested = (bool)(e.Value ?? false))" style="accent-color:#3b82f6; width:16px; height:16px;" />
-                                    </td>
-                                    <td class="text-center">
-                                        <input type="checkbox" checked="@sp.IsRead" @onchange="@((ChangeEventArgs e) => ToggleReadInModal(sp, (bool)(e.Value ?? false)))" style="accent-color:#16a34a; width:16px; height:16px;" />
-                                        @if (sp.IsRead && (sp.ReadByUser != null || !string.IsNullOrEmpty(currentUserName)))
-                                        {
-                                            <div style="font-size: 9px; color: #16a34a; font-weight: bold; line-height: 1; margin-top: 2px;">
-                                                @(sp.ReadByUser?.FullName ?? currentUserName)
-                                            </div>
-                                            <div style="font-size: 8px; color: #94a3b8;">@(sp.ReadAt?.ToString("dd/MM HH:mm"))</div>
-                                        }
-                                    </td>
-                                    <td>
-                                        <button type="button" class="btn btn-sm text-danger p-0" @onclick="@(() => modalPanels.Remove(sp))"><i class="bi bi-trash3"></i></button>
-                                    </td>
+                    <div class="table-responsive rounded-3 border border-light-subtle mb-3">
+                        <table class="table table-hover align-middle mb-0 panel-modal-table">
+                            <thead>
+                                <tr class="bg-light">
+                                    <th class="ps-3 text-uppercase text-muted fw-bold">Panel</th>
+                                    <th style="width:105px;" class="text-center text-uppercase text-muted fw-bold">Solicitado</th>
+                                    <th style="width:160px;" class="text-center text-uppercase text-muted fw-bold">Leído</th>
+                                    <th style="width:50px;"></th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach (var sp in modalPanels)
+                                {
+                                    <tr class="panel-row">
+                                        <td class="fw-semibold text-dark ps-3">
+                                            @(sp.Panel?.Name ?? sp.CustomText ?? "—")
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="form-check form-switch d-inline-block">
+                                                <input class="form-check-input switch-requested cursor-pointer" type="checkbox" role="switch" checked="@sp.IsRequested" @onchange="@((ChangeEventArgs e) => sp.IsRequested = (bool)(e.Value ?? false))" />
+                                            </div>
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="d-flex flex-column align-items-center justify-content-center">
+                                                <div class="form-check form-switch d-inline-block">
+                                                    <input class="form-check-input switch-read cursor-pointer" type="checkbox" role="switch" checked="@sp.IsRead" @onchange="@((ChangeEventArgs e) => ToggleReadInModal(sp, (bool)(e.Value ?? false)))" />
+                                                </div>
+                                                @if (sp.IsRead && (sp.ReadByUser != null || !string.IsNullOrEmpty(currentUserName)))
+                                                {
+                                                    <div class="read-signature-badge mt-1 shadow-xs animate-fade-in">
+                                                        <span class="read-user text-truncate" title="@(sp.ReadByUser?.FullName ?? currentUserName)">
+                                                            <i class="bi bi-person-fill me-1"></i>@(sp.ReadByUser?.FullName ?? currentUserName)
+                                                        </span>
+                                                        <span class="read-date">
+                                                            <i class="bi bi-clock-fill me-1"></i>@(sp.ReadAt?.ToString("dd/MM HH:mm"))
+                                                        </span>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </td>
+                                        <td class="text-end pe-3">
+                                            <button type="button" class="btn-delete-panel" @onclick="@(() => modalPanels.Remove(sp))" title="Eliminar Panel">
+                                                <i class="bi bi-trash3-fill"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 }
+                
                 <!-- Add panel selector -->
-                <div class="d-flex gap-2 mt-3 pt-3 border-top">
-                    <select class="form-select form-select-sm" @bind="modalAddPanelId">
-                        <option value="0">— Añadir panel —</option>
-                        @foreach (var p in allPanelsForModal.Where(ap => !modalPanels.Any(mp => mp.PanelId == ap.Id)))
-                        {
-                            <option value="@p.Id">@p.Name</option>
-                        }
-                    </select>
-                    <button type="button" class="btn btn-sm btn-primary px-3" @onclick="AddPanelToModal" disabled="@(modalAddPanelId == 0)">
-                        <i class="bi bi-plus-lg"></i>
-                    </button>
+                <div class="add-panel-container p-3 rounded-3 bg-light border border-light mb-1">
+                    <label class="form-label-small m-0 mb-2 fw-semibold text-secondary d-flex align-items-center">
+                        <i class="bi bi-plus-circle-fill text-info me-1"></i>Añadir nuevo panel de análisis
+                    </label>
+                    <div class="d-flex gap-2">
+                        <select class="form-select form-select-sm stats-input flex-grow-1 cursor-pointer bg-white" @bind="modalAddPanelId">
+                            <option value="0">— Selecciona un panel para añadir —</option>
+                            @foreach (var p in allPanelsForModal.Where(ap => !modalPanels.Any(mp => mp.PanelId == ap.Id)))
+                            {
+                                <option value="@p.Id">@p.Name</option>
+                            }
+                        </select>
+                        <button type="button" class="btn btn-sm btn-info text-white px-3 fw-bold d-flex align-items-center shadow-xs border-0" @onclick="AddPanelToModal" disabled="@(modalAddPanelId == 0)">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir
+                        </button>
+                    </div>
                 </div>
-                <div class="d-flex justify-content-end gap-2 mt-4">
-                    <button class="btn btn-light border px-3" @onclick="ClosePanelModal">Cancelar</button>
-                    <button class="btn btn-primary px-4 fw-bold" @onclick="SavePanelModal">
-                        <i class="bi bi-check-lg me-1"></i>Guardar
+                
+                <!-- Footer Buttons -->
+                <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top border-light">
+                    <button class="btn btn-outline-secondary px-4 py-2 border fw-semibold rounded-3 shadow-xs fs-7" @onclick="ClosePanelModal">Cancelar</button>
+                    <button class="btn btn-primary px-4 py-2 fw-bold rounded-3 shadow-sm d-flex align-items-center fs-7" @onclick="SavePanelModal">
+                        <i class="bi bi-check-lg me-2"></i>Guardar Cambios
                     </button>
                 </div>
             </div>
@@ -537,31 +571,134 @@
     .modal-backdrop-custom {
         position: fixed;
         inset: 0;
-        background: rgba(15, 23, 42, 0.5);
-        backdrop-filter: blur(4px);
+        background: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(5px);
         z-index: 1050;
         display: flex;
         align-items: center;
         justify-content: center;
+        animation: fadeInBackdrop 0.25s ease-out forwards;
     }
+    @@keyframes fadeInBackdrop {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
     .modal-card {
         background: #fff;
         border-radius: 16px;
-        width: 480px;
+        width: 600px;
         max-width: 95vw;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
         overflow: hidden;
-    }
-    .modal-card-header {
-        background: linear-gradient(135deg, #2563eb, #1d4ed8);
-        color: #fff;
-        padding: 18px 24px;
+        border: 1px solid #e2e8f0;
         display: flex;
-        justify-content: space-between;
-        align-items: center;
+        flex-direction: column;
+        max-height: 90vh;
     }
-    .modal-card-header h5 { margin: 0; font-weight: 700; font-size: 16px; }
-    .modal-card-body { padding: 24px; }
+    
+    .modal-card-header {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        color: #fff;
+        padding: 16px 24px;
+        border-bottom: 1px solid #e2e8f0;
+        flex-shrink: 0;
+    }
+    
+    .modal-card-body {
+        padding: 24px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Modal Table styling */
+    .panel-modal-table {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    .panel-modal-table th {
+        font-size: 10px;
+        letter-spacing: 0.05em;
+        padding: 10px 12px;
+        background-color: #f8fafc;
+        border-bottom: 1px solid #cbd5e1 !important;
+    }
+    .panel-row {
+        transition: background-color 0.15s ease;
+    }
+    .panel-row:hover {
+        background-color: #f8fafc;
+    }
+    .panel-row td {
+        padding: 12px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    
+    /* Switches Custom Theme */
+    .switch-requested:checked {
+        background-color: #3b82f6;
+        border-color: #3b82f6;
+    }
+    .switch-read:checked {
+        background-color: #16a34a;
+        border-color: #16a34a;
+    }
+    
+    /* Signature info card */
+    .read-signature-badge {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 6px;
+        padding: 4px 8px;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        max-width: 140px;
+    }
+    .read-signature-badge .read-user {
+        font-size: 9px;
+        color: #15803d;
+        font-weight: 700;
+        text-align: center;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        width: 100%;
+        line-height: 1.2;
+    }
+    .read-signature-badge .read-date {
+        font-size: 8px;
+        font-weight: 500;
+        margin-top: 1px;
+        line-height: 1.1;
+        color: #166534;
+        opacity: 0.8;
+    }
+    
+    /* Delete button */
+    .btn-delete-panel {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        padding: 6px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-size: 13px;
+    }
+    .btn-delete-panel:hover {
+        color: #ef4444;
+        background-color: #fee2e2;
+    }
+    
+    .add-panel-container {
+        border: 1px dashed #cbd5e1;
+    }
 
     /* Panel button */
     .action-panel { color: #6366f1; }
