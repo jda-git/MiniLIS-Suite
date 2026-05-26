@@ -1,0 +1,440 @@
+@page "/notificaciones"
+@using Microsoft.EntityFrameworkCore
+@using MiniLIS.Infrastructure.Persistence
+@using MiniLIS.Domain.Entities
+@inject ApplicationDbContext context
+@inject IJSRuntime JS
+
+<PageTitle>Notificaciones - MiniLIS Suite</PageTitle>
+
+<div class="bandeja-page">
+
+    <!-- Header -->
+    <div class="bandeja-header">
+        <div>
+            <h1 class="bandeja-title">
+                <i class="bi bi-bell"></i> Notificaciones
+            </h1>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportToCsv" disabled="@(!filteredReports.Any())">
+                <i class="bi bi-file-earmark-excel"></i> Exportar CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- Barra de Filtros -->
+    <div class="filter-strip">
+        <div class="filter-group">
+            <i class="bi bi-search filter-icon"></i>
+            <input type="text" class="filter-control" placeholder="Buscar en texto..." 
+                   @bind="SearchText" @bind:event="oninput" @onkeyup="ApplyFilters" />
+        </div>
+
+        <div class="filter-divider"></div>
+
+        <div class="filter-group">
+            <i class="bi bi-funnel filter-icon"></i>
+            <select class="filter-control" @bind="AlertType" @bind:after="ApplyFilters">
+                <option value="Todos">Todos los avisos</option>
+                <option value="Critico">Valor Crítico</option>
+                <option value="NuevoDiag">Nuevo Diagnóstico</option>
+            </select>
+        </div>
+
+        <div class="filter-divider"></div>
+
+        <div class="filter-group filter-dates">
+            <i class="bi bi-calendar3 filter-icon"></i>
+            <input type="date" class="filter-control filter-date" @bind="StartDate" @bind:after="ApplyFilters" title="Desde" />
+            <span class="date-separator">–</span>
+            <input type="date" class="filter-control filter-date" @bind="EndDate" @bind:after="ApplyFilters" title="Hasta" />
+        </div>
+
+        <div class="filter-actions">
+            <button class="btn-filter-search" @onclick="ApplyFilters">Buscar</button>
+            <button class="btn-filter-clear" @onclick="ClearFilters" title="Limpiar filtros">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="bandeja-table-wrap">
+        <table class="bandeja-table">
+            <thead>
+                <tr>
+                    <th class="col-date">Fecha Informe</th>
+                    <th class="col-nhc">NHC</th>
+                    <th class="col-name">Nombre Paciente</th>
+                    <th class="col-diag">Diagnóstico</th>
+                    <th class="col-crit">Aviso Valor Crítico</th>
+                    <th class="col-newdiag">Aviso Nuevo Diagnóstico</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (isLoading)
+                {
+                    <tr>
+                        <td colspan="6" class="cell-empty">
+                            <div class="spinner-border text-primary" role="status"></div>
+                        </td>
+                    </tr>
+                }
+                else if (!filteredReports.Any())
+                {
+                    <tr>
+                        <td colspan="6" class="cell-empty">
+                            <i class="bi bi-bell-slash empty-icon"></i>
+                            <span>No se encontraron notificaciones con los filtros actuales</span>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var report in filteredReports)
+                    {
+                        <tr>
+                            <td class="cell-date">@report.ReportDate?.ToString("dd/MM/yyyy")</td>
+                            <td class="cell-nhc"><span class="nhc-chip">@report.Sample?.ClinicalRequest?.Patient?.NHC</span></td>
+                            <td class="cell-name">@report.Sample?.ClinicalRequest?.Patient?.FullName</td>
+                            <td class="cell-diag">@report.Conclusions</td>
+                            <td class="cell-alert">
+                                @if (!string.IsNullOrEmpty(report.CriticalValueText))
+                                {
+                                    <div class="alert-indicator">
+                                        <span class="alert-dot dot-critico" title="Valor Crítico"></span>
+                                        <span class="cell-alert-text">@report.CriticalValueText</span>
+                                    </div>
+                                }
+                            </td>
+                            <td class="cell-alert">
+                                @if (!string.IsNullOrEmpty(report.NewDiagnosisText))
+                                {
+                                    <div class="alert-indicator">
+                                        <span class="alert-dot dot-nuevo" title="Nuevo Diagnóstico"></span>
+                                        <span class="cell-alert-text">@report.NewDiagnosisText</span>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    /* ── Page ─────────────────────────────────────────────── */
+    .bandeja-page {
+        padding: 28px 32px;
+        background: #f4f6f9;
+        min-height: calc(100vh - 56px);
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    .bandeja-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    .bandeja-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: #1e293b;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .bandeja-title i { color: #3b82f6; font-size: 24px; }
+
+    .btn-bandeja {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 20px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .btn-bandeja-outline {
+        background: #fff;
+        color: #16a34a;
+        border: 1.5px solid #bbf7d0;
+    }
+    .btn-bandeja-outline:hover:not(:disabled) { background: #f0fdf4; border-color: #16a34a; }
+    .btn-bandeja-outline:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* ── Filter Strip ────────────────────────────────────── */
+    .filter-strip {
+        display: flex;
+        align-items: center;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 6px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .filter-group {
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        flex: 1;
+        min-width: 0;
+    }
+    .filter-icon { color: #94a3b8; margin-right: 8px; flex-shrink: 0; }
+    .filter-control {
+        border: none;
+        background: transparent;
+        font-size: 13px;
+        color: #334155;
+        outline: none;
+        width: 100%;
+        padding: 6px 0;
+    }
+    .filter-control::placeholder { color: #94a3b8; }
+    select.filter-control { cursor: pointer; }
+
+    .filter-dates { gap: 6px; }
+    .filter-date { width: 120px; text-align: center; flex: none; }
+    .date-separator { color: #cbd5e1; font-size: 12px; }
+
+    .filter-divider {
+        width: 1px;
+        height: 28px;
+        background: #e2e8f0;
+        flex-shrink: 0;
+    }
+    .filter-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-left: 8px;
+    }
+    .btn-filter-search {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: #fff;
+        border: none;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 28px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .btn-filter-search:hover { box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+    .btn-filter-clear {
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        color: #64748b;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .btn-filter-clear:hover { background: #e2e8f0; color: #334155; }
+
+    /* ── Table ────────────────────────────────────────────── */
+    .bandeja-table-wrap {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .bandeja-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .bandeja-table thead tr {
+        background: #f8fafc;
+    }
+    .bandeja-table th {
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        padding: 14px 12px;
+        border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap;
+    }
+
+    .bandeja-table td {
+        font-size: 13px;
+        color: #334155;
+        padding: 12px;
+        border-bottom: 1px solid #f1f5f9;
+        vertical-align: middle;
+    }
+    .bandeja-table tbody tr { transition: background 0.1s; }
+    .bandeja-table tbody tr:hover { background: #f8fafc; }
+    .bandeja-table tbody tr:last-child td { border-bottom: none; }
+
+    /* Cell styles */
+    .cell-date { color: #64748b; font-size: 12px; white-space: nowrap; }
+    .nhc-chip {
+        background: #eff6ff;
+        color: #2563eb;
+        border: 1px solid #bfdbfe;
+        padding: 2px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', 'Consolas', monospace;
+    }
+    .cell-name { font-weight: 600; color: #1e293b; }
+    .cell-diag { color: #475569; font-weight: 500; }
+    .cell-alert-text { font-weight: 500; color: #334155; }
+    
+    /* Alert type badges */
+    .alert-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+    }
+    .alert-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .dot-critico { background-color: #dc2626; box-shadow: 0 0 6px #ef4444; }
+    .dot-nuevo { background-color: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+
+    /* Empty state */
+    .cell-empty {
+        text-align: center;
+        padding: 48px 12px !important;
+        color: #94a3b8;
+    }
+    .empty-icon { font-size: 32px; display: block; margin-bottom: 12px; }
+</style>
+
+@code {
+    private DateTime? StartDate;
+    private DateTime? EndDate;
+    private string AlertType = "Todos";
+    private string SearchText = "";
+
+    private bool isLoading = false;
+    private List<SampleReport> filteredReports = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await FilterData();
+    }
+
+    private async Task ApplyFilters() => await FilterData();
+
+    private async Task ClearFilters()
+    {
+        SearchText = "";
+        AlertType = "Todos";
+        StartDate = null;
+        EndDate = null;
+        await FilterData();
+    }
+
+    private async Task FilterData()
+    {
+        isLoading = true;
+        try
+        {
+            var query = context.SampleReports
+                .Include(r => r.Sample)
+                    .ThenInclude(s => s.ClinicalRequest)
+                        .ThenInclude(c => c.Patient)
+                .Where(r => r.HasCriticalValueAlert || r.HasNewDiagnosisAlert)
+                .AsQueryable();
+
+            if (StartDate.HasValue)
+            {
+                query = query.Where(r => r.ReportDate >= StartDate.Value.Date);
+            }
+            if (EndDate.HasValue)
+            {
+                query = query.Where(r => r.ReportDate <= EndDate.Value.Date.AddDays(1).AddTicks(-1));
+            }
+
+            if (AlertType == "Critico")
+            {
+                query = query.Where(r => r.HasCriticalValueAlert);
+            }
+            else if (AlertType == "NuevoDiag")
+            {
+                query = query.Where(r => r.HasNewDiagnosisAlert);
+            }
+
+            if (!string.IsNullOrWhiteSpace(SearchText))
+            {
+                var lowerSearch = SearchText.ToLower();
+                query = query.Where(r => 
+                    (r.Conclusions != null && r.Conclusions.ToLower().Contains(lowerSearch)) ||
+                    (r.Sample != null && r.Sample.ClinicalRequest != null && r.Sample.ClinicalRequest.Patient != null && 
+                     (r.Sample.ClinicalRequest.Patient.FullName.ToLower().Contains(lowerSearch) || 
+                      r.Sample.ClinicalRequest.Patient.NHC.ToLower().Contains(lowerSearch))) ||
+                    (r.CriticalValueText != null && r.CriticalValueText.ToLower().Contains(lowerSearch)) ||
+                    (r.NewDiagnosisText != null && r.NewDiagnosisText.ToLower().Contains(lowerSearch))
+                );
+            }
+
+            filteredReports = await query.OrderByDescending(r => r.ReportDate).ToListAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (!filteredReports.Any()) return;
+
+        var sb = new System.Text.StringBuilder();
+        // BOM for Excel so it opens correctly in Spanish layout
+        sb.Append('\uFEFF');
+        sb.AppendLine("Fecha Informe;NHC;Nombre Paciente;Diagnóstico;Aviso Valor Crítico;Aviso Nuevo Diagnóstico");
+
+        foreach (var report in filteredReports)
+        {
+            var date = report.ReportDate?.ToString("dd/MM/yyyy") ?? "";
+            var nhc = EscapeCsv(report.Sample?.ClinicalRequest?.Patient?.NHC);
+            var name = EscapeCsv(report.Sample?.ClinicalRequest?.Patient?.FullName);
+            var diag = EscapeCsv(report.Conclusions);
+            var crit = EscapeCsv(report.CriticalValueText);
+            var newDiag = EscapeCsv(report.NewDiagnosisText);
+
+            sb.AppendLine($"{date};{nhc};{name};{diag};{crit};{newDiag}");
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"Notificaciones_{DateTime.Now:yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
+    }
+
+    private string EscapeCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        var v = value.Replace("\"", "\"\"");
+        if (v.Contains(";") || v.Contains("\"") || v.Contains("\n"))
+        {
+            return $"\"{v}\"";
+        }
+        return v;
+    }
+}

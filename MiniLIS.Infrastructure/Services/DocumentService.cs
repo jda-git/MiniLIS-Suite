@@ -182,6 +182,24 @@ namespace MiniLIS.Infrastructure.Services
                             col.Item().PaddingBottom(5).Text("CONCLUSIÓN").FontSize(11).FontColor(titleColor);
                             col.Item().PaddingBottom(15).Text(fullReport.Conclusions).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
                         }
+
+                        if (fullReport.HasCriticalValueAlert)
+                        {
+                            col.Item().PaddingBottom(5).Text(t => 
+                            {
+                                t.Span("Aviso de valor crítico a/fecha: ").Bold().FontSize(9).FontFamily(monoFont);
+                                t.Span(fullReport.CriticalValueText ?? "").FontSize(9).FontFamily(monoFont);
+                            });
+                        }
+                        
+                        if (fullReport.HasNewDiagnosisAlert)
+                        {
+                            col.Item().PaddingBottom(15).Text(t => 
+                            {
+                                t.Span("Aviso de nuevo diagnóstico a/fecha: ").Bold().FontSize(9).FontFamily(monoFont);
+                                t.Span(fullReport.NewDiagnosisText ?? "").FontSize(9).FontFamily(monoFont);
+                            });
+                        }
                     });
 
                     // --- PIE DE PÁGINA ---
@@ -405,6 +423,16 @@ namespace MiniLIS.Infrastructure.Services
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">CONCLUSIÓN</text:p>");
                 sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.Conclusions)}</text:p>");
+            }
+
+            // AVISOS
+            if (report.HasCriticalValueAlert)
+            {
+                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Aviso de valor crítico a/fecha: </text:span>{EncodeForOdt(report.CriticalValueText ?? "")}</text:p>");
+            }
+            if (report.HasNewDiagnosisAlert)
+            {
+                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Aviso de nuevo diagnóstico a/fecha: </text:span>{EncodeForOdt(report.NewDiagnosisText ?? "")}</text:p>");
             }
 
             // Footer

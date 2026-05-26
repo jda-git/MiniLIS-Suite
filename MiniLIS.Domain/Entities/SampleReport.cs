@@ -38,6 +38,18 @@ namespace MiniLIS.Domain.Entities
 
         public ICollection<ReportMarkerValue> MarkerValues { get; set; } = new List<ReportMarkerValue>();
         public ICollection<ReportSignatory> Signatories { get; set; } = new List<ReportSignatory>();
+
+        /// <summary>Indicates if a critical value alert was issued</summary>
+        public bool HasCriticalValueAlert { get; set; } = false;
+        
+        /// <summary>Text associated with the critical value alert</summary>
+        public string? CriticalValueText { get; set; }
+        
+        /// <summary>Indicates if a new diagnosis alert was issued</summary>
+        public bool HasNewDiagnosisAlert { get; set; } = false;
+        
+        /// <summary>Text associated with the new diagnosis alert</summary>
+        public string? NewDiagnosisText { get; set; }
     }
 
     public class ReportSignatory

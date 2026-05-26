@@ -157,6 +157,24 @@
         </div>
     </fieldset>
 
+    <!-- ═══════════════  SECCIÓN AVISOS  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Avisos</legend>
+        <div class="d-flex align-items-center gap-4 flex-wrap">
+            <div class="d-flex align-items-center gap-2 flex-grow-1">
+                <input type="checkbox" id="chkCriticalAlert" @bind="report.HasCriticalValueAlert" />
+                <label for="chkCriticalAlert" class="rpt-label mb-0" style="white-space: nowrap;">Avisado valor crítico a/fecha:</label>
+                <input type="text" class="form-control" style="border: 2px solid #000; border-radius: 0; min-width: 250px;" @bind="report.CriticalValueText" disabled="@(!report.HasCriticalValueAlert)" />
+            </div>
+            
+            <div class="d-flex align-items-center gap-2 flex-grow-1">
+                <input type="checkbox" id="chkDiagnosisAlert" @bind="report.HasNewDiagnosisAlert" />
+                <label for="chkDiagnosisAlert" class="rpt-label mb-0" style="white-space: nowrap;">Aviso diagnóstico nuevo a/fecha:</label>
+                <input type="text" class="form-control" style="border: 2px solid #000; border-radius: 0; min-width: 250px;" @bind="report.NewDiagnosisText" disabled="@(!report.HasNewDiagnosisAlert)" />
+            </div>
+        </div>
+    </fieldset>
+
     <!-- ═══════════════  SECCIÓN 5 · FIRMAS  ═══════════════ -->
     <fieldset class="rpt-fieldset mt-3">
         <legend>Firmas</legend>
