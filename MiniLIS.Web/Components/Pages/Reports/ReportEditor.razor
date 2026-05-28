@@ -164,13 +164,13 @@
             <div class="d-flex align-items-center gap-2 flex-grow-1">
                 <input type="checkbox" id="chkCriticalAlert" @bind="report.HasCriticalValueAlert" />
                 <label for="chkCriticalAlert" class="rpt-label mb-0" style="white-space: nowrap;">Avisado valor crítico a/fecha:</label>
-                <input type="text" class="form-control" style="border: 2px solid #000; border-radius: 0; min-width: 250px;" @bind="report.CriticalValueText" disabled="@(!report.HasCriticalValueAlert)" />
+                <input type="text" class="rpt-input-style" style="min-width: 250px;" @bind="report.CriticalValueText" disabled="@(!report.HasCriticalValueAlert)" />
             </div>
             
             <div class="d-flex align-items-center gap-2 flex-grow-1">
                 <input type="checkbox" id="chkDiagnosisAlert" @bind="report.HasNewDiagnosisAlert" />
                 <label for="chkDiagnosisAlert" class="rpt-label mb-0" style="white-space: nowrap;">Aviso diagnóstico nuevo a/fecha:</label>
-                <input type="text" class="form-control" style="border: 2px solid #000; border-radius: 0; min-width: 250px;" @bind="report.NewDiagnosisText" disabled="@(!report.HasNewDiagnosisAlert)" />
+                <input type="text" class="rpt-input-style" style="min-width: 250px;" @bind="report.NewDiagnosisText" disabled="@(!report.HasNewDiagnosisAlert)" />
             </div>
         </div>
     </fieldset>
@@ -197,6 +197,30 @@
             {
                 <span class="text-muted small">No hay facultativos configurados en Ajustes.</span>
             }
+        </div>
+    </fieldset>
+
+    <!-- ═══════════════  SECCIÓN MUESTRA EXCEDENTE  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Muestra excedente</legend>
+        <div class="d-flex align-items-center gap-4 flex-wrap">
+            <div class="d-flex align-items-center gap-2 flex-grow-1">
+                <input type="checkbox" id="chkBiobank" @bind="report.HasBiobank" />
+                <label for="chkBiobank" class="rpt-label mb-0" style="white-space: nowrap;">Biobanco</label>
+                <input type="text" class="rpt-input-style" style="min-width: 250px;" @bind="report.BiobankText" disabled="@(!report.HasBiobank)" />
+            </div>
+            
+            <div class="d-flex align-items-center gap-2 flex-grow-1">
+                <input type="checkbox" id="chkGenomics" @bind="report.HasGenomics" />
+                <label for="chkGenomics" class="rpt-label mb-0" style="white-space: nowrap;">Genómica</label>
+                <input type="text" class="rpt-input-style" style="min-width: 250px;" @bind="report.GenomicsText" disabled="@(!report.HasGenomics)" />
+            </div>
+            
+            <div class="d-flex align-items-center gap-2 flex-grow-1">
+                <input type="checkbox" id="chkNgs" @bind="report.HasNgs" />
+                <label for="chkNgs" class="rpt-label mb-0" style="white-space: nowrap;">NGS</label>
+                <input type="text" class="rpt-input-style" style="min-width: 250px;" @bind="report.NgsText" disabled="@(!report.HasNgs)" />
+            </div>
         </div>
     </fieldset>
 
@@ -256,6 +280,11 @@
     .id-field input[type="text"]:focus, .id-field input[type="date"]:focus { border-color: #86b7fe; outline: none; background: #fff; }
     .id-field input[readonly] { background: #e9ecef; color: #495057; }
     .id-field-sm input[type="text"] { width: 80px; }
+
+    /* ── Estilo uniforme para inputs de Avisos y Muestra Excedente ── */
+    .rpt-input-style { font-size: 13px; border: 1px solid #ccc; border-radius: 3px; padding: 3px 8px; height: 28px; background: #fafafa; transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out; }
+    .rpt-input-style:focus { border-color: #86b7fe; outline: none; background: #fff; }
+    .rpt-input-style:disabled { background: #e9ecef; color: #495057; opacity: 1; }
     .id-field-wide input[type="text"] { width: 280px; }
 
     .rpt-radio { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; white-space: nowrap; }

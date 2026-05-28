@@ -194,10 +194,34 @@ namespace MiniLIS.Infrastructure.Services
                         
                         if (fullReport.HasNewDiagnosisAlert)
                         {
-                            col.Item().PaddingBottom(15).Text(t => 
+                            col.Item().PaddingBottom(5).Text(t => 
                             {
                                 t.Span("Aviso de nuevo diagnóstico a/fecha: ").Bold().FontSize(9).FontFamily(monoFont);
                                 t.Span(fullReport.NewDiagnosisText ?? "").FontSize(9).FontFamily(monoFont);
+                            });
+                        }
+
+                        if (fullReport.HasGenomics)
+                        {
+                            col.Item().PaddingBottom(5).Text(t => 
+                            {
+                                t.Span("Muestra enviada a Medicina Xenómica").Bold().FontSize(9).FontFamily(monoFont);
+                                if (!string.IsNullOrWhiteSpace(fullReport.GenomicsText))
+                                {
+                                    t.Span(" " + fullReport.GenomicsText).FontSize(9).FontFamily(monoFont);
+                                }
+                            });
+                        }
+
+                        if (fullReport.HasNgs)
+                        {
+                            col.Item().PaddingBottom(5).Text(t => 
+                            {
+                                t.Span("Muestra remitida para estudio NGS").Bold().FontSize(9).FontFamily(monoFont);
+                                if (!string.IsNullOrWhiteSpace(fullReport.NgsText))
+                                {
+                                    t.Span(" " + fullReport.NgsText).FontSize(9).FontFamily(monoFont);
+                                }
                             });
                         }
                     });
@@ -433,6 +457,16 @@ namespace MiniLIS.Infrastructure.Services
             if (report.HasNewDiagnosisAlert)
             {
                 sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Aviso de nuevo diagnóstico a/fecha: </text:span>{EncodeForOdt(report.NewDiagnosisText ?? "")}</text:p>");
+            }
+            if (report.HasGenomics)
+            {
+                var extra = !string.IsNullOrWhiteSpace(report.GenomicsText) ? " " + report.GenomicsText : "";
+                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Muestra enviada a Medicina Xenómica</text:span>{EncodeForOdt(extra)}</text:p>");
+            }
+            if (report.HasNgs)
+            {
+                var extra = !string.IsNullOrWhiteSpace(report.NgsText) ? " " + report.NgsText : "";
+                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Muestra remitida para estudio NGS</text:span>{EncodeForOdt(extra)}</text:p>");
             }
 
             // Footer

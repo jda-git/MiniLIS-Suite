@@ -50,6 +50,15 @@ namespace MiniLIS.Domain.Entities
         
         /// <summary>Text associated with the new diagnosis alert</summary>
         public string? NewDiagnosisText { get; set; }
+
+        public bool HasBiobank { get; set; } = false;
+        public string? BiobankText { get; set; }
+
+        public bool HasGenomics { get; set; } = false;
+        public string? GenomicsText { get; set; }
+
+        public bool HasNgs { get; set; } = false;
+        public string? NgsText { get; set; }
     }
 
     public class ReportSignatory
