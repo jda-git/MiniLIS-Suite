@@ -114,7 +114,7 @@ namespace MiniLIS.Infrastructure.Services
 
                             dataCol.Item().PaddingBottom(4).Row(r =>
                             {
-                                r.RelativeItem(5).Text(t => { t.Span("FECHA DE MUESTRA: ").Bold(); t.Span(sample != null ? sample.ReceptionDate.ToString("dd/MM/yyyy") : "").FontSize(10); });
+                                r.RelativeItem(5).Text(t => { t.Span("FECHA DE MUESTRA: ").Bold(); t.Span(sample != null ? sample.ReceptionDate.ToString("dd/MM/yyyy HH:mm") : "").FontSize(10); });
                                 r.RelativeItem(5).Text(t => { t.Span("FECHA INFORME: ").Bold(); t.Span(fullReport.ReportDate?.ToString("dd/MM/yyyy") ?? DateTime.Now.ToString("dd/MM/yyyy")).FontSize(10); });
                             });
 
@@ -183,27 +183,50 @@ namespace MiniLIS.Infrastructure.Services
                             col.Item().PaddingBottom(15).Text(fullReport.Conclusions).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
                         }
 
+                        bool isFirstAlert = true;
+
                         if (fullReport.HasCriticalValueAlert)
                         {
-                            col.Item().PaddingBottom(5).Text(t => 
+                            var item = col.Item();
+                            if (isFirstAlert)
+                            {
+                                item = item.PaddingTop(50);
+                                isFirstAlert = false;
+                            }
+                            item.PaddingBottom(5).Text(t => 
                             {
                                 t.Span("Aviso de valor crítico a/fecha: ").Bold().FontSize(9).FontFamily(monoFont);
                                 t.Span(fullReport.CriticalValueText ?? "").FontSize(9).FontFamily(monoFont);
                             });
                         }
-                        
-                        if (fullReport.HasNewDiagnosisAlert)
+
+                        if (fullReport.HasBiobank)
                         {
-                            col.Item().PaddingBottom(5).Text(t => 
+                            var item = col.Item();
+                            if (isFirstAlert)
                             {
-                                t.Span("Aviso de nuevo diagnóstico a/fecha: ").Bold().FontSize(9).FontFamily(monoFont);
-                                t.Span(fullReport.NewDiagnosisText ?? "").FontSize(9).FontFamily(monoFont);
+                                item = item.PaddingTop(50);
+                                isFirstAlert = false;
+                            }
+                            item.PaddingBottom(5).Text(t => 
+                            {
+                                t.Span("Muestra enviada a Biobanco").Bold().FontSize(9).FontFamily(monoFont);
+                                if (!string.IsNullOrWhiteSpace(fullReport.BiobankText))
+                                {
+                                    t.Span(" " + fullReport.BiobankText).FontSize(9).FontFamily(monoFont);
+                                }
                             });
                         }
 
                         if (fullReport.HasGenomics)
                         {
-                            col.Item().PaddingBottom(5).Text(t => 
+                            var item = col.Item();
+                            if (isFirstAlert)
+                            {
+                                item = item.PaddingTop(50);
+                                isFirstAlert = false;
+                            }
+                            item.PaddingBottom(5).Text(t => 
                             {
                                 t.Span("Muestra enviada a Medicina Xenómica").Bold().FontSize(9).FontFamily(monoFont);
                                 if (!string.IsNullOrWhiteSpace(fullReport.GenomicsText))
@@ -215,7 +238,13 @@ namespace MiniLIS.Infrastructure.Services
 
                         if (fullReport.HasNgs)
                         {
-                            col.Item().PaddingBottom(5).Text(t => 
+                            var item = col.Item();
+                            if (isFirstAlert)
+                            {
+                                item = item.PaddingTop(50);
+                                isFirstAlert = false;
+                            }
+                            item.PaddingBottom(5).Text(t => 
                             {
                                 t.Span("Muestra remitida para estudio NGS").Bold().FontSize(9).FontFamily(monoFont);
                                 if (!string.IsNullOrWhiteSpace(fullReport.NgsText))
@@ -249,7 +278,7 @@ namespace MiniLIS.Infrastructure.Services
                                 });
 
                                 var saveDate = (fullReport.UpdatedAtUtc ?? fullReport.CreatedAtUtc).ToLocalTime();
-                                c.Item().PaddingTop(8).Text($"Fecha: {saveDate:dd-MM-yyyy, HH:mm}").FontSize(8);
+                                c.Item().PaddingTop(8).Text($"Fecha de informe: {saveDate:dd-MM-yyyy, HH:mm}").FontSize(8);
                             }
                         });
                         
@@ -391,7 +420,7 @@ namespace MiniLIS.Infrastructure.Services
 
             // Row 2: Dates
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">FECHA MUESTRA: <text:span text:style-name=""Value"">{s?.ReceptionDate.ToString("dd/MM/yyyy")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">FECHA MUESTRA: <text:span text:style-name=""Value"">{s?.ReceptionDate.ToString("dd/MM/yyyy HH:mm")}</text:span></text:p></table:table-cell>");
             sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">FECHA INFORME: <text:span text:style-name=""Value"">{report.ReportDate?.ToString("dd/MM/yyyy")}</text:span></text:p></table:table-cell>");
             sb.Append("<table:table-cell />"); // Required to fill the row
             sb.Append("</table:table-row>");
@@ -449,24 +478,33 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.Conclusions)}</text:p>");
             }
 
-            // AVISOS
-            if (report.HasCriticalValueAlert)
+            // AVISOS Y MUESTRA EXCEDENTE (con separación de 5 líneas antes si hay alguno)
+            if (report.HasCriticalValueAlert || report.HasBiobank || report.HasGenomics || report.HasNgs)
             {
-                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Aviso de valor crítico a/fecha: </text:span>{EncodeForOdt(report.CriticalValueText ?? "")}</text:p>");
-            }
-            if (report.HasNewDiagnosisAlert)
-            {
-                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Aviso de nuevo diagnóstico a/fecha: </text:span>{EncodeForOdt(report.NewDiagnosisText ?? "")}</text:p>");
-            }
-            if (report.HasGenomics)
-            {
-                var extra = !string.IsNullOrWhiteSpace(report.GenomicsText) ? " " + report.GenomicsText : "";
-                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Muestra enviada a Medicina Xenómica</text:span>{EncodeForOdt(extra)}</text:p>");
-            }
-            if (report.HasNgs)
-            {
-                var extra = !string.IsNullOrWhiteSpace(report.NgsText) ? " " + report.NgsText : "";
-                sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Muestra remitida para estudio NGS</text:span>{EncodeForOdt(extra)}</text:p>");
+                for (int i = 0; i < 5; i++)
+                {
+                    sb.Append(@"<text:p text:style-name=""MonoText"" />");
+                }
+
+                if (report.HasCriticalValueAlert)
+                {
+                    sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Aviso de valor crítico a/fecha: </text:span>{EncodeForOdt(report.CriticalValueText ?? "")}</text:p>");
+                }
+                if (report.HasBiobank)
+                {
+                    var extra = !string.IsNullOrWhiteSpace(report.BiobankText) ? " " + report.BiobankText : "";
+                    sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Muestra enviada a Biobanco</text:span>{EncodeForOdt(extra)}</text:p>");
+                }
+                if (report.HasGenomics)
+                {
+                    var extra = !string.IsNullOrWhiteSpace(report.GenomicsText) ? " " + report.GenomicsText : "";
+                    sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Muestra enviada a Medicina Xenómica</text:span>{EncodeForOdt(extra)}</text:p>");
+                }
+                if (report.HasNgs)
+                {
+                    var extra = !string.IsNullOrWhiteSpace(report.NgsText) ? " " + report.NgsText : "";
+                    sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""Label"">Muestra remitida para estudio NGS</text:span>{EncodeForOdt(extra)}</text:p>");
+                }
             }
 
             // Footer
@@ -497,7 +535,7 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append("</table:table>");
 
                 var saveDate = (report.UpdatedAtUtc ?? report.CreatedAtUtc).ToLocalTime();
-                sb.Append($@"<text:p text:style-name=""SmallValue"">Fecha: {saveDate:dd-MM-yyyy, HH:mm}</text:p>");
+                sb.Append($@"<text:p text:style-name=""SmallValue"">Fecha de informe: {saveDate:dd-MM-yyyy, HH:mm}</text:p>");
             }
             
             sb.Append("</office:text></office:body></office:document-content>");
