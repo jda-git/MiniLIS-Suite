@@ -13,6 +13,7 @@ namespace MiniLIS.Application.Interfaces
         Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null);
         Task<Sample?> GetSampleByIdAsync(int sampleId);
         Task<bool> UpdateSampleAsync(Sample sample);
+        Task<List<AuditLog>> GetAuditLogsForSampleAsync(int sampleId);
 
         // --- Panel management ---
         Task<List<SamplePanel>> GetSamplePanelsAsync(int sampleId);

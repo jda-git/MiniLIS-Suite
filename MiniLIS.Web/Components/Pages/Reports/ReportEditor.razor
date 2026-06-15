@@ -486,8 +486,19 @@
 
     private async Task SaveAndNotify()
     {
-        await Save();
-        await JS.InvokeVoidAsync("alert", "Informe guardado correctamente.");
+        try
+        {
+            await Save();
+            await JS.InvokeVoidAsync("alert", "Informe guardado correctamente.");
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            await JS.InvokeVoidAsync("alert", "Error de concurrencia: La muestra ha sido modificada por otro usuario. Por favor, recargue la página para ver los cambios.");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al guardar el informe: " + ex.Message);
+        }
     }
 
     private async Task Save()

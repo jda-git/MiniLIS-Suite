@@ -15,16 +15,23 @@ namespace MiniLIS.Infrastructure.Services
         private readonly ApplicationDbContext _db;
         private readonly INumberingService _numberingService;
         private readonly IPatientService _patientService;
+        private readonly ICurrentUserService _currentUserService;
 
-        public SampleService(ApplicationDbContext db, INumberingService numberingService, IPatientService patientService)
+        public SampleService(
+            ApplicationDbContext db,
+            INumberingService numberingService,
+            IPatientService patientService,
+            ICurrentUserService currentUserService)
         {
             _db = db;
             _numberingService = numberingService;
             _patientService = patientService;
+            _currentUserService = currentUserService;
         }
 
         public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
         {
+            _currentUserService.ActionContext = "Registro de Muestra";
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
             {
@@ -163,6 +170,7 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status, int? userId = null)
         {
+            _currentUserService.ActionContext = $"Cambio de Estado a {status}";
             var sample = await _db.Samples.FindAsync(sampleId);
             if (sample == null) return false;
 
@@ -210,14 +218,23 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<bool> UpdateSampleAsync(Sample sample)
         {
+            _currentUserService.ActionContext = "Modificación de Muestra";
             _db.Samples.Update(sample);
-            sample.RowVersion = Guid.NewGuid().ToByteArray();
             
             // Ensure sequence is updated if the sample number was changed to something higher
             await _numberingService.UpdateSequenceIfHigherAsync(sample.SampleNumber);
 
             await _db.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<List<AuditLog>> GetAuditLogsForSampleAsync(int sampleId)
+        {
+            var targetEntityId = $"{{\"Id\":{sampleId}}}";
+            return await _db.AuditLogs
+                .Where(l => l.EntityName == nameof(Sample) && l.EntityId == targetEntityId)
+                .OrderByDescending(l => l.TimestampUtc)
+                .ToListAsync();
         }
 
         // --- Panel management ---
@@ -234,6 +251,7 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task SetSamplePanelsAsync(int sampleId, List<SamplePanel> panels)
         {
+            _currentUserService.ActionContext = "Modificación de Paneles";
             Console.WriteLine($"[DIAG] SetSamplePanelsAsync: SampleId={sampleId}, PanelsCount={panels?.Count ?? 0}");
             var sample = await _db.Samples
                 .Include(s => s.Panels)
@@ -286,6 +304,7 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task TogglePanelReadAsync(int samplePanelId, bool isRead, int? userId = null)
         {
+            _currentUserService.ActionContext = isRead ? "Lectura de Panel" : "Cancelación Lectura de Panel";
             var sp = await _db.SamplePanels.FindAsync(samplePanelId);
             if (sp != null)
             {

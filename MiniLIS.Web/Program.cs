@@ -34,6 +34,8 @@ builder.Services.ConfigureApplicationCookie(options => {
 });
 
 // Application Services
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, MiniLIS.Web.Services.CurrentUserService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<INumberingService, NumberingService>();
 builder.Services.AddScoped<IPatientService, PatientService>();

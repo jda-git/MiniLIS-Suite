@@ -439,6 +439,10 @@
 
             successMessage = "Registro actualizado correctamente.";
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            errorMessage = "Error de concurrencia: La muestra ha sido modificada por otro usuario en este mismo momento. Por favor, recargue la página para cargar los datos más recientes antes de volver a guardar.";
+        }
         catch (Exception ex)
         {
             var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "";

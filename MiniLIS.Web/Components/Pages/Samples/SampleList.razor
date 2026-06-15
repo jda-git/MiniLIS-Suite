@@ -226,6 +226,12 @@
                 <button type="button" class="btn-close btn-close-white opacity-75 hover-opacity-100 shadow-none" @onclick="ClosePanelModal"></button>
             </div>
             <div class="modal-card-body">
+                @if (!string.IsNullOrEmpty(modalErrorMessage))
+                {
+                    <div class="alert alert-danger py-2 px-3 rounded small mb-3 border-0 shadow-sm">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i> @modalErrorMessage
+                    </div>
+                }
                 @if (!modalPanels.Any())
                 {
                     <div class="text-center py-5 bg-light rounded-3 border border-dashed border-secondary-subtle mb-3">
@@ -751,6 +757,7 @@
     private List<SamplePanel> modalPanels = new();
     private List<Panel> allPanelsForModal = new();
     private int modalAddPanelId = 0;
+    private string? modalErrorMessage;
     private int? currentUserId;
     private string? currentUserName;
 
@@ -813,6 +820,7 @@
     {
         panelModalSample = sample;
         modalAddPanelId = 0;
+        modalErrorMessage = null;
         // Load fresh panels for this sample
         var panels = await SampleService.GetSamplePanelsAsync(sample.Id);
         modalPanels = panels.Select(p => new SamplePanel
@@ -850,12 +858,28 @@
     private async Task SavePanelModal()
     {
         if (panelModalSample == null) return;
-        await SampleService.SetSamplePanelsAsync(panelModalSample.Id, modalPanels);
-        panelModalSample = null;
-        await LoadSamples(); // Refresh to show updated badges
+        modalErrorMessage = null;
+        try
+        {
+            await SampleService.SetSamplePanelsAsync(panelModalSample.Id, modalPanels);
+            panelModalSample = null;
+            await LoadSamples(); // Refresh to show updated badges
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            modalErrorMessage = "Error de concurrencia: La muestra ha sido modificada por otro usuario. Cierre este diálogo y refresque la bandeja de trabajo para cargar los datos más recientes.";
+        }
+        catch (Exception ex)
+        {
+            modalErrorMessage = $"Error al guardar paneles: {ex.Message}";
+        }
     }
 
-    private void ClosePanelModal() => panelModalSample = null;
+    private void ClosePanelModal()
+    {
+        panelModalSample = null;
+        modalErrorMessage = null;
+    }
 
     private string GetStatusClass(SampleStatus status) => status switch
     {

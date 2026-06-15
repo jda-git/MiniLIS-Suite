@@ -163,6 +163,37 @@
                                 }
                             </div>
                         </div>
+
+                        <!-- Historial de Auditoría ISO 15189 -->
+                        <div class="audit-history-section mt-3">
+                            <label class="section-label"><i class="bi bi-clock-history"></i> Historial de Cambios (ISO 15189)</label>
+                            <div class="audit-history-list">
+                                @if (sampleAuditLogs.TryGetValue(s.Id, out var logs) && logs.Any())
+                                {
+                                    @foreach (var log in logs)
+                                    {
+                                        <div class="history-log-row">
+                                            <div class="log-meta">
+                                                <span class="log-date"><i class="bi bi-clock"></i> @log.TimestampUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                                <span class="log-user"><i class="bi bi-person-fill text-primary"></i> @(log.Username ?? "Sistema")</span>
+                                                <span class="log-action badge @GetActionBadgeClass(log.Action)">@log.Action.ToUpper()</span>
+                                                @if (!string.IsNullOrEmpty(log.ActionContext))
+                                                {
+                                                    <span class="log-context text-muted"><i class="bi bi-tag-fill"></i> @log.ActionContext</span>
+                                                }
+                                            </div>
+                                            <div class="log-changes mt-1">
+                                                @FormatChanges(log.Changes, log.Action)
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="text-muted small">Sin modificaciones registradas para esta muestra.</div>
+                                }
+                            </div>
+                        </div>
                     </div>
                 </div>
             }
@@ -310,11 +341,61 @@
         color: #94a3b8;
     }
     .audit-empty i { font-size: 48px; display: block; margin-bottom: 16px; opacity: 0.5; }
+
+    /* Estilos del Historial de Auditoría */
+    .audit-history-section {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid #e2e8f0;
+    }
+    .audit-history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .history-log-row {
+        padding: 10px 14px;
+        background: #fff;
+        border-radius: 8px;
+        border-left: 4px solid #3b82f6;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .log-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        font-size: 11.5px;
+    }
+    .log-date {
+        color: #64748b;
+        font-weight: 500;
+    }
+    .log-user {
+        font-weight: 600;
+        color: #334155;
+    }
+    .log-action {
+        font-size: 9px;
+        font-weight: 700;
+        padding: 2.5px 6px;
+        border-radius: 4px;
+    }
+    .log-context {
+        font-size: 11px;
+    }
+    .log-changes {
+        font-size: 12.5px;
+        color: #475569;
+        line-height: 1.4;
+    }
 </style>
 
 @code {
     private string searchTerm = "";
     private List<Sample> samples = new();
+    private Dictionary<int, List<AuditLog>> sampleAuditLogs = new();
     private bool isLoading = false;
     private bool hasSearched = false;
 
@@ -331,6 +412,18 @@
         try
         {
             samples = await SampleService.GetFilteredSamplesAsync(searchTerm, null, null, null);
+            sampleAuditLogs.Clear();
+            
+            // Cargar historial en paralelo para optimizar la velocidad
+            var tasks = samples.Select(async s => {
+                var logs = await SampleService.GetAuditLogsForSampleAsync(s.Id);
+                lock (sampleAuditLogs)
+                {
+                    sampleAuditLogs[s.Id] = logs;
+                }
+            });
+            await Task.WhenAll(tasks);
+            
             hasSearched = true;
         }
         finally
@@ -358,4 +451,41 @@
         SampleStatus.Rechazada => "RECHAZADA",
         _ => status.ToString().ToUpper()
     };
+
+    private string GetActionBadgeClass(string action) => action.ToLower() switch
+    {
+        "create" => "bg-success text-white",
+        "update" => "bg-warning text-dark",
+        "delete" => "bg-danger text-white",
+        _ => "bg-secondary text-white"
+    };
+
+    private string FormatChanges(string? changes, string action)
+    {
+        if (string.IsNullOrEmpty(changes)) return "Sin detalles de cambios.";
+
+        if (action.ToLower() == "create")
+        {
+            return "Registro inicial de la muestra.";
+        }
+        if (action.ToLower() == "delete")
+        {
+            return "Registro eliminado.";
+        }
+
+        var result = changes;
+        result = result.Replace("SampleNumber: ", "Nº Muestra: ")
+                       .Replace("ReceptionDate: ", "Fecha Recepción: ")
+                       .Replace("Status: ", "Estado: ")
+                       .Replace("Diagnosis: ", "Diagnóstico/Sospecha: ")
+                       .Replace("StudyPanel: ", "Panel de Estudio: ")
+                       .Replace("HasIncident: ", "Tiene Incidencia: ")
+                       .Replace("IncidentsNotes: ", "Notas de Incidencia: ")
+                       .Replace("FinalizedAt: ", "Fecha de Validación: ")
+                       .Replace("FinalizedByUserId: ", "ID Usuario de Validación: ")
+                       .Replace("IsDeleted: ", "Eliminado: ");
+        
+        return result;
+    }
 }
+
