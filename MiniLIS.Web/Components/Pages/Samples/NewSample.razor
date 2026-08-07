@@ -30,6 +30,49 @@
         </div>
     }
 
+    @if (showDiscrepancyModal && pendingDiscrepancy != null)
+    {
+        <div class="discrepancy-overlay">
+            <div class="discrepancy-card">
+                <h5 class="mb-1"><i class="bi bi-exclamation-diamond-fill text-warning me-2"></i>El NHC @model.NHC ya existe con datos distintos</h5>
+                <p class="text-muted small mb-3">Compruebe si se trata de un error de transcripción antes de decidir.</p>
+
+                <table class="table table-sm discrepancy-table mb-3">
+                    <thead>
+                        <tr><th></th><th>Almacenado</th><th>Introducido</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in pendingDiscrepancy.Discrepancies)
+                        {
+                            <tr>
+                                <td class="fw-semibold">@d.Field</td>
+                                <td>@d.StoredValue</td>
+                                <td>@d.ProvidedValue</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div class="d-flex justify-content-end gap-2 mb-3">
+                    <button type="button" class="btn btn-light border" @onclick="CancelDiscrepancy">Cancelar</button>
+                    <button type="button" class="btn btn-primary" autofocus @onclick="KeepStoredPatient">Mantener los almacenados</button>
+                </div>
+
+                <AuthorizeView Roles="Administrador,Facultativo">
+                    <Authorized>
+                        <div class="border-top pt-3">
+                            <label class="small fw-semibold mb-1">Motivo de la actualización (obligatorio)</label>
+                            <div class="d-flex gap-2">
+                                <input type="text" class="form-control form-control-sm" @bind="discrepancyMotivo" placeholder="Ej: error de transcripción del nombre" />
+                                <button type="button" class="btn btn-outline-danger btn-sm text-nowrap" @onclick="UpdatePatientAndContinue">Actualizar paciente</button>
+                            </div>
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </div>
+    }
+
     <EditForm Model="model" OnValidSubmit="HandleSubmit">
         <DataAnnotationsValidator />
         
@@ -214,9 +257,28 @@
 </div>
 
 <style>
-    .iso-page { 
-        padding: 24px 32px; 
+    .iso-page {
+        padding: 24px 32px;
     }
+
+    .discrepancy-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+    }
+    .discrepancy-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 24px;
+        max-width: 560px;
+        width: 90%;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .discrepancy-table th, .discrepancy-table td { font-size: 13px; vertical-align: middle; }
     
     .iso-panel {
         background: white; 
@@ -534,6 +596,12 @@
         }
     }
 
+    // Estado del diálogo de discrepancia de identidad (A-1)
+    private PatientLookupResult? pendingDiscrepancy;
+    private Patient? pendingCandidate;
+    private string discrepancyMotivo = "";
+    private bool showDiscrepancyModal = false;
+
     private async Task HandleSubmit()
     {
         if (model.SampleTypeRadio == "OTROS" && string.IsNullOrWhiteSpace(model.SampleTypeOtherText))
@@ -544,19 +612,48 @@
 
         isSubmitting = true;
         errorMessage = null;
-        
-        try 
+
+        try
         {
             string fullSafeName = $"{model.LastName}, {model.FirstName}";
-
-            var patient = new Patient {
+            var candidate = new Patient
+            {
                 NHC = model.NHC,
                 FullName = fullSafeName,
                 NASI = model.NASI ?? string.Empty
             };
-            
-            var request = new ClinicalRequest {
-                Patient = patient, 
+
+            var lookup = await PatientService.GetOrCreatePatientAsync(candidate);
+
+            if (lookup.HasDiscrepancy)
+            {
+                // No se sobrescribe nada todavía: se pausa el alta hasta que el usuario
+                // decida explícitamente entre mantener los datos almacenados o actualizarlos.
+                pendingDiscrepancy = lookup;
+                pendingCandidate = candidate;
+                showDiscrepancyModal = true;
+                isSubmitting = false;
+                return;
+            }
+
+            await CompleteRegistrationAsync(lookup.Patient);
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "";
+            errorMessage = $"Error al grabar: {ex.Message} {innerMsg}";
+            isSubmitting = false;
+        }
+    }
+
+    private async Task CompleteRegistrationAsync(Patient patient)
+    {
+        isSubmitting = true;
+        try
+        {
+            var request = new ClinicalRequest
+            {
+                Patient = patient,
                 OriginService = model.OriginService ?? "Desconocido",
                 DoctorName = model.DoctorName ?? "Desconocido",
                 RequestNumber = model.RequestNumber ?? ""
@@ -565,7 +662,6 @@
             string actualType = model.SampleTypeRadio == "OTROS" ? model.SampleTypeOtherText! : model.SampleTypeRadio;
             string finalDiagnosis = $"[TIPO: {actualType}] {model.Diagnosis}";
 
-            // Build panel summary text from selected panels + custom
             var panelNames = allPanels.Where(p => selectedPanelIds.Contains(p.Id)).Select(p => p.Name).ToList();
             panelNames.AddRange(customPanels);
             string studyPanelText = string.Join(", ", panelNames);
@@ -574,8 +670,8 @@
             var userObj = await UserManager.GetUserAsync(authState.User);
             int? currentUserId = userObj?.Id;
 
-            var sample = await SampleRegistry.RegisterSampleAsync(patient, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, nextSampleNumber, currentUserId);
-            
+            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, nextSampleNumber, currentUserId);
+
             await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
             Nav.NavigateTo("/muestras");
         }
@@ -587,7 +683,49 @@
         finally
         {
             isSubmitting = false;
+            showDiscrepancyModal = false;
         }
+    }
+
+    private async Task KeepStoredPatient()
+    {
+        if (pendingDiscrepancy == null) return;
+        var patient = pendingDiscrepancy.Patient;
+        pendingDiscrepancy = null;
+        pendingCandidate = null;
+        await CompleteRegistrationAsync(patient);
+    }
+
+    private async Task UpdatePatientAndContinue()
+    {
+        if (pendingDiscrepancy == null || pendingCandidate == null) return;
+        if (string.IsNullOrWhiteSpace(discrepancyMotivo))
+        {
+            errorMessage = "Debe indicar un motivo para actualizar los datos del paciente.";
+            return;
+        }
+
+        try
+        {
+            var updated = await PatientService.UpdatePatientDemographicsAsync(pendingDiscrepancy.Patient.Id, pendingCandidate, discrepancyMotivo);
+            pendingDiscrepancy = null;
+            pendingCandidate = null;
+            discrepancyMotivo = "";
+            await CompleteRegistrationAsync(updated);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al actualizar el paciente: {ex.Message}";
+        }
+    }
+
+    private void CancelDiscrepancy()
+    {
+        showDiscrepancyModal = false;
+        pendingDiscrepancy = null;
+        pendingCandidate = null;
+        discrepancyMotivo = "";
+        isSubmitting = false;
     }
 
     private void Cancel() => Nav.NavigateTo("/");

@@ -90,6 +90,16 @@
                 </div>
             </div>
 
+            @if (PatientIdentityChanged())
+            {
+                <div class="clin-row mt-3">
+                    <div class="clin-field flex-grow-1 border-warning">
+                        <label class="text-warning">MOTIVO <span class="text-danger ms-1">*</span></label>
+                        <input type="text" class="clin-input" @bind="editPatientMotivo" placeholder="Motivo del cambio en los datos del paciente (obligatorio)" />
+                    </div>
+                </div>
+            }
+
             <!-- Fila 3: Motivo + Tipo -->
             <div class="clin-row mt-3">
                 <div class="clin-field" style="width: 45%;">
@@ -283,6 +293,16 @@
     private Sample? originalSample;
     private ClinicalRequest? originalRequest;
     private Patient? originalPatient;
+    private string editPatientMotivo = "";
+
+    private bool PatientIdentityChanged()
+    {
+        if (originalPatient == null) return false;
+        var fullSafeName = $"{model.LastName}, {model.FirstName}";
+        return fullSafeName != originalPatient.FullName
+            || model.NHC != originalPatient.NHC
+            || (model.NASI ?? string.Empty) != originalPatient.NASI;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -387,12 +407,36 @@
 
         try
         {
-            // Update patient
-            string fullSafeName = $"{model.LastName}, {model.FirstName}";
-            originalPatient.FullName = fullSafeName;
-            originalPatient.NHC = model.NHC;
-            originalPatient.NASI = model.NASI ?? string.Empty;
-            await PatientService.UpsertPatientAsync(originalPatient);
+            // Update patient — vía UpdatePatientDemographicsAsync, nunca mutación directa
+            // (A-1): exige motivo cuando cambian datos de identidad, y bloquea si el NHC
+            // editado colisiona con el de otro paciente.
+            if (PatientIdentityChanged())
+            {
+                if (string.IsNullOrWhiteSpace(editPatientMotivo))
+                {
+                    errorMessage = "Debe indicar un motivo para modificar los datos del paciente.";
+                    isSubmitting = false;
+                    return;
+                }
+
+                string fullSafeName = $"{model.LastName}, {model.FirstName}";
+                var newData = new Patient { NHC = model.NHC, FullName = fullSafeName, NASI = model.NASI ?? string.Empty };
+                try
+                {
+                    await PatientService.UpdatePatientDemographicsAsync(originalPatient.Id, newData, editPatientMotivo);
+                    // Reflejar el cambio en la copia local para que PatientIdentityChanged()
+                    // no siga detectando una diferencia ya guardada.
+                    originalPatient.FullName = newData.FullName;
+                    originalPatient.NHC = newData.NHC;
+                    originalPatient.NASI = newData.NASI;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    errorMessage = ex.Message;
+                    isSubmitting = false;
+                    return;
+                }
+            }
 
             // Update clinical request
             originalRequest.OriginService = model.OriginService ?? "";
@@ -437,6 +481,7 @@
             }
             await SampleService.SetSamplePanelsAsync(originalSample.Id, panelEntities);
 
+            editPatientMotivo = "";
             successMessage = "Registro actualizado correctamente.";
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)

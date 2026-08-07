@@ -14,32 +14,28 @@ namespace MiniLIS.Infrastructure.Services
     {
         private readonly ApplicationDbContext _db;
         private readonly INumberingService _numberingService;
-        private readonly IPatientService _patientService;
         private readonly ICurrentUserService _currentUserService;
 
         public SampleService(
             ApplicationDbContext db,
             INumberingService numberingService,
-            IPatientService patientService,
             ICurrentUserService currentUserService)
         {
             _db = db;
             _numberingService = numberingService;
-            _patientService = patientService;
             _currentUserService = currentUserService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
+        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
         {
             _currentUserService.ActionContext = "Registro de Muestra";
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
             {
-                // 1. Upsert Patient
-                var dbPatient = await _patientService.UpsertPatientAsync(patient);
-
-                // 2. Create Clinical Request
-                request.PatientId = dbPatient.Id;
+                // 1. Vincular con el paciente ya resuelto (existente o recién creado)
+                // por IPatientService.GetOrCreatePatientAsync — ver A-1. Este servicio
+                // ya no decide si el paciente es nuevo o existente, ni lo modifica.
+                request.PatientId = patientId;
                 request.RequestDate = DateTime.Now;
                 _db.ClinicalRequests.Add(request);
                 await _db.SaveChangesAsync();

@@ -10,7 +10,7 @@ namespace MiniLIS.Application.Interfaces
         Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate);
         Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status, int? userId = null);
         Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples, bool incluirIdentificadores = false);
-        Task<Sample> RegisterSampleAsync(Patient patient, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null);
+        Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null);
         Task<Sample?> GetSampleByIdAsync(int sampleId);
         Task<bool> UpdateSampleAsync(Sample sample);
         Task<List<AuditLog>> GetAuditLogsForSampleAsync(int sampleId);
