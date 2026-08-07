@@ -71,6 +71,23 @@ namespace MiniLIS.Infrastructure.Persistence
             modelBuilder.Entity<SampleReport>()
                 .HasIndex(r => r.PublicId)
                 .IsUnique();
+
+            // Índices de integridad y rendimiento (A-2). Los índices sobre claves ajenas
+            // (ClinicalRequestId, PatientId, SampleId, etc.) ya los genera EF Core
+            // automáticamente a partir de las relaciones anteriores.
+            modelBuilder.Entity<Patient>().HasIndex(p => p.NHC).IsUnique();
+            modelBuilder.Entity<Patient>().HasIndex(p => p.NASI);
+            modelBuilder.Entity<Patient>().HasIndex(p => p.FullName);
+
+            modelBuilder.Entity<Sample>().HasIndex(s => s.SampleNumber).IsUnique();
+            modelBuilder.Entity<Sample>().HasIndex(s => s.ReceptionDate);
+            modelBuilder.Entity<Sample>().HasIndex(s => s.Status);
+
+            modelBuilder.Entity<ClinicalRequest>().HasIndex(c => c.RequestNumber);
+
+            modelBuilder.Entity<AuditLog>().HasIndex(a => a.TimestampUtc);
+            modelBuilder.Entity<AuditLog>().HasIndex(a => new { a.EntityName, a.EntityId });
+            modelBuilder.Entity<AuditLog>().HasIndex(a => a.UserId);
         }
 
         public override int SaveChanges()
