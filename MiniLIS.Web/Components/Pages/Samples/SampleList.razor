@@ -153,7 +153,13 @@
                     {
                         <tr>
                             <td class="cell-select"><input type="checkbox" checked="@selectedSampleIds.Contains(s.Id)" @onchange="@(e => ToggleSelect(s.Id, (bool)e.Value!))" /></td>
-                            <td class="cell-code">@s.SampleNumber</td>
+                            <td class="cell-code">
+                                @s.SampleNumber
+                                @if (s.IsDeferredEntry)
+                                {
+                                    <span class="badge bg-warning text-dark ms-1" title="Registro diferido (@s.DeferredEntryReason)">DIFERIDO</span>
+                                }
+                            </td>
                             <td class="cell-date">@LocalTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")</td>
                             <td class="cell-type">@(s.SampleType == SampleType.Otros ? (s.SampleTypeOther ?? "Otros") : s.SampleType.ToCode())</td>
                             <td class="cell-nhc"><span class="nhc-chip">@s.ClinicalRequest?.Patient?.NHC</span></td>

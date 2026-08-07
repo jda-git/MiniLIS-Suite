@@ -49,6 +49,7 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<StoredSpecimen> StoredSpecimens => Set<StoredSpecimen>();
         public DbSet<StoredSpecimenEvent> StoredSpecimenEvents => Set<StoredSpecimenEvent>();
         public DbSet<SampleDataFile> SampleDataFiles => Set<SampleDataFile>();
+        public DbSet<ReservedNumberBlock> ReservedNumberBlocks => Set<ReservedNumberBlock>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -103,6 +103,16 @@ namespace MiniLIS.Domain.Entities
         /// (F-6). Evita duplicados en la siguiente hoja; reincluir es una acción explícita.</summary>
         public DateTime? LastWorklistExportedAtUtc { get; set; }
 
+        /// <summary>Registro diferido en modo contingencia (F-8): las marcas temporales de este
+        /// estudio son las reales tecleadas a posteriori, no la hora de la transcripción. El
+        /// marcado es imprescindible — un registro con fecha de recepción anterior a su fecha
+        /// de creación levanta sospecha en auditoría; con esta marca y su motivo, queda
+        /// explicado en vez de parecer manipulación.</summary>
+        public bool IsDeferredEntry { get; set; }
+        [MaxLength(300)]
+        public string? DeferredEntryReason { get; set; }
+        public DateTime? DeferredEntryAtUtc { get; set; }
+
         public string Diagnosis { get; set; } = string.Empty;
 
         /// <summary>Tipo de muestra (A-3). Dato preanalítico, fijado en recepción.</summary>

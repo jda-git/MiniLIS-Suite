@@ -1,0 +1,203 @@
+@page "/contingencia"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Identity
+@attribute [Authorize(Roles = "Administrador")]
+@inject IContingencyService ContingencyService
+@inject UserManager<ApplicationUser> UserManager
+@inject IJSRuntime JS
+
+<PageTitle>Modo Contingencia - MiniLIS Suite</PageTitle>
+
+<div class="cnt-page">
+    <h1 class="cnt-title"><i class="bi bi-shield-exclamation me-2"></i>Modo Contingencia</h1>
+    <p class="cnt-subtitle">Cláusula 7.8: que la unidad pueda seguir trabajando con el sistema caído, y recuperar después los datos sin perder trazabilidad.</p>
+
+    <!-- Prueba anual -->
+    <div class="cnt-card">
+        <h2 class="cnt-section-title">Prueba anual del modo contingencia</h2>
+        <p class="small text-muted">Este modo debe probarse al menos una vez al año y la prueba debe documentarse (cl. 7.8). No basta con tener la funcionalidad si nunca se ha ensayado.</p>
+        @if (lastAnnualTest == null)
+        {
+            <div class="alert alert-danger small">Nunca se ha registrado una prueba anual.</div>
+        }
+        else
+        {
+            var monthsSince = (DateTime.UtcNow - lastAnnualTest.Value).TotalDays / 30.4;
+            <div class="alert @(monthsSince > 12 ? "alert-danger" : "alert-success") small">
+                Última prueba: @lastAnnualTest.Value.ToString("dd/MM/yyyy") (@monthsSince.ToString("0") meses).
+                @if (monthsSince > 12)
+                {
+                    <strong> Han pasado más de 12 meses — pendiente de reensayo.</strong>
+                }
+            </div>
+        }
+        <button class="btn btn-sm btn-outline-primary" @onclick="MarkAnnualTestDone">Registrar prueba realizada hoy</button>
+    </div>
+
+    <!-- Salida a papel -->
+    <div class="cnt-card">
+        <h2 class="cnt-section-title">Salida a papel</h2>
+        <p class="small text-muted">Con el sistema aún accesible pero previendo una caída, exporta la lista de trabajo pendiente con todos los datos necesarios para seguir en papel.</p>
+        <button class="btn btn-primary btn-sm" @onclick="DescargarPendientes"><i class="bi bi-file-earmark-pdf me-2"></i>Descargar lista de trabajo pendiente (PDF)</button>
+    </div>
+
+    <!-- Bloques reservados -->
+    <div class="cnt-card">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="cnt-section-title m-0">Bloques de números reservados</h2>
+            <button class="btn btn-sm btn-success" @onclick="() => showReserveForm = !showReserveForm">
+                <i class="bi bi-plus-lg me-1"></i>Reservar bloque
+            </button>
+        </div>
+
+        @if (showReserveForm)
+        {
+            <div class="cnt-inline-form">
+                @if (!string.IsNullOrEmpty(reserveError))
+                {
+                    <div class="alert alert-danger py-2 px-3 small">@reserveError</div>
+                }
+                <div class="d-flex gap-2 flex-wrap align-items-end">
+                    <div>
+                        <label class="cnt-label">Año</label>
+                        <input type="number" class="form-control form-control-sm" @bind="reserveYear" />
+                    </div>
+                    <div>
+                        <label class="cnt-label">Desde (secuencia)</label>
+                        <input type="number" class="form-control form-control-sm" @bind="reserveFrom" />
+                    </div>
+                    <div>
+                        <label class="cnt-label">Hasta (secuencia)</label>
+                        <input type="number" class="form-control form-control-sm" @bind="reserveTo" />
+                    </div>
+                    <div style="flex:1; min-width:220px;">
+                        <label class="cnt-label">Motivo</label>
+                        <input type="text" class="form-control form-control-sm" @bind="reserveReason" />
+                    </div>
+                    <button class="btn btn-sm btn-success" @onclick="ReserveBlock">Reservar</button>
+                </div>
+            </div>
+        }
+
+        @if (isLoading)
+        {
+            <div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></div>
+        }
+        else if (!blocks.Any())
+        {
+            <p class="text-muted small">No hay bloques reservados.</p>
+        }
+        else
+        {
+            <table class="table table-sm mt-3">
+                <thead><tr><th>Bloque</th><th>Motivo</th><th>Consumo</th><th>Estado</th><th>Acciones</th></tr></thead>
+                <tbody>
+                    @foreach (var b in blocks)
+                    {
+                        var yearSuffix = (b.Block.Year % 100).ToString("D2");
+                        <tr>
+                            <td>@yearSuffix-@(b.Block.FromSequence.ToString("D4")) — @yearSuffix-@(b.Block.ToSequence.ToString("D4"))</td>
+                            <td class="small">@b.Block.Reason</td>
+                            <td>@b.Consumed / @b.TotalNumbers</td>
+                            <td>@(b.Block.IsClosed ? "Cerrado" : "Abierto")</td>
+                            <td class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => DescargarHojas(b.Block.Id)" title="Hojas en blanco + etiquetas">
+                                    <i class="bi bi-file-earmark-arrow-down"></i>
+                                </button>
+                                @if (!b.Block.IsClosed)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => CerrarBloque(b.Block.Id)" title="Cerrar bloque">
+                                        <i class="bi bi-lock"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<style>
+    .cnt-page { padding: 0; }
+    .cnt-title { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0; }
+    .cnt-subtitle { font-size: 12px; color: #64748b; margin: 4px 0 16px; }
+    .cnt-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .cnt-section-title { font-size: 15px; font-weight: 700; color: #1e293b; }
+    .cnt-inline-form { background: #f8fafc; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+    .cnt-label { font-size: 11px; font-weight: 600; color: #64748b; display: block; }
+</style>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
+    private List<ReservedBlockConsumption> blocks = new();
+    private bool isLoading = true;
+    private DateTime? lastAnnualTest;
+
+    private bool showReserveForm = false;
+    private int reserveYear = DateTime.Today.Year;
+    private int reserveFrom;
+    private int reserveTo;
+    private string? reserveReason;
+    private string? reserveError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        blocks = await ContingencyService.GetBlocksWithConsumptionAsync();
+        lastAnnualTest = await ContingencyService.GetLastAnnualTestDateAsync();
+        isLoading = false;
+    }
+
+    private async Task ReserveBlock()
+    {
+        reserveError = null;
+        try
+        {
+            var authState = await AuthStateTask;
+            var user = await UserManager.GetUserAsync(authState.User);
+            await ContingencyService.ReserveBlockAsync(reserveYear, reserveFrom, reserveTo, reserveReason ?? "", user?.Id);
+            showReserveForm = false;
+            reserveFrom = reserveTo = 0;
+            reserveReason = null;
+            await LoadData();
+        }
+        catch (InvalidOperationException ex)
+        {
+            reserveError = ex.Message;
+        }
+    }
+
+    private async Task CerrarBloque(int blockId)
+    {
+        await ContingencyService.CloseBlockAsync(blockId);
+        await LoadData();
+    }
+
+    private async Task MarkAnnualTestDone()
+    {
+        await ContingencyService.SetLastAnnualTestDateAsync(DateTime.UtcNow);
+        await LoadData();
+    }
+
+    private async Task DescargarPendientes()
+    {
+        await JS.InvokeVoidAsync("triggerDownload", "/api/downloads/contingencia/pendientes/pdf");
+    }
+
+    private async Task DescargarHojas(int blockId)
+    {
+        await JS.InvokeVoidAsync("triggerDownload", $"/api/downloads/contingencia/hojas/pdf?blockId={blockId}");
+    }
+}

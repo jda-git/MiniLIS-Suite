@@ -32,9 +32,10 @@ namespace MiniLIS.Infrastructure.Services
             _localTimeService = localTimeService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null)
+        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null, DeferredEntryInput? deferredEntry = null)
         {
             reception ??= new ReceptionInput();
+            deferredEntry ??= new DeferredEntryInput();
             _currentUserService.ActionContext = "Registro de Muestra";
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
@@ -70,14 +71,20 @@ namespace MiniLIS.Infrastructure.Services
                     }
 
                     var registrationMoment = DateTime.UtcNow;
+                    // Registro diferido (F-8): única excepción controlada a la regla de M-5 de
+                    // que ReceivedAtUtc/RegisteredAtUtc son siempre automáticas. Sin marcas
+                    // diferidas, coinciden con el momento de la transcripción como siempre.
+                    var receivedAtUtc = deferredEntry.IsDeferredEntry && deferredEntry.ReceivedAtUtcOverride.HasValue
+                        ? deferredEntry.ReceivedAtUtcOverride.Value : registrationMoment;
+                    var registeredAtUtc = deferredEntry.IsDeferredEntry && deferredEntry.RegisteredAtUtcOverride.HasValue
+                        ? deferredEntry.RegisteredAtUtcOverride.Value : registrationMoment;
+
                     sample = new Sample
                     {
                         SampleNumber = sampleNumber,
-                        ReceptionDate = registrationMoment,
-                        // ReceivedAtUtc/RegisteredAtUtc (M-5): coinciden hoy porque el alta es
-                        // de un solo paso; ver comentario en Sample.cs.
-                        ReceivedAtUtc = registrationMoment,
-                        RegisteredAtUtc = registrationMoment,
+                        ReceptionDate = receivedAtUtc,
+                        ReceivedAtUtc = receivedAtUtc,
+                        RegisteredAtUtc = registeredAtUtc,
                         ClinicalRequestId = request.Id,
                         ClinicalRequest = request,
                         Status = SampleStatus.Recibida,
@@ -94,7 +101,10 @@ namespace MiniLIS.Infrastructure.Services
                         RequesterNotifiedAtUtc = reception.RequesterNotified ? DateTime.UtcNow : null,
                         RequesterNotifiedByUserId = reception.RequesterNotified ? registeredByUserId : null,
                         NotificationNotes = reception.NotificationNotes,
-                        QmsNonConformityRef = reception.QmsNonConformityRef
+                        QmsNonConformityRef = reception.QmsNonConformityRef,
+                        IsDeferredEntry = deferredEntry.IsDeferredEntry,
+                        DeferredEntryReason = deferredEntry.IsDeferredEntry ? deferredEntry.Reason : null,
+                        DeferredEntryAtUtc = deferredEntry.IsDeferredEntry ? registrationMoment : null
                     };
 
                     _db.Samples.Add(sample);
@@ -119,6 +129,23 @@ namespace MiniLIS.Infrastructure.Services
                         await _db.SaveChangesAsync();
                         await Task.Delay(50 * attempt);
                     }
+                }
+
+                // 3.4 Registro diferido (F-8): auditado de forma explícita, con el motivo en
+                // Changes, porque una fecha de recepción anterior a la creación levantaría
+                // sospecha sin esta constancia.
+                if (deferredEntry.IsDeferredEntry)
+                {
+                    _db.AuditLogs.Add(new AuditLog
+                    {
+                        EntityName = nameof(Sample),
+                        EntityId = sample.Id.ToString(),
+                        Action = "DeferredEntry",
+                        UserId = registeredByUserId,
+                        Changes = deferredEntry.Reason,
+                        ActionContext = $"Registro diferido: recibida {sample.ReceivedAtUtc:O}, registrada {sample.RegisteredAtUtc:O}",
+                        TimestampUtc = DateTime.UtcNow
+                    });
                 }
 
                 // 3.5 Motivos de recepción elegidos (F-4), multi-select.
@@ -190,7 +217,7 @@ namespace MiniLIS.Infrastructure.Services
                     }
                 }
 
-                if (order > 1 || reception.RejectionReasonIds.Any()) await _db.SaveChangesAsync();
+                if (order > 1 || reception.RejectionReasonIds.Any() || deferredEntry.IsDeferredEntry) await _db.SaveChangesAsync();
 
                 await transaction.CommitAsync();
                 return sample;

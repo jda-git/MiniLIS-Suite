@@ -8,6 +8,7 @@
 @inject INumberingService NumberingService
 @inject ISampleService SampleRegistry
 @inject IMasterDataService MasterService
+@inject ILocalTimeService LocalTimeService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @using Microsoft.AspNetCore.Identity
@@ -73,11 +74,45 @@
         </div>
     }
 
+    <AuthorizeView Roles="Administrador,Facultativo">
+        <Authorized>
+            <div class="d-flex align-items-center mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="deferredToggle" @bind="isDeferredMode" />
+                    <label class="form-check-label fw-semibold" for="deferredToggle">
+                        <i class="bi bi-clock-history text-warning me-1"></i>Registro diferido (modo contingencia)
+                    </label>
+                </div>
+            </div>
+            @if (isDeferredMode)
+            {
+                <div class="alert alert-warning">
+                    <strong><i class="bi bi-exclamation-triangle-fill me-2"></i>MODO DIFERIDO</strong> —
+                    introduzca el número reservado en "Nº MUESTRA" y las marcas temporales reales (no la hora actual de transcripción).
+                    <div class="row mt-2 g-2">
+                        <div class="col-md-4">
+                            <label class="small fw-semibold">Fecha/hora real de recepción</label>
+                            <input type="datetime-local" class="form-control form-control-sm" @bind="deferredReceivedAt" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="small fw-semibold">Fecha/hora real de registro</label>
+                            <input type="datetime-local" class="form-control form-control-sm" @bind="deferredRegisteredAt" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="small fw-semibold">Motivo (obligatorio)</label>
+                            <input type="text" class="form-control form-control-sm" @bind="deferredReason" />
+                        </div>
+                    </div>
+                </div>
+            }
+        </Authorized>
+    </AuthorizeView>
+
     <EditForm Model="model" OnValidSubmit="HandleSubmit">
         <DataAnnotationsValidator />
-        
+
         <div class="iso-panel">
-            
+
             <!-- Fila 1 -->
             <div class="clin-row">
                 <div class="clin-field" style="width: 220px;">
@@ -589,6 +624,12 @@
     // trata como número manual y no se reintenta automáticamente.
     private string peekedSampleNumber = "";
     private string? errorMessage;
+
+    // Registro diferido (F-8)
+    private bool isDeferredMode = false;
+    private DateTime? deferredReceivedAt;
+    private DateTime? deferredRegisteredAt;
+    private string? deferredReason;
     private bool isSubmitting = false;
     private List<Panel> allPanels = new();
     private HashSet<int> selectedPanelIds = new();
@@ -701,6 +742,12 @@
             return;
         }
 
+        if (isDeferredMode && string.IsNullOrWhiteSpace(deferredReason))
+        {
+            errorMessage = "El registro diferido exige indicar un motivo.";
+            return;
+        }
+
         isSubmitting = true;
         errorMessage = null;
 
@@ -782,7 +829,19 @@
                 NotificationNotes = receptionStatus == ReceptionStatus.Rechazada ? model.NotificationNotes : null
             };
 
-            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, model.Diagnosis ?? "", sampleType, sampleTypeOther, studyPanelText, false, "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId, reception);
+            DeferredEntryInput? deferredEntry = null;
+            if (isDeferredMode)
+            {
+                deferredEntry = new DeferredEntryInput
+                {
+                    IsDeferredEntry = true,
+                    Reason = deferredReason,
+                    ReceivedAtUtcOverride = deferredReceivedAt.HasValue ? LocalTimeService.ToUtc(deferredReceivedAt.Value) : null,
+                    RegisteredAtUtcOverride = deferredRegisteredAt.HasValue ? LocalTimeService.ToUtc(deferredRegisteredAt.Value) : null
+                };
+            }
+
+            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, model.Diagnosis ?? "", sampleType, sampleTypeOther, studyPanelText, false, "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId, reception, deferredEntry);
 
             // F-5: ofrece imprimir la etiqueta recién generada en una pestaña aparte, sin
             // bloquear el flujo principal (el registro ya está guardado).

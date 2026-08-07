@@ -20,17 +20,21 @@ namespace MiniLIS.Web.Controllers
         private readonly ISampleService _sampleService;
         private readonly IQualityIndicatorService _qualityIndicatorService;
         private readonly IWorklistExportService _worklistExportService;
+        private readonly IWorklistService _worklistService;
+        private readonly IContingencyService _contingencyService;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
             _sampleService = sampleService;
             _qualityIndicatorService = qualityIndicatorService;
             _worklistExportService = worklistExportService;
+            _worklistService = worklistService;
+            _contingencyService = contingencyService;
             _userManager = userManager;
             _logger = logger;
             _configuration = configuration;
@@ -427,6 +431,75 @@ namespace MiniLIS.Web.Controllers
                 _logger.LogError(ex, "Error generando la hoja de trabajo del citómetro");
                 return StatusCode(StatusCodes.Status500InternalServerError,
                     "No se ha podido generar la hoja de trabajo. Inténtelo de nuevo o contacte con el administrador.");
+            }
+        }
+
+        [HttpGet("contingencia/pendientes/pdf")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        public async Task<IActionResult> ExportContingenciaPendientes()
+        {
+            try
+            {
+                var board = await _worklistService.GetBoardAsync();
+                var bytes = await _documentService.GenerateContingencyPendingListPdfAsync(board);
+
+                var user = await _userManager.GetUserAsync(User);
+                _db.AuditLogs.Add(new AuditLog
+                {
+                    EntityName = "ContingencyPendingList",
+                    EntityId = DateTime.UtcNow.ToString("yyyyMMddHHmm"),
+                    Action = "Export",
+                    UserId = user?.Id,
+                    Username = user?.UserName,
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    ActionContext = "Exportación de la lista de trabajo pendiente para contingencia",
+                    TimestampUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+
+                return File(bytes, "application/pdf", $"Contingencia_Pendientes_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando el PDF de pendientes de contingencia");
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
+            }
+        }
+
+        [HttpGet("contingencia/hojas/pdf")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        public async Task<IActionResult> ExportContingenciaHojas([FromQuery] int blockId)
+        {
+            try
+            {
+                var blocks = await _contingencyService.GetBlocksWithConsumptionAsync();
+                var block = blocks.FirstOrDefault(b => b.Block.Id == blockId);
+                if (block == null) return NotFound();
+
+                var bytes = await _documentService.GenerateBlankRegistrationSheetsPdfAsync(block.AvailableNumbers);
+
+                var user = await _userManager.GetUserAsync(User);
+                _db.AuditLogs.Add(new AuditLog
+                {
+                    EntityName = nameof(ReservedNumberBlock),
+                    EntityId = blockId.ToString(),
+                    Action = "Export",
+                    UserId = user?.Id,
+                    Username = user?.UserName,
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    ActionContext = $"Exportación de hojas de registro manual en blanco ({block.AvailableNumbers.Count} números)",
+                    TimestampUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+
+                return File(bytes, "application/pdf", $"Contingencia_Hojas_Bloque{blockId}_{DateTime.UtcNow:yyyyMMdd_HHmm}.pdf");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando el PDF de hojas de registro manual");
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
             }
         }
     }

@@ -74,10 +74,42 @@ namespace MiniLIS.Infrastructure.Services
                 nextSeq = dbMaxSeq + 1;
             }
 
+            nextSeq = await SkipReservedBlocksAsync(currentYear, nextSeq);
+
             seqSetting.Value = nextSeq.ToString();
             await _db.SaveChangesAsync();
 
             return $"{currentYear}-{nextSeq:D4}";
+        }
+
+        /// <summary>Salta cualquier secuencia dentro de un bloque reservado abierto del año en
+        /// curso (F-8): esos números solo se consumen mediante registro diferido con número
+        /// manual dentro del bloque, nunca por asignación automática.</summary>
+        private async Task<int> SkipReservedBlocksAsync(string yearStr, int candidateSeq)
+        {
+            if (!int.TryParse(yearStr, out var year2)) return candidateSeq;
+            var fullYear = 2000 + year2;
+
+            var openBlocks = await _db.ReservedNumberBlocks
+                .Where(b => b.Year == fullYear && !b.IsClosed)
+                .OrderBy(b => b.FromSequence)
+                .ToListAsync();
+
+            var seq = candidateSeq;
+            var advanced = true;
+            while (advanced)
+            {
+                advanced = false;
+                foreach (var block in openBlocks)
+                {
+                    if (seq >= block.FromSequence && seq <= block.ToSequence)
+                    {
+                        seq = block.ToSequence + 1;
+                        advanced = true;
+                    }
+                }
+            }
+            return seq;
         }
 
         public async Task<string> PeekNextSampleNumberAsync()
@@ -101,6 +133,7 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             int nextSeq = Math.Max(lastSeq, dbMaxSeq) + 1;
+            nextSeq = await SkipReservedBlocksAsync(currentYear, nextSeq);
 
             return $"{currentYear}-{nextSeq:D4}";
         }

@@ -106,6 +106,15 @@ namespace MiniLIS.Infrastructure.Services
                                 ? (sample.SampleTypeOther ?? "Otros")
                                 : sample.SampleType.ToDisplayName();
 
+                        // REGISTRO DIFERIDO (F-8): distintivo visual obligatorio — un informe con
+                        // fecha de recepción anterior a su creación levanta sospecha en auditoría
+                        // sin esta marca visible.
+                        if (sample?.IsDeferredEntry == true)
+                        {
+                            headerCol.Item().Background(Colors.Amber.Lighten3).Padding(4)
+                                .Text($"⚠ REGISTRO DIFERIDO (modo contingencia) — {sample.DeferredEntryReason}").FontSize(9).Bold();
+                        }
+
                         // Black divider
                         headerCol.Item().BorderTop(1.5f).BorderBottom(1.5f).BorderColor(Colors.Black).PaddingVertical(8).Column(dataCol =>
                         {
@@ -422,6 +431,12 @@ namespace MiniLIS.Infrastructure.Services
             var p = report.Sample?.ClinicalRequest?.Patient;
             var r = report.Sample?.ClinicalRequest;
             var s = report.Sample;
+
+            // REGISTRO DIFERIDO (F-8): distintivo visual obligatorio, ver GeneratePdfAsync.
+            if (s?.IsDeferredEntry == true)
+            {
+                sb.Append($@"<text:p text:style-name=""SectionBlue"">⚠ REGISTRO DIFERIDO (modo contingencia) — {EncodeForOdt(s.DeferredEntryReason ?? "")}</text:p>");
+            }
 
             sb.Append(@"<table:table table:name=""Demographics"">");
             sb.Append(@"<table:table-column table:style-name=""Col50""/>");
@@ -792,6 +807,119 @@ namespace MiniLIS.Infrastructure.Services
             });
 
             return doc.GeneratePdf();
+        }
+
+        /// <summary>Salida a papel del modo contingencia (F-8): la lista de trabajo pendiente
+        /// (F-3) tal como está en el momento de generarla, con todos los datos necesarios para
+        /// seguir trabajando en papel si el sistema cae.</summary>
+        public Task<byte[]> GenerateContingencyPendingListPdfAsync(WorklistBoard board)
+        {
+            var doc = Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(1.5f, Unit.Centimetre);
+                    page.PageColor(Colors.White);
+                    page.DefaultTextStyle(x => x.FontSize(9).FontFamily(Fonts.Arial));
+
+                    page.Header().Column(headerCol =>
+                    {
+                        headerCol.Item().Text("MODO CONTINGENCIA — LISTA DE TRABAJO PENDIENTE").FontSize(14).Bold();
+                        headerCol.Item().Text($"Generado: {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC").FontSize(8).FontColor(Colors.Grey.Medium);
+                        headerCol.Item().PaddingTop(4).BorderBottom(1).BorderColor(Colors.Black);
+                    });
+
+                    page.Content().PaddingVertical(10).Column(col =>
+                    {
+                        void Section(string title, IEnumerable<WorklistItem> items)
+                        {
+                            var list = items.ToList();
+                            col.Item().PaddingTop(10).Text($"{title} ({list.Count})").FontSize(11).Bold();
+                            if (!list.Any())
+                            {
+                                col.Item().Text("— ninguna —").FontSize(9).Italic().FontColor(Colors.Grey.Medium);
+                                return;
+                            }
+                            foreach (var item in list)
+                            {
+                                col.Item().Row(r =>
+                                {
+                                    r.RelativeItem(2).Text(item.SampleNumber).FontSize(9).Bold();
+                                    r.RelativeItem(1).Text(item.SampleType.ToDisplayName()).FontSize(9);
+                                    r.RelativeItem(3).Text(item.Panels.Any() ? string.Join(", ", item.Panels) : "—").FontSize(9);
+                                    r.RelativeItem(1).Text($"{item.AgeHours:0.#} h").FontSize(9);
+                                });
+                            }
+                        }
+
+                        Section("Pendiente de adquirir", board.PendienteAdquirir);
+                        Section("Adquisición parcial", board.AdquisicionParcial);
+                        Section("Pendiente de analizar", board.PendienteAnalizar);
+                        Section("En redacción", board.EnRedaccion);
+                        Section("Pendiente de envío", board.PendienteEnvio);
+                    });
+
+                    page.Footer().AlignRight().Text(x =>
+                    {
+                        x.Span("Página ").FontSize(8);
+                        x.CurrentPageNumber().FontSize(8);
+                        x.Span(" / ").FontSize(8);
+                        x.TotalPages().FontSize(8);
+                    });
+                });
+            });
+
+            return Task.FromResult(doc.GeneratePdf());
+        }
+
+        /// <summary>Hojas de registro manual en blanco con el número ya impreso (F-8), una
+        /// página por número del bloque, cada una con su código de barras (reutiliza
+        /// Code128Encoder de F-5) para poder pegar o escanear directamente.</summary>
+        public Task<byte[]> GenerateBlankRegistrationSheetsPdfAsync(List<string> sampleNumbers)
+        {
+            var doc = Document.Create(container =>
+            {
+                foreach (var number in sampleNumbers)
+                {
+                    container.Page(page =>
+                    {
+                        page.Size(PageSizes.A5);
+                        page.Margin(1.2f, Unit.Centimetre);
+                        page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Arial));
+
+                        page.Content().Column(col =>
+                        {
+                            col.Item().AlignCenter().Text(number).FontSize(24).Bold();
+
+                            var widths = Code128Encoder.EncodeToModuleWidths(number);
+                            var totalModules = widths.Sum();
+                            var svg = new StringBuilder();
+                            svg.Append($"<svg width=\"{totalModules * 2}\" height=\"60\" viewBox=\"0 0 {totalModules} 1\" preserveAspectRatio=\"none\" xmlns=\"http://www.w3.org/2000/svg\">");
+                            double x = 0; var isBar = true;
+                            foreach (var w in widths)
+                            {
+                                if (isBar) svg.Append($"<rect x=\"{x}\" y=\"0\" width=\"{w}\" height=\"1\" fill=\"black\"/>");
+                                x += w; isBar = !isBar;
+                            }
+                            svg.Append("</svg>");
+                            col.Item().AlignCenter().Height(50).Svg(svg.ToString());
+
+                            col.Item().PaddingTop(20).Text("REGISTRO MANUAL — MODO CONTINGENCIA").FontSize(11).Bold();
+                            col.Item().PaddingTop(4).Text("Cumplimentar y transcribir a MiniLIS mediante registro diferido al recuperar el sistema.").FontSize(8).Italic();
+
+                            string[] fields = { "NHC / NASI:", "Nombre y apellidos:", "Tipo de muestra (SP/MO/LCR/Otros):", "Fecha y hora de recepción real:", "Servicio solicitante:", "Médico solicitante:", "Motivo:", "Paneles solicitados:", "Registrado por:" };
+                            foreach (var field in fields)
+                            {
+                                col.Item().PaddingTop(10).Text(field).FontSize(9);
+                                col.Item().PaddingTop(14).BorderBottom(1).BorderColor(Colors.Grey.Medium);
+                            }
+                        });
+                    });
+                }
+            });
+
+            return Task.FromResult(doc.GeneratePdf());
         }
     }
 }
