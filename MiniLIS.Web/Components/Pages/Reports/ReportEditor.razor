@@ -8,6 +8,7 @@
 @inject IReportService ReportService
 @inject IMasterDataService MasterService
 @inject IDocumentService DocumentService
+@inject ILocalTimeService LocalTimeService
 @inject IJSRuntime JS
 
 <PageTitle>Editor de Informe - MiniLIS Suite</PageTitle>
@@ -28,7 +29,7 @@
         <legend>Identificación</legend>
         <div class="id-grid">
             <div class="id-field"><label>Nombre:</label><input type="text" @bind="patientName" /></div>
-            <div class="id-field"><label>Fecha muestra:</label><input type="text" value="@report.Sample?.ReceptionDate.ToString("dd/MM/yyyy")" readonly /></div>
+            <div class="id-field"><label>Fecha muestra:</label><input type="text" value="@(report.Sample != null ? LocalTimeService.ToLocal(report.Sample.ReceptionDate).ToString("dd/MM/yyyy") : "")" readonly /></div>
             <div class="id-field"><label>Fecha informe:</label><input type="date" @bind="reportDate" /></div>
 
             <div class="id-field"><label>Nº muestra:</label><input type="text" value="@report.Sample?.SampleNumber" readonly /></div>
@@ -227,7 +228,7 @@
                 <p class="mb-2">
                     <i class="bi bi-check-circle-fill text-success me-2"></i>
                     Validado por <strong>@(report.ValidatedByUser?.FullName ?? report.ValidatedByUser?.UserName ?? "—")</strong>
-                    el @(report.ValidatedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—")
+                    el @(LocalTimeService.ToLocal(report.ValidatedAtUtc)?.ToString("dd/MM/yyyy HH:mm") ?? "—")
                 </p>
                 <AuthorizeView Roles="Administrador,Facultativo">
                     <Authorized>
@@ -420,7 +421,9 @@
         }
         motivoSolicitud = report.Sample?.Diagnosis ?? "";
 
-        reportDate = report.ReportDate ?? DateTime.Today;
+        // ReportDate se guarda en UTC (M-5); el selector de fecha trabaja en local para
+        // no mostrar el día equivocado cerca de medianoche.
+        reportDate = report.ReportDate.HasValue ? LocalTimeService.ToLocal(report.ReportDate.Value).Date : DateTime.Today;
 
         // Auto-import read panels from the sample
         var samplePanels = await SampleService.GetSamplePanelsAsync(SampleId);
@@ -538,7 +541,7 @@
         isSaving = true;
         try
         {
-            report!.ReportDate = reportDate;
+            report!.ReportDate = LocalTimeService.ToUtc(reportDate.Date);
 
             // Optional: Write back edited fields to report/sample so PDF generation sees them.
             if(report.Sample != null)

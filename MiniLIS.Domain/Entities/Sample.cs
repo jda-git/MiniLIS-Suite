@@ -32,7 +32,30 @@ namespace MiniLIS.Domain.Entities
         public SampleStatus Status { get; set; } = SampleStatus.Recibida;
         
         public DateTime? FinalizedAt { get; set; }
-        
+
+        // --- Marcas temporales de proceso (M-5), todas UTC, distintas de ReceptionDate
+        // (fecha de negocio, ver NumberingService/GetFilteredSamplesAsync). Coinciden hoy
+        // porque el alta es de un solo paso; quedan preparadas para un futuro flujo con
+        // recepción separada del registro. Ver F-1 para su uso en indicadores de TAT.
+
+        /// <summary>Llegada física al laboratorio. Hoy simultánea al alta (RegisterSampleAsync).</summary>
+        public DateTime? ReceivedAtUtc { get; set; }
+
+        /// <summary>Alta en el sistema. Hoy simultánea a ReceivedAtUtc.</summary>
+        public DateTime? RegisteredAtUtc { get; set; }
+
+        /// <summary>Extracción, dato del peticionario. Sin punto de captura todavía (ninguna UI lo recoge).</summary>
+        public DateTime? CollectedAtUtc { get; set; }
+
+        /// <summary>Primer tubo leído. Se rellena solo la primera vez, al marcar cualquier tubo como leído.</summary>
+        public DateTime? AcquiredAtUtc { get; set; }
+
+        /// <summary>Análisis completado. Se interpreta como la transición a Finalizada (no existe un estado propio de "análisis" en SampleStatus).</summary>
+        public DateTime? AnalyzedAtUtc { get; set; }
+
+        /// <summary>Informe emitido al peticionario. Sin escritor automático: no existe hoy ninguna acción de "envío" distinta de validar o descargar (ver SampleReport.ValidatedAtUtc/FirstDownloadedAtUtc).</summary>
+        public DateTime? ReportedAtUtc { get; set; }
+
         public int? RegisteredByUserId { get; set; }
         public virtual MiniLIS.Domain.Identity.ApplicationUser? RegisteredByUser { get; set; }
 

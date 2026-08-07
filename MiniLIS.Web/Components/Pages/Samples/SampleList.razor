@@ -10,6 +10,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using MiniLIS.Domain.Identity
 @inject UserManager<ApplicationUser> UserManager
+@inject ILocalTimeService LocalTimeService
 
 <PageTitle>Bandeja Técnica - MiniLIS Suite</PageTitle>
 
@@ -136,7 +137,7 @@
                     {
                         <tr>
                             <td class="cell-code">@s.SampleNumber</td>
-                            <td class="cell-date">@s.ReceptionDate.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="cell-date">@LocalTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")</td>
                             <td class="cell-type">@(s.SampleType == SampleType.Otros ? (s.SampleTypeOther ?? "Otros") : s.SampleType.ToCode())</td>
                             <td class="cell-nhc"><span class="nhc-chip">@s.ClinicalRequest?.Patient?.NHC</span></td>
                             <td class="cell-lab">@s.ClinicalRequest?.RequestNumber</td>
@@ -327,7 +328,7 @@
                                                                 <i class="bi bi-person-fill me-1"></i>@(tube.ReadByUser?.FullName ?? currentUserName)
                                                             </span>
                                                             <span class="read-date">
-                                                                <i class="bi bi-clock-fill me-1"></i>@(tube.ReadAtUtc?.ToString("dd/MM HH:mm"))
+                                                                <i class="bi bi-clock-fill me-1"></i>@(LocalTimeService.ToLocal(tube.ReadAtUtc)?.ToString("dd/MM HH:mm"))
                                                             </span>
                                                         </div>
                                                     }

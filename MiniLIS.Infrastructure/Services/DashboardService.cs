@@ -13,19 +13,30 @@ namespace MiniLIS.Infrastructure.Services
     public class DashboardService : IDashboardService
     {
         private readonly ApplicationDbContext _db;
+        private readonly ILocalTimeService _localTimeService;
 
-        public DashboardService(ApplicationDbContext db)
+        public DashboardService(ApplicationDbContext db, ILocalTimeService localTimeService)
         {
             _db = db;
+            _localTimeService = localTimeService;
         }
 
         public async Task<DashboardStatsDto> GetStatsAsync()
         {
-            var today = DateTime.UtcNow.Date;
-            var weekStart = today.AddDays(-(int)today.DayOfWeek + 1); // Monday
-            if (today.DayOfWeek == DayOfWeek.Sunday) weekStart = weekStart.AddDays(-7);
-            var monthStart = new DateTime(today.Year, today.Month, 1);
-            var last30Days = today.AddDays(-90); // Extended window to catch older samples
+            // "Hoy"/"esta semana"/"este mes" son conceptos de calendario local (M-5): con
+            // ReceptionDate en UTC, calcular los límites sobre UtcNow.Date daría el día
+            // equivocado cerca de medianoche en Madrid. Se calcula el límite en local y se
+            // convierte a UTC antes de comparar.
+            var todayLocal = _localTimeService.NowLocal().Date;
+            var weekStartLocal = todayLocal.AddDays(-(int)todayLocal.DayOfWeek + 1); // Monday
+            if (todayLocal.DayOfWeek == DayOfWeek.Sunday) weekStartLocal = weekStartLocal.AddDays(-7);
+            var monthStartLocal = new DateTime(todayLocal.Year, todayLocal.Month, 1);
+            var last30DaysLocal = todayLocal.AddDays(-90); // Extended window to catch older samples
+
+            var today = _localTimeService.ToUtc(todayLocal);
+            var weekStart = _localTimeService.ToUtc(weekStartLocal);
+            var monthStart = _localTimeService.ToUtc(monthStartLocal);
+            var last30Days = _localTimeService.ToUtc(last30DaysLocal);
 
             // ── Status counters ──
             var statusCounts = await _db.Samples
@@ -48,9 +59,10 @@ namespace MiniLIS.Infrastructure.Services
             // Avg samples per active day (last 30 days)
             var last30Samples = await _db.Samples
                 .Where(s => s.ReceptionDate >= last30Days)
-                .Select(s => s.ReceptionDate.Date)
+                .Select(s => s.ReceptionDate)
                 .ToListAsync();
-            var activeDays = last30Samples.Distinct().Count();
+            // Se agrupa por día natural local, no por día UTC (M-5).
+            var activeDays = last30Samples.Select(d => _localTimeService.ToLocal(d).Date).Distinct().Count();
             double avgPerDay = activeDays > 0 ? (double)last30Samples.Count / activeDays : 0;
 
             // ── TAT (Turnaround Time) ──
@@ -70,10 +82,13 @@ namespace MiniLIS.Infrastructure.Services
                 })
                 .ToListAsync();
 
+            // FinalDate solo se usa para restar contra ReceptionDate (TAT en días); todo el
+            // encadenado debe quedarse en UTC (M-5) o el resultado sería incorrecto — antes
+            // mezclaba ValidatedAtUtc convertido a local con ReportDate/UpdatedAtUtc en UTC.
             var tatDataResolved = tatData.Select(r => new
             {
                 r.ReceptionDate,
-                FinalDate = r.ValidatedAtUtc?.ToLocalTime() ?? r.ReportDate ?? r.UpdatedAtUtc ?? DateTime.Now
+                FinalDate = r.ValidatedAtUtc ?? r.ReportDate ?? r.UpdatedAtUtc ?? DateTime.UtcNow
             }).ToList();
 
             var tatDays = tatDataResolved.Select(r => (r.FinalDate - r.ReceptionDate).TotalDays).Where(d => d >= 0).OrderBy(d => d).ToList();

@@ -22,11 +22,13 @@ namespace MiniLIS.Infrastructure.Services
     {
         private readonly ApplicationDbContext _db;
         private readonly IMasterDataService _masterService;
+        private readonly ILocalTimeService _localTimeService;
 
-        public DocumentService(ApplicationDbContext db, IMasterDataService masterService)
+        public DocumentService(ApplicationDbContext db, IMasterDataService masterService, ILocalTimeService localTimeService)
         {
             _db = db;
             _masterService = masterService;
+            _localTimeService = localTimeService;
             QuestPDF.Settings.License = LicenseType.Community;
         }
 
@@ -116,8 +118,8 @@ namespace MiniLIS.Infrastructure.Services
 
                             dataCol.Item().PaddingBottom(4).Row(r =>
                             {
-                                r.RelativeItem(5).Text(t => { t.Span("FECHA DE MUESTRA: ").Bold(); t.Span(sample != null ? sample.ReceptionDate.ToString("dd/MM/yyyy HH:mm") : "").FontSize(10); });
-                                r.RelativeItem(5).Text(t => { t.Span("FECHA INFORME: ").Bold(); t.Span(fullReport.ReportDate?.ToString("dd/MM/yyyy") ?? DateTime.Now.ToString("dd/MM/yyyy")).FontSize(10); });
+                                r.RelativeItem(5).Text(t => { t.Span("FECHA DE MUESTRA: ").Bold(); t.Span(sample != null ? _localTimeService.ToLocal(sample.ReceptionDate).ToString("dd/MM/yyyy HH:mm") : "").FontSize(10); });
+                                r.RelativeItem(5).Text(t => { t.Span("FECHA INFORME: ").Bold(); t.Span((_localTimeService.ToLocal(fullReport.ReportDate) ?? _localTimeService.NowLocal()).ToString("dd/MM/yyyy")).FontSize(10); });
                             });
 
                             dataCol.Item().PaddingBottom(4).Row(r =>
@@ -284,7 +286,7 @@ namespace MiniLIS.Infrastructure.Services
                                     }
                                 });
 
-                                var saveDate = (fullReport.UpdatedAtUtc ?? fullReport.CreatedAtUtc).ToLocalTime();
+                                var saveDate = _localTimeService.ToLocal(fullReport.UpdatedAtUtc ?? fullReport.CreatedAtUtc);
                                 c.Item().PaddingTop(8).Text($"Fecha de informe: {saveDate:dd-MM-yyyy, HH:mm}").FontSize(8);
                             }
                         });
@@ -428,8 +430,8 @@ namespace MiniLIS.Infrastructure.Services
 
             // Row 2: Dates
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">FECHA MUESTRA: <text:span text:style-name=""Value"">{s?.ReceptionDate.ToString("dd/MM/yyyy HH:mm")}</text:span></text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">FECHA INFORME: <text:span text:style-name=""Value"">{report.ReportDate?.ToString("dd/MM/yyyy")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">FECHA MUESTRA: <text:span text:style-name=""Value"">{(s != null ? _localTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy HH:mm") : "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">FECHA INFORME: <text:span text:style-name=""Value"">{_localTimeService.ToLocal(report.ReportDate)?.ToString("dd/MM/yyyy")}</text:span></text:p></table:table-cell>");
             sb.Append("<table:table-cell />"); // Required to fill the row
             sb.Append("</table:table-row>");
 
@@ -566,7 +568,7 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append("</table:table-row>");
                 sb.Append("</table:table>");
 
-                var saveDate = (report.UpdatedAtUtc ?? report.CreatedAtUtc).ToLocalTime();
+                var saveDate = _localTimeService.ToLocal(report.UpdatedAtUtc ?? report.CreatedAtUtc);
                 sb.Append($@"<text:p text:style-name=""SmallValue"">Fecha de informe: {saveDate:dd-MM-yyyy, HH:mm}</text:p>");
             }
             

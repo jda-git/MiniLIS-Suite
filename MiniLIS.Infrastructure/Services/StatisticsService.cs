@@ -13,19 +13,27 @@ namespace MiniLIS.Infrastructure.Services
     public class StatisticsService : IStatisticsService
     {
         private readonly ApplicationDbContext _db;
+        private readonly ILocalTimeService _localTimeService;
 
-        public StatisticsService(ApplicationDbContext db)
+        public StatisticsService(ApplicationDbContext db, ILocalTimeService localTimeService)
         {
             _db = db;
+            _localTimeService = localTimeService;
         }
+
+        // from/to llegan como fechas locales elegidas por el usuario (M-5); ReceptionDate
+        // se guarda en UTC, así que el rango se convierte antes de comparar.
+        private (DateTime start, DateTime end) ToUtcRange(DateTime from, DateTime to) =>
+            (_localTimeService.ToUtc(from.Date), _localTimeService.ToUtc(to.Date.AddDays(1)).AddTicks(-1));
 
         public async Task<List<TatStatItem>> GetTatDetailsAsync(DateTime from, DateTime to, string? panelName)
         {
+            var (start, end) = ToUtcRange(from, to);
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
                 .Include(s => s.Report)
-                .Where(s => s.ReceptionDate >= from.Date && s.ReceptionDate <= to.Date.AddDays(1).AddTicks(-1))
+                .Where(s => s.ReceptionDate >= start && s.ReceptionDate <= end)
                 .Where(s => s.Status == SampleStatus.Finalizada)
                 .AsQueryable();
 
@@ -40,14 +48,16 @@ namespace MiniLIS.Infrastructure.Services
                 // TAT sobre la validación real del informe (C-4), no sobre su descarga.
                 // Se conservan los fallbacks para muestras finalizadas por otra vía
                 // (p. ej. anteriores a esta migración) que no tengan ValidatedAtUtc.
-                var finDate = s.Report?.ValidatedAtUtc?.ToLocalTime() ?? s.FinalizedAt ?? s.UpdatedAtUtc?.ToLocalTime() ?? s.CreatedAtUtc.ToLocalTime();
-                var diff = finDate - s.ReceptionDate;
+                // La resta se hace en UTC (M-5): convertir antes a local introduciría un
+                // error de una hora en los TAT que cruzan un cambio de horario.
+                var finDateUtc = s.Report?.ValidatedAtUtc ?? s.FinalizedAt ?? s.UpdatedAtUtc ?? s.CreatedAtUtc;
+                var diff = finDateUtc - s.ReceptionDate;
                 return new TatStatItem
                 {
                     SampleNumber = s.SampleNumber,
                     Patient = s.ClinicalRequest?.Patient?.FullName ?? "Unknown",
-                    ReceptionDate = s.ReceptionDate,
-                    FinalizationDate = finDate,
+                    ReceptionDate = _localTimeService.ToLocal(s.ReceptionDate),
+                    FinalizationDate = _localTimeService.ToLocal(finDateUtc),
                     Hours = Math.Round(diff.TotalHours, 2),
                     StudyPanel = s.StudyPanel
                 };
@@ -56,10 +66,11 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<List<IncidentStatItem>> GetIncidentDetailsAsync(DateTime from, DateTime to)
         {
+            var (start, end) = ToUtcRange(from, to);
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
-                .Where(s => s.ReceptionDate >= from.Date && s.ReceptionDate <= to.Date.AddDays(1).AddTicks(-1))
+                .Where(s => s.ReceptionDate >= start && s.ReceptionDate <= end)
                 .Where(s => s.HasIncident)
                 .AsQueryable();
 
@@ -68,7 +79,7 @@ namespace MiniLIS.Infrastructure.Services
             return samples.Select(s => new IncidentStatItem
             {
                 SampleNumber = s.SampleNumber,
-                ReceptionDate = s.ReceptionDate,
+                ReceptionDate = _localTimeService.ToLocal(s.ReceptionDate),
                 Patient = s.ClinicalRequest?.Patient?.FullName ?? "Unknown",
                 IncidentNotes = s.IncidentsNotes,
                 StudyPanel = s.StudyPanel
@@ -77,8 +88,9 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<StatisticsSummary> GetSummaryAsync(DateTime from, DateTime to, string? panelName)
         {
+            var (start, end) = ToUtcRange(from, to);
             var totalQuery = _db.Samples
-                .Where(s => s.ReceptionDate >= from.Date && s.ReceptionDate <= to.Date.AddDays(1).AddTicks(-1))
+                .Where(s => s.ReceptionDate >= start && s.ReceptionDate <= end)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(panelName) && panelName != "Todos")

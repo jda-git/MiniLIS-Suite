@@ -13,10 +13,12 @@ namespace MiniLIS.Infrastructure.Services
     public class NotificationService : INotificationService
     {
         private readonly ApplicationDbContext _db;
+        private readonly ILocalTimeService _localTimeService;
 
-        public NotificationService(ApplicationDbContext db)
+        public NotificationService(ApplicationDbContext db, ILocalTimeService localTimeService)
         {
             _db = db;
+            _localTimeService = localTimeService;
         }
 
         public async Task<List<SampleReport>> GetFilteredReportsAsync(string? searchTerm, string alertType, DateTime? startDate, DateTime? endDate)
@@ -28,13 +30,14 @@ namespace MiniLIS.Infrastructure.Services
                 .Where(r => r.HasCriticalValueAlert || r.HasNewDiagnosisAlert)
                 .AsQueryable();
 
+            // ReportDate se guarda en UTC (M-5); startDate/endDate son fechas locales.
             if (startDate.HasValue)
             {
-                query = query.Where(r => r.ReportDate >= startDate.Value.Date);
+                query = query.Where(r => r.ReportDate >= _localTimeService.ToUtc(startDate.Value.Date));
             }
             if (endDate.HasValue)
             {
-                query = query.Where(r => r.ReportDate <= endDate.Value.Date.AddDays(1).AddTicks(-1));
+                query = query.Where(r => r.ReportDate <= _localTimeService.ToUtc(endDate.Value.Date.AddDays(1)).AddTicks(-1));
             }
 
             if (alertType == "Critico")
@@ -71,7 +74,7 @@ namespace MiniLIS.Infrastructure.Services
             foreach (var report in reports)
             {
                 sb.AppendLine(string.Join(';',
-                    CsvUtils.EscapeField(report.ReportDate?.ToString("dd/MM/yyyy")),
+                    CsvUtils.EscapeField(_localTimeService.ToLocal(report.ReportDate)?.ToString("dd/MM/yyyy")),
                     CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.NHC),
                     CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.FullName),
                     CsvUtils.EscapeField(report.Conclusions),

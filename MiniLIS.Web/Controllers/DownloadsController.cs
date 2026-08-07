@@ -78,7 +78,7 @@ namespace MiniLIS.Web.Controllers
                 }
                 await LogReportDownloadAsync(report, preview ? "Descarga PDF (previsualización)" : "Descarga PDF");
 
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmm");
                 var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? report.Id.ToString();
                 var finalFileName = string.IsNullOrWhiteSpace(fileName) ? $"Informe_{safeSampleName}_{timestamp}.pdf" : fileName;
 
@@ -119,7 +119,7 @@ namespace MiniLIS.Web.Controllers
                 await _db.SaveChangesAsync();
                 await LogReportDownloadAsync(report, "Descarga ODT");
 
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmm");
                 var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? report.Id.ToString();
                 var finalFileName = string.IsNullOrWhiteSpace(fileName) ? $"Informe_{safeSampleName}_{timestamp}.odt" : fileName;
 
@@ -162,7 +162,7 @@ namespace MiniLIS.Web.Controllers
             report.IsFinalized = true;
             report.ValidatedByUserId = user?.Id;
             report.ValidatedAtUtc = DateTime.UtcNow;
-            if (!report.ReportDate.HasValue) report.ReportDate = DateTime.Now;
+            if (!report.ReportDate.HasValue) report.ReportDate = DateTime.UtcNow;
 
             if (report.Sample != null)
             {
@@ -259,7 +259,7 @@ namespace MiniLIS.Web.Controllers
                 .ToListAsync();
 
             var bytes = await _sampleService.ExportSamplesToCsvAsync(samples, incluirIdentificadores);
-            var fileName = $"Muestras_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+            var fileName = $"Muestras_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv";
 
             var user = await _userManager.GetUserAsync(User);
             _db.AuditLogs.Add(new AuditLog

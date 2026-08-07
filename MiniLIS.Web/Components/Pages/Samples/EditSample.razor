@@ -7,6 +7,7 @@
 @inject IPatientService PatientService
 @inject ISampleService SampleService
 @inject IMasterDataService MasterService
+@inject ILocalTimeService LocalTimeService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -321,7 +322,8 @@
 
         // Populate edit model from loaded data
         model.SampleNumber = originalSample.SampleNumber;
-        model.ReceptionDate = originalSample.ReceptionDate;
+        // ReceptionDate se guarda en UTC (M-5); el selector de fecha trabaja en local.
+        model.ReceptionDate = LocalTimeService.ToLocal(originalSample.ReceptionDate).Date;
         model.StudyPanel = originalSample.StudyPanel;
         model.HasIncident = originalSample.HasIncident;
         model.IncidentNotes = originalSample.IncidentsNotes;
@@ -443,7 +445,7 @@
             };
             originalSample.SampleTypeOther = originalSample.SampleType == SampleType.Otros ? model.SampleTypeOtherText : null;
             originalSample.Diagnosis = model.Diagnosis ?? "";
-            originalSample.ReceptionDate = model.ReceptionDate;
+            originalSample.ReceptionDate = LocalTimeService.ToUtc(model.ReceptionDate.Date);
             // Build panel summary text
             var panelNames = allPanels.Where(p => selectedPanelIds.Contains(p.Id)).Select(p => p.Name).ToList();
             panelNames.AddRange(customPanels);

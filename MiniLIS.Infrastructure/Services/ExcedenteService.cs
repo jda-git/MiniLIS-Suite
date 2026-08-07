@@ -13,10 +13,12 @@ namespace MiniLIS.Infrastructure.Services
     public class ExcedenteService : IExcedenteService
     {
         private readonly ApplicationDbContext _db;
+        private readonly ILocalTimeService _localTimeService;
 
-        public ExcedenteService(ApplicationDbContext db)
+        public ExcedenteService(ApplicationDbContext db, ILocalTimeService localTimeService)
         {
             _db = db;
+            _localTimeService = localTimeService;
         }
 
         public async Task<List<SampleReport>> GetFilteredReportsAsync(string? searchTerm, string destinationType, DateTime? startDate, DateTime? endDate)
@@ -28,13 +30,14 @@ namespace MiniLIS.Infrastructure.Services
                 .Where(r => r.HasBiobank || r.HasGenomics || r.HasNgs)
                 .AsQueryable();
 
+            // ReportDate se guarda en UTC (M-5); startDate/endDate son fechas locales.
             if (startDate.HasValue)
             {
-                query = query.Where(r => r.ReportDate >= startDate.Value.Date);
+                query = query.Where(r => r.ReportDate >= _localTimeService.ToUtc(startDate.Value.Date));
             }
             if (endDate.HasValue)
             {
-                query = query.Where(r => r.ReportDate <= endDate.Value.Date.AddDays(1).AddTicks(-1));
+                query = query.Where(r => r.ReportDate <= _localTimeService.ToUtc(endDate.Value.Date.AddDays(1)).AddTicks(-1));
             }
 
             if (destinationType == "Biobanco")
@@ -79,7 +82,7 @@ namespace MiniLIS.Infrastructure.Services
                 sb.AppendLine(string.Join(';',
                     CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.NHC),
                     CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.FullName),
-                    CsvUtils.EscapeField(report.Sample?.ReceptionDate.ToString("dd/MM/yyyy")),
+                    CsvUtils.EscapeField(report.Sample != null ? _localTimeService.ToLocal(report.Sample.ReceptionDate).ToString("dd/MM/yyyy") : ""),
                     CsvUtils.EscapeField(report.Conclusions),
                     CsvUtils.EscapeField(report.Sample?.SampleNumber),
                     CsvUtils.EscapeField(report.HasBiobank ? (report.BiobankText ?? "Sí") : ""),

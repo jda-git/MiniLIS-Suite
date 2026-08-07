@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Roles = "Administrador")]
 @inject ISampleService SampleService
+@inject ILocalTimeService LocalTimeService
 @inject NavigationManager Nav
 
 <PageTitle>Auditoría de Muestras - MiniLIS Suite</PageTitle>
@@ -70,7 +71,7 @@
                             <!-- 3: Registro -->
                             <div class="audit-item">
                                 <label><i class="bi bi-calendar-plus"></i> Registro</label>
-                                <div class="val">@s.ReceptionDate.ToString("dd/MM/yyyy HH:mm")</div>
+                                <div class="val">@LocalTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")</div>
                                 <div class="val text-primary fw-bold">
                                     <i class="bi bi-person"></i> @(s.RegisteredByUser?.FullName ?? "Sistema/Migrado")
                                 </div>
@@ -151,7 +152,7 @@
                                                         {
                                                             <span class="read-badge"><i class="bi bi-eye-fill"></i> T@(t.TubeNumber) LEÍDO</span>
                                                             <span class="read-by">por <strong>@(t.ReadByUser?.FullName ?? "Técnico")</strong></span>
-                                                            <span class="read-at">el @t.ReadAtUtc?.ToString("dd/MM/yyyy HH:mm")</span>
+                                                            <span class="read-at">el @LocalTimeService.ToLocal(t.ReadAtUtc)?.ToString("dd/MM/yyyy HH:mm")</span>
                                                         }
                                                         else
                                                         {
@@ -184,7 +185,7 @@
                                     {
                                         <div class="history-log-row">
                                             <div class="log-meta">
-                                                <span class="log-date"><i class="bi bi-clock"></i> @log.TimestampUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                                <span class="log-date"><i class="bi bi-clock"></i> @LocalTimeService.ToLocal(log.TimestampUtc).ToString("dd/MM/yyyy HH:mm:ss")</span>
                                                 <span class="log-user"><i class="bi bi-person-fill text-primary"></i> @(log.Username ?? "Sistema")</span>
                                                 <span class="log-action badge @GetActionBadgeClass(log.Action)">@log.Action.ToUpper()</span>
                                                 @if (!string.IsNullOrEmpty(log.ActionContext))

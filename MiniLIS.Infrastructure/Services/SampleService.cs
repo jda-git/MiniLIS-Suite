@@ -16,17 +16,20 @@ namespace MiniLIS.Infrastructure.Services
         private readonly INumberingService _numberingService;
         private readonly ICurrentUserService _currentUserService;
         private readonly IPanelCatalogService _panelCatalogService;
+        private readonly ILocalTimeService _localTimeService;
 
         public SampleService(
             ApplicationDbContext db,
             INumberingService numberingService,
             ICurrentUserService currentUserService,
-            IPanelCatalogService panelCatalogService)
+            IPanelCatalogService panelCatalogService,
+            ILocalTimeService localTimeService)
         {
             _db = db;
             _numberingService = numberingService;
             _currentUserService = currentUserService;
             _panelCatalogService = panelCatalogService;
+            _localTimeService = localTimeService;
         }
 
         public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
@@ -39,7 +42,7 @@ namespace MiniLIS.Infrastructure.Services
                 // por IPatientService.GetOrCreatePatientAsync — ver A-1. Este servicio
                 // ya no decide si el paciente es nuevo o existente, ni lo modifica.
                 request.PatientId = patientId;
-                request.RequestDate = DateTime.Now;
+                request.RequestDate = DateTime.UtcNow;
                 _db.ClinicalRequests.Add(request);
                 await _db.SaveChangesAsync();
 
@@ -65,10 +68,15 @@ namespace MiniLIS.Infrastructure.Services
                         sampleNumber = await _numberingService.GetNextSampleNumberAsync();
                     }
 
+                    var registrationMoment = DateTime.UtcNow;
                     sample = new Sample
                     {
                         SampleNumber = sampleNumber,
-                        ReceptionDate = DateTime.Now,
+                        ReceptionDate = registrationMoment,
+                        // ReceivedAtUtc/RegisteredAtUtc (M-5): coinciden hoy porque el alta es
+                        // de un solo paso; ver comentario en Sample.cs.
+                        ReceivedAtUtc = registrationMoment,
+                        RegisteredAtUtc = registrationMoment,
                         ClinicalRequestId = request.Id,
                         ClinicalRequest = request,
                         Status = SampleStatus.Recibida,
@@ -220,15 +228,18 @@ namespace MiniLIS.Infrastructure.Services
                 query = query.Where(s => s.Panels.Any(p => p.PanelId == panelId.Value));
             }
 
+            // ReceptionDate se guarda en UTC (M-5); fromDate/toDate son días naturales
+            // elegidos por el usuario en hora local. Se convierten aquí para no perder
+            // muestras cerca de medianoche.
             if (fromDate.HasValue)
             {
-                var start = fromDate.Value.Date;
+                var start = _localTimeService.ToUtc(fromDate.Value.Date);
                 query = query.Where(s => s.ReceptionDate >= start);
             }
 
             if (toDate.HasValue)
             {
-                var end = toDate.Value.Date.AddDays(1).AddTicks(-1);
+                var end = _localTimeService.ToUtc(toDate.Value.Date.AddDays(1)).AddTicks(-1);
                 query = query.Where(s => s.ReceptionDate <= end);
             }
 
@@ -247,8 +258,12 @@ namespace MiniLIS.Infrastructure.Services
 
             if (status == SampleStatus.Finalizada && sample.FinalizedAt == null)
             {
-                sample.FinalizedAt = DateTime.Now;
+                var now = DateTime.UtcNow;
+                sample.FinalizedAt = now;
                 sample.FinalizedByUserId = userId;
+                // AnalyzedAtUtc (M-5): el modelo de Status actual no distingue "análisis
+                // completado" de "finalizada", así que se interpreta como el mismo instante.
+                sample.AnalyzedAtUtc ??= now;
             }
             else if (status != SampleStatus.Finalizada)
             {
@@ -271,7 +286,7 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     sb.AppendLine(string.Join(';',
                         CsvUtils.EscapeField(s.SampleNumber),
-                        CsvUtils.EscapeField(s.ReceptionDate.ToString("dd/MM/yyyy")),
+                        CsvUtils.EscapeField(_localTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy")),
                         CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.NHC),
                         CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.FullName),
                         CsvUtils.EscapeField(s.ClinicalRequest?.OriginService),
@@ -287,7 +302,7 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     sb.AppendLine(string.Join(';',
                         CsvUtils.EscapeField(s.SampleNumber),
-                        CsvUtils.EscapeField(s.ReceptionDate.ToString("dd/MM/yyyy")),
+                        CsvUtils.EscapeField(_localTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy")),
                         CsvUtils.EscapeField(s.ClinicalRequest?.OriginService),
                         CsvUtils.EscapeField(s.Status.ToString()),
                         CsvUtils.EscapeField(s.Diagnosis)));
@@ -439,6 +454,18 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     tube.ReadByUserId = userId;
                     tube.ReadAtUtc = DateTime.UtcNow;
+
+                    // AcquiredAtUtc (M-5): se rellena solo la primera vez que se marca
+                    // cualquier tubo de la muestra como leído.
+                    var samplePanel = await _db.SamplePanels.FindAsync(tube.SamplePanelId);
+                    if (samplePanel != null)
+                    {
+                        var sample = await _db.Samples.FindAsync(samplePanel.SampleId);
+                        if (sample != null && sample.AcquiredAtUtc == null)
+                        {
+                            sample.AcquiredAtUtc = tube.ReadAtUtc;
+                        }
+                    }
                 }
                 else
                 {

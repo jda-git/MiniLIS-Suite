@@ -99,7 +99,7 @@ namespace MiniLIS.Infrastructure.Services
             if (!Directory.Exists(settings.BackupPath))
                 Directory.CreateDirectory(settings.BackupPath);
 
-            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
             var backupFileName = $"minilis_backup_{timestamp}.db.enc";
             var backupFullPath = Path.Combine(settings.BackupPath, backupFileName);
             var tempPlainPath = Path.Combine(Path.GetTempPath(), $"minilis_backup_{timestamp}_{Guid.NewGuid():N}.db");
@@ -134,7 +134,7 @@ namespace MiniLIS.Infrastructure.Services
                 _db.BackupRecords.Add(record);
                 await _db.SaveChangesAsync();
 
-                await SaveSettingAsync("LastBackupDate", DateTime.Now.ToString("O"));
+                await SaveSettingAsync("LastBackupDate", DateTime.UtcNow.ToString("O"));
 
                 // Verificación inmediata: una copia que nunca se ha comprobado no es una copia de seguridad.
                 await VerifyBackupAsync(record.Id);

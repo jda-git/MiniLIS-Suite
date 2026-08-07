@@ -29,6 +29,11 @@ namespace MiniLIS.Infrastructure.Services
         public async Task<string> GetNextSampleNumberAsync()
         {
             // Robust numbering: Check both SystemSettings and actual DB max
+            // Excepción deliberada al uso de DateTime.UtcNow (M-5): el año del número de
+            // muestra es un concepto de calendario de negocio local (el año tal como lo
+            // vive el personal en España), no una marca de auditoría. Usar UtcNow aquí
+            // asignaría el año anterior a una muestra registrada de madrugada en horario
+            // de invierno (00:xx hora de Madrid = 23:xx UTC del día anterior).
             string currentYear = DateTime.Now.Year.ToString().Substring(2);
             
             var yearSetting = await _db.SystemSettings.FirstOrDefaultAsync(s => s.Key == KEY_YEAR);
@@ -77,6 +82,11 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<string> PeekNextSampleNumberAsync()
         {
+            // Excepción deliberada al uso de DateTime.UtcNow (M-5): el año del número de
+            // muestra es un concepto de calendario de negocio local (el año tal como lo
+            // vive el personal en España), no una marca de auditoría. Usar UtcNow aquí
+            // asignaría el año anterior a una muestra registrada de madrugada en horario
+            // de invierno (00:xx hora de Madrid = 23:xx UTC del día anterior).
             string currentYear = DateTime.Now.Year.ToString().Substring(2);
             
             var yearSetting = await _db.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == KEY_YEAR);

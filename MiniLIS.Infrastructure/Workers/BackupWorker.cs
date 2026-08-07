@@ -43,7 +43,7 @@ namespace MiniLIS.Infrastructure.Workers
                             else
                             {
                                 var nextBackup = settings.LastBackupAt.Value.AddDays(settings.FrequencyDays);
-                                if (DateTime.Now >= nextBackup)
+                                if (DateTime.UtcNow >= nextBackup)
                                 {
                                     shouldBackup = true;
                                 }

@@ -42,7 +42,7 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     SampleId = sampleId,
                     Sample = sample!,
-                    ReportDate = DateTime.Now,
+                    ReportDate = DateTime.UtcNow,
                     MarkersSummary = "",
                     ReportBody = "",
                     Conclusions = ""

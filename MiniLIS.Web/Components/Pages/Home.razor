@@ -6,6 +6,7 @@
 @attribute [Authorize]
 @implements IDisposable
 @inject IDashboardService DashService
+@inject ILocalTimeService LocalTimeService
 
 <PageTitle>Panel de Control - MiniLIS Suite</PageTitle>
 
@@ -221,7 +222,7 @@
                                 @foreach (var act in recentActivity)
                                 {
                                     <tr>
-                                        <td class="act-date">@act.ActionDate.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                                        <td class="act-date">@LocalTimeService.ToLocal(act.ActionDate).ToString("dd/MM HH:mm")</td>
                                         <td><span class="act-badge @GetActivityClass(act.Status)">@act.ActionType</span></td>
                                         <td class="act-sample">@act.SampleNumber</td>
                                     </tr>
