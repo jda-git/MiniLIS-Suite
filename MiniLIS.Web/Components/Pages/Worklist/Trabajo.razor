@@ -1,0 +1,193 @@
+@page "/trabajo"
+@using Microsoft.AspNetCore.Authorization
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@implements IDisposable
+@inject IWorklistService WorklistService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Lista de Trabajo - MiniLIS Suite</PageTitle>
+
+<div class="wl-page">
+    <div class="wl-header">
+        <div>
+            <h1 class="wl-title"><i class="bi bi-kanban me-2"></i>Lista de Trabajo</h1>
+            <p class="wl-subtitle">Qué queda pendiente, por fase. El estado solo cambia con la acción real (leer un tubo, validar un informe) — nunca desde aquí.</p>
+        </div>
+        <div class="wl-controls">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="perfil" @bind:after="Refresh">
+                <option value="Tecnico">Perfil Técnico</option>
+                <option value="Facultativo">Perfil Facultativo</option>
+                <option value="Todos">Todas las columnas</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary" @onclick="Refresh" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                else
+                {
+                    <i class="bi bi-arrow-repeat"></i>
+                }
+                Actualizar
+            </button>
+            <span class="wl-updated">Actualizado: @lastUpdated.ToString("HH:mm:ss")</span>
+        </div>
+    </div>
+
+    @if (board == null)
+    {
+        <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
+    }
+    else
+    {
+        <div class="wl-board">
+            @if (perfil is "Tecnico" or "Todos")
+            {
+                @RenderColumn("Pendiente de adquirir", "bi-hourglass-split", board.PendienteAdquirir, "wl-col-adquirir")
+                @RenderColumn("Adquisición parcial", "bi-hourglass-split", board.AdquisicionParcial, "wl-col-parcial")
+            }
+            @if (perfil is "Facultativo" or "Todos")
+            {
+                @RenderColumn("Pendiente de analizar", "bi-clipboard-data", board.PendienteAnalizar, "wl-col-analizar")
+                @RenderColumn("En redacción", "bi-pencil-square", board.EnRedaccion, "wl-col-redaccion")
+            }
+            @RenderColumn("Pendiente de envío", "bi-send", board.PendienteEnvio, "wl-col-envio")
+            @RenderColumn("Rechazadas", "bi-x-octagon", board.Rechazadas, "wl-col-rechazadas")
+        </div>
+    }
+</div>
+
+@code {
+    private WorklistBoard? board;
+    private bool isLoading;
+    private DateTime lastUpdated = DateTime.Now;
+    private string perfil = "Todos";
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.IsInRole("Técnico") && !user.IsInRole("Administrador") && !user.IsInRole("Facultativo"))
+        {
+            perfil = "Tecnico";
+        }
+        else if (user.IsInRole("Facultativo") && !user.IsInRole("Administrador"))
+        {
+            perfil = "Facultativo";
+        }
+        else
+        {
+            perfil = "Todos";
+        }
+
+        await LoadBoard();
+
+        timer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () => { await LoadBoard(); StateHasChanged(); });
+        }, null, TimeSpan.FromSeconds(45), TimeSpan.FromSeconds(45));
+    }
+
+    private async Task LoadBoard()
+    {
+        isLoading = true;
+        board = await WorklistService.GetBoardAsync();
+        lastUpdated = DateTime.Now;
+        isLoading = false;
+    }
+
+    private async Task Refresh()
+    {
+        await LoadBoard();
+        StateHasChanged();
+    }
+
+    private void GoTo(WorklistItem item)
+    {
+        Nav.NavigateTo(item.NavigateToReport ? $"/informes/editar/{item.SampleId}" : $"/muestras/editar/{item.SampleId}");
+    }
+
+    private string SemaphoreClass(string semaphore) => semaphore switch
+    {
+        "green" => "wl-sem-green",
+        "yellow" => "wl-sem-yellow",
+        "red" => "wl-sem-red",
+        _ => "wl-sem-none"
+    };
+
+    private RenderFragment RenderColumn(string title, string icon, List<WorklistItem> items, string cssClass) => __builder =>
+    {
+        <div class="wl-column @cssClass">
+            <div class="wl-column-header">
+                <span><i class="bi @icon me-1"></i>@title</span>
+                <span class="wl-count">@items.Count</span>
+            </div>
+            <div class="wl-cards">
+                @if (items.Count == 0)
+                {
+                    <div class="wl-empty">Sin elementos</div>
+                }
+                else
+                {
+                    @foreach (var item in items)
+                    {
+                        <div class="wl-card @SemaphoreClass(item.Semaphore)" @onclick="() => GoTo(item)">
+                            <div class="wl-card-top">
+                                <span class="wl-number">@item.SampleNumber</span>
+                                <span class="wl-type">@item.SampleType.ToCode()</span>
+                            </div>
+                            <div class="wl-card-panels">@(item.Panels.Any() ? string.Join(", ", item.Panels) : "—")</div>
+                            <div class="wl-card-bottom">
+                                <span class="wl-age">@item.AgeHours.ToString("0.#") h</span>
+                                <span class="wl-dot"></span>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    };
+
+    public void Dispose()
+    {
+        timer?.Dispose();
+    }
+}
+
+<style>
+    .wl-page { padding: 0; }
+    .wl-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+    .wl-title { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0; }
+    .wl-subtitle { font-size: 12px; color: #64748b; margin: 4px 0 0; max-width: 560px; }
+    .wl-controls { display: flex; align-items: center; gap: 10px; }
+    .wl-updated { font-size: 11px; color: #94a3b8; }
+
+    .wl-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+    .wl-column { flex: 1 1 220px; min-width: 220px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; max-height: calc(100vh - 220px); }
+    .wl-column-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-size: 12px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0; }
+    .wl-count { background: #e2e8f0; border-radius: 10px; padding: 1px 8px; font-size: 11px; }
+    .wl-cards { padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .wl-empty { font-size: 11px; color: #94a3b8; text-align: center; padding: 12px 0; }
+
+    .wl-card { background: #fff; border-radius: 6px; padding: 8px 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); border-left: 3px solid #cbd5e1; cursor: pointer; font-size: 12px; }
+    .wl-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+    .wl-sem-green { border-left-color: #22c55e; }
+    .wl-sem-yellow { border-left-color: #eab308; }
+    .wl-sem-red { border-left-color: #ef4444; }
+    .wl-sem-none { border-left-color: #cbd5e1; }
+
+    .wl-card-top { display: flex; justify-content: space-between; font-weight: 700; color: #0f172a; }
+    .wl-type { font-size: 10px; background: #e0f2fe; color: #0369a1; border-radius: 3px; padding: 1px 5px; }
+    .wl-card-panels { color: #64748b; font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wl-card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .wl-age { color: #475569; font-weight: 600; font-size: 11px; }
+    .wl-dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; }
+    .wl-sem-green .wl-dot { background: #22c55e; }
+    .wl-sem-yellow .wl-dot { background: #eab308; }
+    .wl-sem-red .wl-dot { background: #ef4444; }
+</style>
