@@ -150,18 +150,18 @@ namespace MiniLIS.Infrastructure.Persistence
                     case EntityState.Added:
                         entry.Entity.CreatedAtUtc = DateTime.UtcNow;
                         entry.Entity.CreatedBy = entry.Entity.CreatedBy == 0 ? (currentUserId ?? 1) : entry.Entity.CreatedBy;
-                        if (entry.Entity is Sample addedSample)
+                        if (entry.Entity is IHasRowVersion addedVersioned)
                         {
-                            addedSample.RowVersion = Guid.NewGuid().ToByteArray();
+                            addedVersioned.RowVersion = Guid.NewGuid().ToByteArray();
                         }
                         break;
 
                     case EntityState.Modified:
                         entry.Entity.UpdatedAtUtc = DateTime.UtcNow;
                         entry.Entity.UpdatedBy = entry.Entity.UpdatedBy ?? currentUserId ?? 1;
-                        if (entry.Entity is Sample modifiedSample)
+                        if (entry.Entity is IHasRowVersion modifiedVersioned)
                         {
-                            modifiedSample.RowVersion = Guid.NewGuid().ToByteArray();
+                            modifiedVersioned.RowVersion = Guid.NewGuid().ToByteArray();
                         }
                         break;
                 }

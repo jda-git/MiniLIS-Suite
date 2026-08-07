@@ -14,7 +14,7 @@ namespace MiniLIS.Domain.Entities
         Rechazada = 4
     }
 
-    public class Sample : AuditableEntity
+    public class Sample : AuditableEntity, IHasRowVersion
     {
         public int Id { get; set; }
         

@@ -5,12 +5,16 @@ using MiniLIS.Domain.Common;
 
 namespace MiniLIS.Domain.Entities
 {
-    public class SampleReport : AuditableEntity
+    public class SampleReport : AuditableEntity, IHasRowVersion
     {
         public int Id { get; set; }
 
         /// <summary>Identificador público no adivinable, usado en rutas de descarga (C-3).</summary>
         public Guid PublicId { get; set; } = Guid.NewGuid();
+
+        /// <summary>Token de concurrencia optimista (A-5). Regenerado en ApplyAuditing.</summary>
+        [System.ComponentModel.DataAnnotations.ConcurrencyCheck]
+        public byte[] RowVersion { get; set; } = Guid.NewGuid().ToByteArray();
 
         public int SampleId { get; set; }
         public Sample Sample { get; set; }
