@@ -79,6 +79,18 @@
 
         <div class="filter-divider"></div>
 
+        <div class="filter-group">
+            <select class="filter-control" @bind="receptionStatusFilter" @bind:after="ApplyFilters">
+                <option value="">-- Toda recepción --</option>
+                @foreach (var rs in Enum.GetValues<ReceptionStatus>())
+                {
+                    <option value="@rs">@rs</option>
+                }
+            </select>
+        </div>
+
+        <div class="filter-divider"></div>
+
         <div class="filter-group filter-dates">
             <i class="bi bi-calendar3 filter-icon"></i>
             <input type="date" class="filter-control filter-date" @bind="fromDate" @bind:after="ApplyFilters" title="Desde" />
@@ -800,6 +812,7 @@
     private SampleStatus? statusFilter;
     private SampleType? typeFilter;
     private int? panelFilterId;
+    private ReceptionStatus? receptionStatusFilter;
     private DateTime? fromDate;
     private DateTime? toDate;
 
@@ -854,7 +867,7 @@
     private async Task LoadSamples()
     {
         isLoading = true;
-        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, fromDate, toDate, typeFilter, panelFilterId);
+        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, fromDate, toDate, typeFilter, panelFilterId, receptionStatusFilter);
         isLoading = false;
     }
 
@@ -866,6 +879,7 @@
         statusFilter = null;
         typeFilter = null;
         panelFilterId = null;
+        receptionStatusFilter = null;
         fromDate = null;
         toDate = null;
         await LoadSamples();

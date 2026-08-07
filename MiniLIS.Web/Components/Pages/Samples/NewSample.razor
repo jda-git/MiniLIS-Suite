@@ -165,20 +165,61 @@
                 </div>
             </div>
 
-            <!-- Fila 5: Incidencia -->
+            <!-- Fila 5: Estado de recepción (F-4) -->
             <div class="clin-row mt-3">
                 <div class="clin-field-radio flex-grow-1 position-relative">
-                    <label class="radio-group-label pe-3">INCIDENCIA</label>
+                    <label class="radio-group-label pe-3">ESTADO DE RECEPCIÓN</label>
                     <label class="clin-radio ms-3">
-                        <input type="checkbox" checked="@model.HasIncident" @onchange="@((ChangeEventArgs e) => model.HasIncident = (bool)(e.Value ?? false))" style="accent-color:#dc3545; width:14px; height:14px;" />
-                        <span class="@(model.HasIncident ? "text-danger fw-bold" : "")">SÍ</span>
+                        <input type="radio" name="receptionStatus" checked="@(receptionStatus == ReceptionStatus.Correcta)" @onchange="@(() => SetReceptionStatus(ReceptionStatus.Correcta))" />
+                        <span>Recepción correcta</span>
                     </label>
-                    @if(model.HasIncident)
-                    {
-                        <InputText @bind-Value="model.IncidentNotes" class="clin-input ms-2 flex-grow-1" placeholder="Describa la incidencia preanalítica..." style="border-left: 1px solid #ced4da;" />
-                    }
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="receptionStatus" checked="@(receptionStatus == ReceptionStatus.ConSalvedad)" @onchange="@(() => SetReceptionStatus(ReceptionStatus.ConSalvedad))" />
+                        <span class="@(receptionStatus == ReceptionStatus.ConSalvedad ? "text-warning fw-bold" : "")">Con salvedad / incidencia</span>
+                    </label>
+                    <label class="clin-radio ms-3">
+                        <input type="radio" name="receptionStatus" checked="@(receptionStatus == ReceptionStatus.Rechazada)" @onchange="@(() => SetReceptionStatus(ReceptionStatus.Rechazada))" />
+                        <span class="@(receptionStatus == ReceptionStatus.Rechazada ? "text-danger fw-bold" : "")">Rechazada</span>
+                    </label>
                 </div>
             </div>
+
+            @if (receptionStatus != ReceptionStatus.Correcta)
+            {
+                <div class="clin-row mt-2">
+                    <div class="flex-grow-1 p-2" style="border-left: 3px solid #ced4da; background:#f8f9fa;">
+                        <label class="radio-group-label d-block mb-1">MOTIVOS</label>
+                        @foreach (var reason in rejectionReasons)
+                        {
+                            <label class="clin-radio d-block">
+                                <input type="checkbox" checked="@selectedReasonIds.Contains(reason.Id)"
+                                       @onchange="@((ChangeEventArgs e) => ToggleReason(reason.Id, (bool)(e.Value ?? false)))" />
+                                <span>@reason.Description</span>
+                            </label>
+                        }
+                        @if (selectedReasonIds.Any(id => rejectionReasons.FirstOrDefault(r => r.Id == id)?.RequiresFreeText == true))
+                        {
+                            <InputText @bind-Value="issueFreeText" class="clin-input mt-1" placeholder="Especifique el motivo (obligatorio)..." />
+                        }
+
+                        @if (receptionStatus == ReceptionStatus.ConSalvedad)
+                        {
+                            <label class="radio-group-label d-block mt-2 mb-1">TEXTO PARA EL INFORME (editable)</label>
+                            <InputTextArea @bind-Value="model.ReceptionCaveatForReport" class="clin-input" rows="2" />
+                        }
+
+                        @if (receptionStatus == ReceptionStatus.Rechazada)
+                        {
+                            <label class="radio-group-label d-block mt-2 mb-1">NOTIFICACIÓN AL PETICIONARIO</label>
+                            <label class="clin-radio d-block">
+                                <input type="checkbox" checked="@model.RequesterNotified" @onchange="@((ChangeEventArgs e) => model.RequesterNotified = (bool)(e.Value ?? false))" />
+                                <span>Peticionario notificado</span>
+                            </label>
+                            <InputText @bind-Value="model.NotificationNotes" class="clin-input mt-1" placeholder="A quién, cuándo y por qué medio (o motivo si queda pendiente)..." />
+                        }
+                    </div>
+                </div>
+            }
         </div>
 
         <!-- ════════  SELECCIÓN DE PANELES  ════════ -->
@@ -554,12 +595,44 @@
     private string customPanelText = "";
     private List<string> customPanels = new();
 
+    // Recepción (F-4)
+    private ReceptionStatus receptionStatus = ReceptionStatus.Correcta;
+    private List<RejectionReason> rejectionReasons = new();
+    private HashSet<int> selectedReasonIds = new();
+    private string? issueFreeText;
+
     protected override async Task OnInitializedAsync()
     {
         nextSampleNumber = await NumberingService.PeekNextSampleNumberAsync();
         peekedSampleNumber = nextSampleNumber;
         model.SampleTypeRadio = "MO";
         allPanels = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name).ToList();
+        rejectionReasons = (await MasterService.GetAllRejectionReasonsAsync()).Where(r => r.IsActive).ToList();
+    }
+
+    private void SetReceptionStatus(ReceptionStatus status)
+    {
+        receptionStatus = status;
+        if (status == ReceptionStatus.Correcta)
+        {
+            selectedReasonIds.Clear();
+            issueFreeText = null;
+            model.ReceptionCaveatForReport = null;
+        }
+    }
+
+    private void ToggleReason(int reasonId, bool isChecked)
+    {
+        if (isChecked) selectedReasonIds.Add(reasonId);
+        else selectedReasonIds.Remove(reasonId);
+
+        // Propone un texto para el informe a partir de los motivos elegidos — el usuario
+        // puede editarlo o borrarlo libremente (Regla 5: plantilla, no interpretación).
+        if (receptionStatus == ReceptionStatus.ConSalvedad)
+        {
+            var descriptions = rejectionReasons.Where(r => selectedReasonIds.Contains(r.Id)).Select(r => r.Description);
+            model.ReceptionCaveatForReport = string.Join("; ", descriptions);
+        }
     }
 
     private void TogglePanel(int panelId, bool isChecked)
@@ -613,6 +686,18 @@
         if (model.SampleTypeRadio == "OTROS" && string.IsNullOrWhiteSpace(model.SampleTypeOtherText))
         {
             errorMessage = "Si selecciona 'OTROS' debe especificar el tipo de muestra.";
+            return;
+        }
+
+        if (receptionStatus != ReceptionStatus.Correcta && !selectedReasonIds.Any())
+        {
+            errorMessage = "Debe seleccionar al menos un motivo para la salvedad o el rechazo.";
+            return;
+        }
+
+        if (selectedReasonIds.Any(id => rejectionReasons.FirstOrDefault(r => r.Id == id)?.RequiresFreeText == true) && string.IsNullOrWhiteSpace(issueFreeText))
+        {
+            errorMessage = "Debe especificar el motivo en texto libre.";
             return;
         }
 
@@ -687,7 +772,17 @@
             // el valor ya obsoleto que se mostró al cargar la página.
             string? manualOverride = nextSampleNumber == peekedSampleNumber ? null : nextSampleNumber;
 
-            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, model.Diagnosis ?? "", sampleType, sampleTypeOther, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId);
+            var reception = new ReceptionInput
+            {
+                Status = receptionStatus,
+                RejectionReasonIds = selectedReasonIds.ToList(),
+                IssueNotes = issueFreeText,
+                CaveatForReport = receptionStatus == ReceptionStatus.ConSalvedad ? model.ReceptionCaveatForReport : null,
+                RequesterNotified = receptionStatus == ReceptionStatus.Rechazada && model.RequesterNotified,
+                NotificationNotes = receptionStatus == ReceptionStatus.Rechazada ? model.NotificationNotes : null
+            };
+
+            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, model.Diagnosis ?? "", sampleType, sampleTypeOther, studyPanelText, false, "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId, reception);
 
             await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
             Nav.NavigateTo("/muestras");
@@ -774,5 +869,10 @@
         public string? Diagnosis { get; set; }
         public bool HasIncident { get; set; } = false;
         public string? IncidentNotes { get; set; }
+
+        // Recepción (F-4)
+        public string? ReceptionCaveatForReport { get; set; }
+        public bool RequesterNotified { get; set; }
+        public string? NotificationNotes { get; set; }
     }
 }

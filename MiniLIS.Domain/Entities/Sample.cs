@@ -15,6 +15,15 @@ namespace MiniLIS.Domain.Entities
         Rechazada = 4
     }
 
+    /// <summary>Resultado de la verificación en recepción (F-4). Distinto de SampleStatus: esto es el estado
+    /// de la muestra AL LLEGAR, no la fase del flujo de trabajo.</summary>
+    public enum ReceptionStatus
+    {
+        Correcta = 1,
+        ConSalvedad = 2,
+        Rechazada = 3
+    }
+
     public class Sample : AuditableEntity, IHasRowVersion
     {
         public int Id { get; set; }
@@ -62,11 +71,34 @@ namespace MiniLIS.Domain.Entities
         public int? FinalizedByUserId { get; set; }
         public virtual MiniLIS.Domain.Identity.ApplicationUser? FinalizedByUser { get; set; }
 
+        /// <summary>[Obsoleto desde F-4] Sustituido por ReceptionStatus + SampleReceptionIssue. Se conserva para no perder datos históricos; los altas nuevas ya no lo usan.</summary>
         [MaxLength(500)]
         public string IncidentsNotes { get; set; } = string.Empty;
 
+        /// <summary>[Obsoleto desde F-4] Ver IncidentsNotes.</summary>
         public bool HasIncident { get; set; } = false;
-        
+
+        // --- Recepción (F-4) ---
+
+        public ReceptionStatus ReceptionStatus { get; set; } = ReceptionStatus.Correcta;
+
+        public ICollection<SampleReceptionIssue> ReceptionIssues { get; set; } = new List<SampleReceptionIssue>();
+
+        /// <summary>Texto que se traslada al informe cuando hay salvedad. Propuesto a partir de los motivos elegidos, editable.</summary>
+        [MaxLength(500)]
+        public string? ReceptionCaveatForReport { get; set; }
+
+        public bool RequesterNotified { get; set; }
+        public DateTime? RequesterNotifiedAtUtc { get; set; }
+        public int? RequesterNotifiedByUserId { get; set; }
+
+        [MaxLength(300)]
+        public string? NotificationNotes { get; set; }
+
+        /// <summary>Referencia a NC formal abierta en el QMS, si procede. Ver I.2 y F-0. Nunca se abre automáticamente.</summary>
+        [MaxLength(100)]
+        public string? QmsNonConformityRef { get; set; }
+
         public string Diagnosis { get; set; } = string.Empty;
 
         /// <summary>Tipo de muestra (A-3). Dato preanalítico, fijado en recepción.</summary>

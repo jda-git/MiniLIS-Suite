@@ -16,6 +16,12 @@ namespace MiniLIS.Application.Interfaces
         Task<Panel> UpsertPanelAsync(Panel panel);
         Task DeletePanelAsync(int id);
 
+        // REJECTION REASONS (F-4)
+        Task<List<RejectionReason>> GetAllRejectionReasonsAsync();
+        Task<RejectionReason> UpsertRejectionReasonAsync(RejectionReason reason);
+        /// <summary>Si el motivo tiene SampleReceptionIssue asociados, lo desactiva (IsActive=false) en vez de borrarlo.</summary>
+        Task DeleteRejectionReasonAsync(int id);
+
         // TEMPLATES
         Task<List<ReportTemplate>> GetAllTemplatesAsync();
         Task<ReportTemplate?> GetTemplateWithMarkersAsync(int id);

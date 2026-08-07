@@ -60,6 +60,36 @@ namespace MiniLIS.Infrastructure.Services
             }
         }
 
+        // --- REJECTION REASONS (F-4) ---
+        public async Task<List<RejectionReason>> GetAllRejectionReasonsAsync() =>
+            await _db.RejectionReasons.OrderBy(r => r.DisplayOrder).ThenBy(r => r.Description).ToListAsync();
+
+        public async Task<RejectionReason> UpsertRejectionReasonAsync(RejectionReason reason)
+        {
+            if (reason.Id == 0) _db.RejectionReasons.Add(reason);
+            else _db.RejectionReasons.Update(reason);
+            await _db.SaveChangesAsync();
+            return reason;
+        }
+
+        public async Task DeleteRejectionReasonAsync(int id)
+        {
+            var reason = await _db.RejectionReasons.FindAsync(id);
+            if (reason == null) return;
+
+            bool inUse = await _db.SampleReceptionIssues.AnyAsync(i => i.RejectionReasonId == id);
+            if (inUse)
+            {
+                reason.IsActive = false;
+                _db.RejectionReasons.Update(reason);
+            }
+            else
+            {
+                _db.RejectionReasons.Remove(reason);
+            }
+            await _db.SaveChangesAsync();
+        }
+
         // --- TEMPLATES ---
         public async Task<List<ReportTemplate>> GetAllTemplatesAsync() => await _db.ReportTemplates.ToListAsync();
 

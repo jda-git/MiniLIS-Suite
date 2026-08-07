@@ -33,6 +33,9 @@
         <button class="config-tab @(activeTab == "panels" ? "active" : "")" @onclick='() => SetTab("panels")'>
             <i class="bi bi-grid-3x3"></i> Paneles
         </button>
+        <button class="config-tab @(activeTab == "rejectionReasons" ? "active" : "")" @onclick='() => SetTab("rejectionReasons")'>
+            <i class="bi bi-clipboard-x"></i> Motivos de Rechazo
+        </button>
         <button class="config-tab @(activeTab == "system" ? "active" : "")" @onclick='() => SetTab("system")'>
             <i class="bi bi-sliders"></i> Ajustes
         </button>
@@ -407,6 +410,91 @@
                     }
                 </div>
             }
+        }
+
+        @* ════════ TAB: MOTIVOS DE RECHAZO (F-4) ════════ *@
+        else if (activeTab == "rejectionReasons")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Motivos de Salvedad / Rechazo</h2>
+                    <p class="section-subtitle">@rejectionReasons.Count motivos configurados</p>
+                </div>
+                <button class="btn-config btn-config-primary" @onclick="() => { editingReason = new RejectionReason { IsActive = true }; showReasonForm = true; }">
+                    <i class="bi bi-plus-lg"></i> Nuevo Motivo
+                </button>
+            </div>
+
+            @if (showReasonForm)
+            {
+                <div class="inline-form">
+                    <div class="inline-form-grid">
+                        <div class="form-field">
+                            <label class="field-label">Código</label>
+                            <input type="text" class="field-input" placeholder="Ej: COAG" maxlength="20" @bind="editingReason.Code" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Descripción</label>
+                            <input type="text" class="field-input" placeholder="Descripción del motivo" @bind="editingReason.Description" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Categoría</label>
+                            <input type="text" class="field-input" @bind="editingReason.Category" />
+                        </div>
+                    </div>
+                    <div class="inline-form-grid">
+                        <div class="form-field">
+                            <label class="field-label">Normalmente conlleva rechazo</label>
+                            <input type="checkbox" @bind="editingReason.TypicallyRejects" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Exige texto libre (p. ej. "Otros")</label>
+                            <input type="checkbox" @bind="editingReason.RequiresFreeText" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Activo</label>
+                            <input type="checkbox" @bind="editingReason.IsActive" />
+                        </div>
+                        <div class="form-field form-actions-inline">
+                            <button class="btn-config btn-config-success" @onclick="SaveRejectionReason"><i class="bi bi-check-lg"></i> Guardar</button>
+                            <button class="btn-config btn-config-ghost" @onclick="() => showReasonForm = false">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="config-table-wrap">
+                <table class="config-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Categoría</th>
+                            <th>Activo</th>
+                            <th class="col-actions">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var reason in rejectionReasons)
+                        {
+                            <tr>
+                                <td><span class="marker-chip">@reason.Code</span></td>
+                                <td class="cell-desc">@reason.Description</td>
+                                <td>@reason.Category</td>
+                                <td>@(reason.IsActive ? "Sí" : "No")</td>
+                                <td class="cell-actions">
+                                    <button class="action-icon action-edit" title="Editar" @onclick="() => { editingReason = reason; showReasonForm = true; }">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="action-icon action-delete" title="Eliminar (desactiva si está en uso)" @onclick="() => DeleteRejectionReason(reason.Id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         }
 
         @* ════════ TAB: AJUSTES (Intensidades) ════════ *@
@@ -1048,6 +1136,11 @@
     private bool showPanelForm = false;
     private Panel editingPanel = new();
 
+    // Rejection reasons (F-4)
+    private List<RejectionReason> rejectionReasons = new();
+    private bool showReasonForm = false;
+    private RejectionReason editingReason = new();
+
     // Panel versions (M-4)
     private Panel? versionsPanel;
     private List<PanelVersion> panelVersions = new();
@@ -1082,6 +1175,7 @@
         markers = await MasterService.GetAllMarkersAsync();
         templates = await MasterService.GetAllTemplatesAsync();
         panels = await MasterService.GetAllPanelsAsync();
+        rejectionReasons = await MasterService.GetAllRejectionReasonsAsync();
         intensitySettings = await MasterService.GetIntensitySettingsAsync();
 
         templateMarkerCounts.Clear();
@@ -1118,6 +1212,24 @@
     private async Task DeleteMarker(int id)
     {
         await MasterService.DeleteMarkerAsync(id);
+        await LoadData();
+    }
+
+    // ── REJECTION REASONS (F-4) ──
+    private async Task SaveRejectionReason()
+    {
+        if (!string.IsNullOrWhiteSpace(editingReason.Code) && !string.IsNullOrWhiteSpace(editingReason.Description))
+        {
+            editingReason.Code = editingReason.Code.Trim().ToUpperInvariant();
+            await MasterService.UpsertRejectionReasonAsync(editingReason);
+            showReasonForm = false;
+            await LoadData();
+        }
+    }
+
+    private async Task DeleteRejectionReason(int id)
+    {
+        await MasterService.DeleteRejectionReasonAsync(id);
         await LoadData();
     }
 

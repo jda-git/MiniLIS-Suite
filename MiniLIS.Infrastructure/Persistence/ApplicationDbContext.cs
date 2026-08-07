@@ -41,6 +41,8 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<TemplateConclusion> TemplateConclusions => Set<TemplateConclusion>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<BackupRecord> BackupRecords => Set<BackupRecord>();
+        public DbSet<RejectionReason> RejectionReasons => Set<RejectionReason>();
+        public DbSet<SampleReceptionIssue> SampleReceptionIssues => Set<SampleReceptionIssue>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -132,6 +134,23 @@ namespace MiniLIS.Infrastructure.Persistence
             modelBuilder.Entity<AuditLog>().HasIndex(a => a.TimestampUtc);
             modelBuilder.Entity<AuditLog>().HasIndex(a => new { a.EntityName, a.EntityId });
             modelBuilder.Entity<AuditLog>().HasIndex(a => a.UserId);
+
+            // Recepción (F-4)
+            modelBuilder.Entity<RejectionReason>().HasIndex(r => r.Code).IsUnique();
+
+            modelBuilder.Entity<SampleReceptionIssue>()
+                .HasOne(i => i.Sample)
+                .WithMany(s => s.ReceptionIssues)
+                .HasForeignKey(i => i.SampleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // No se borra un motivo en uso (solo se desactiva desde el servicio), pero por si
+            // acaso: restringir el borrado a nivel de BD evita perder la trazabilidad histórica.
+            modelBuilder.Entity<SampleReceptionIssue>()
+                .HasOne(i => i.RejectionReason)
+                .WithMany()
+                .HasForeignKey(i => i.RejectionReasonId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
 
         public override int SaveChanges()

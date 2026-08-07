@@ -7,10 +7,10 @@ namespace MiniLIS.Application.Interfaces
 {
     public interface ISampleService
     {
-        Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null, int? panelId = null);
+        Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null, int? panelId = null, ReceptionStatus? receptionStatus = null);
         Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status, int? userId = null);
         Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples, bool incluirIdentificadores = false);
-        Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null);
+        Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null);
         Task<Sample?> GetSampleByIdAsync(int sampleId);
         Task<bool> UpdateSampleAsync(Sample sample);
         Task<List<AuditLog>> GetAuditLogsForSampleAsync(int sampleId);

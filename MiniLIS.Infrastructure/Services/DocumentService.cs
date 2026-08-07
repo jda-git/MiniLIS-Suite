@@ -186,6 +186,13 @@ namespace MiniLIS.Infrastructure.Services
                             }
                         }
 
+                        // LIMITACIONES (F-4): la salvedad de recepción debe constar en el informe (cl. 7.4).
+                        if (!string.IsNullOrWhiteSpace(fullReport.Sample?.ReceptionCaveatForReport))
+                        {
+                            col.Item().PaddingBottom(5).Text("LIMITACIONES").FontSize(11).FontColor(titleColor);
+                            col.Item().PaddingBottom(15).Text(fullReport.Sample!.ReceptionCaveatForReport!).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                        }
+
                         if (!string.IsNullOrWhiteSpace(fullReport.Conclusions))
                         {
                             col.Item().PaddingBottom(5).Text("CONCLUSIÓN").FontSize(11).FontColor(titleColor);
@@ -503,6 +510,13 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     sb.Append($@"<text:p text:style-name=""GreyText"">Versión de panel: {EncodeForOdt(panelVersionsText)}</text:p>");
                 }
+            }
+
+            // LIMITACIONES (F-4): la salvedad de recepción debe constar en el informe (cl. 7.4).
+            if (!string.IsNullOrWhiteSpace(s?.ReceptionCaveatForReport))
+            {
+                sb.Append($@"<text:p text:style-name=""SectionBlue"">LIMITACIONES</text:p>");
+                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(s!.ReceptionCaveatForReport!)}</text:p>");
             }
 
             // CONCLUSIÓN

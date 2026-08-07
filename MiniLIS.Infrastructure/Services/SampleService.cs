@@ -32,8 +32,9 @@ namespace MiniLIS.Infrastructure.Services
             _localTimeService = localTimeService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
+        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null)
         {
+            reception ??= new ReceptionInput();
             _currentUserService.ActionContext = "Registro de Muestra";
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
@@ -86,7 +87,14 @@ namespace MiniLIS.Infrastructure.Services
                         StudyPanel = studyPanel ?? string.Empty,
                         HasIncident = hasIncident,
                         IncidentsNotes = incidentNotes ?? string.Empty,
-                        RegisteredByUserId = registeredByUserId
+                        RegisteredByUserId = registeredByUserId,
+                        ReceptionStatus = reception.Status,
+                        ReceptionCaveatForReport = reception.CaveatForReport,
+                        RequesterNotified = reception.RequesterNotified,
+                        RequesterNotifiedAtUtc = reception.RequesterNotified ? DateTime.UtcNow : null,
+                        RequesterNotifiedByUserId = reception.RequesterNotified ? registeredByUserId : null,
+                        NotificationNotes = reception.NotificationNotes,
+                        QmsNonConformityRef = reception.QmsNonConformityRef
                     };
 
                     _db.Samples.Add(sample);
@@ -110,6 +118,20 @@ namespace MiniLIS.Infrastructure.Services
                         });
                         await _db.SaveChangesAsync();
                         await Task.Delay(50 * attempt);
+                    }
+                }
+
+                // 3.5 Motivos de recepción elegidos (F-4), multi-select.
+                if (reception.RejectionReasonIds.Any())
+                {
+                    foreach (var reasonId in reception.RejectionReasonIds.Distinct())
+                    {
+                        _db.SampleReceptionIssues.Add(new SampleReceptionIssue
+                        {
+                            SampleId = sample.Id,
+                            RejectionReasonId = reasonId,
+                            Notes = reception.IssueNotes
+                        });
                     }
                 }
 
@@ -168,7 +190,7 @@ namespace MiniLIS.Infrastructure.Services
                     }
                 }
 
-                if (order > 1) await _db.SaveChangesAsync();
+                if (order > 1 || reception.RejectionReasonIds.Any()) await _db.SaveChangesAsync();
 
                 await transaction.CommitAsync();
                 return sample;
@@ -184,7 +206,7 @@ namespace MiniLIS.Infrastructure.Services
             ex.InnerException?.Message?.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) == true
             && ex.InnerException.Message.Contains("Samples.SampleNumber", StringComparison.OrdinalIgnoreCase);
 
-        public async Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null, int? panelId = null)
+        public async Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null, int? panelId = null, ReceptionStatus? receptionStatus = null)
         {
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
@@ -226,6 +248,11 @@ namespace MiniLIS.Infrastructure.Services
             if (panelId.HasValue)
             {
                 query = query.Where(s => s.Panels.Any(p => p.PanelId == panelId.Value));
+            }
+
+            if (receptionStatus.HasValue)
+            {
+                query = query.Where(s => s.ReceptionStatus == receptionStatus.Value);
             }
 
             // ReceptionDate se guarda en UTC (M-5); fromDate/toDate son días naturales
@@ -320,6 +347,8 @@ namespace MiniLIS.Infrastructure.Services
                     .ThenInclude(cr => cr.Patient)
                 .Include(s => s.Panels)
                     .ThenInclude(sp => sp.Panel)
+                .Include(s => s.ReceptionIssues)
+                    .ThenInclude(i => i.RejectionReason)
                 .FirstOrDefaultAsync(s => s.Id == sampleId);
         }
 

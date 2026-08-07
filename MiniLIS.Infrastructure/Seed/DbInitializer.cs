@@ -165,10 +165,46 @@ namespace MiniLIS.Infrastructure.Seed
                 }
             }
 
+            // 6. Seed Rejection Reasons (F-4)
+            var rejectionReasons = new (string Code, string Description, bool TypicallyRejects, bool RequiresFreeText)[]
+            {
+                ("VOL-INSUF", "Volumen insuficiente", true, false),
+                ("COAG", "Muestra coagulada", true, false),
+                ("HEMOL", "Muestra hemolizada", false, false),
+                ("TEMP", "Temperatura de transporte incorrecta", false, false),
+                ("ANTICOAG", "Anticoagulante inadecuado", true, false),
+                ("DEMORA", "Demora excesiva desde la extracción", false, false),
+                ("ID-ILEGIBLE", "Identificación incorrecta o ilegible", true, false),
+                ("TUBO-DAÑADO", "Tubo dañado o derramado", true, false),
+                ("PET-INCOMPLETA", "Petición incompleta o sin datos clínicos", false, false),
+                ("SIN-PETICION", "Muestra no acompañada de petición", true, false),
+                ("OTROS", "Otros", false, true),
+            };
+            int reasonOrder = 0;
+            foreach (var (code, description, typicallyRejects, requiresFreeText) in rejectionReasons)
+            {
+                if (!await context.RejectionReasons.AnyAsync(r => r.Code == code))
+                {
+                    context.RejectionReasons.Add(new RejectionReason
+                    {
+                        Code = code,
+                        Description = description,
+                        TypicallyRejects = typicallyRejects,
+                        RequiresFreeText = requiresFreeText,
+                        DisplayOrder = reasonOrder
+                    });
+                }
+                reasonOrder++;
+            }
+
             await context.SaveChangesAsync();
 
-            // 5.5 Da a cada Panel sin PanelVersion una v1/Vigente (migración M-4, idempotente).
+            // 6.5 Da a cada Panel sin PanelVersion una v1/Vigente (migración M-4, idempotente).
             await PanelVersionSeeder.RunAsync(context, logger);
+
+            // 6.6 Migra las muestras con el antiguo HasIncident=true a ReceptionStatus=ConSalvedad
+            // (F-4, idempotente: solo actúa sobre filas todavía no migradas).
+            await ReceptionMigrator.RunAsync(context, logger);
         }
     }
 }
