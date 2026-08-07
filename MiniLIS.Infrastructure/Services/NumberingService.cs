@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,12 +12,18 @@ namespace MiniLIS.Infrastructure.Services
     public class NumberingService : INumberingService
     {
         private readonly ApplicationDbContext _db;
+        private readonly ILogger<NumberingService> _logger;
         private const string KEY_YEAR = "System:CurrentYear";
         private const string KEY_SEQUENCE = "System:LastSampleSequence";
 
-        public NumberingService(ApplicationDbContext db)
+        /// <summary>Formato real de la numeración: AA-NNNN (año de 2 dígitos, secuencia de 4).</summary>
+        public static readonly System.Text.RegularExpressions.Regex ManualNumberPattern =
+            new(@"^\d{2}-\d{4}$");
+
+        public NumberingService(ApplicationDbContext db, ILogger<NumberingService> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         public async Task<string> GetNextSampleNumberAsync()
@@ -47,7 +54,11 @@ namespace MiniLIS.Infrastructure.Services
 
             if (yearSetting.Value == currentYear)
             {
-                int lastSeq = int.Parse(seqSetting.Value);
+                if (!int.TryParse(seqSetting.Value, out int lastSeq))
+                {
+                    _logger.LogWarning("Secuencia de numeración corrupta: '{Value}'. Se recalcula desde la tabla de muestras.", seqSetting.Value);
+                    lastSeq = dbMaxSeq;
+                }
                 // Use the higher between settings and DB
                 nextSeq = Math.Max(lastSeq, dbMaxSeq) + 1;
             }
@@ -76,7 +87,7 @@ namespace MiniLIS.Infrastructure.Services
 
             if (yearSetting != null && yearSetting.Value == currentYear && seqSetting != null)
             {
-                lastSeq = int.Parse(seqSetting.Value);
+                int.TryParse(seqSetting.Value, out lastSeq);
             }
 
             int nextSeq = Math.Max(lastSeq, dbMaxSeq) + 1;

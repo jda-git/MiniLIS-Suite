@@ -542,6 +542,11 @@
 
     private RegistrationModel model = new();
     private string nextSampleNumber = "Cargando...";
+    // Valor devuelto por PeekNextSampleNumberAsync — es solo una previsualización, no
+    // reserva el número. Si el operador no lo toca, el alta debe pedir uno nuevo en el
+    // momento de guardar (con reintento ante colisión, A-4); si lo edita a propósito, se
+    // trata como número manual y no se reintenta automáticamente.
+    private string peekedSampleNumber = "";
     private string? errorMessage;
     private bool isSubmitting = false;
     private List<Panel> allPanels = new();
@@ -552,6 +557,7 @@
     protected override async Task OnInitializedAsync()
     {
         nextSampleNumber = await NumberingService.PeekNextSampleNumberAsync();
+        peekedSampleNumber = nextSampleNumber;
         model.SampleTypeRadio = "MO";
         allPanels = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name).ToList();
     }
@@ -670,7 +676,12 @@
             var userObj = await UserManager.GetUserAsync(authState.User);
             int? currentUserId = userObj?.Id;
 
-            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, nextSampleNumber, currentUserId);
+            // Si el operador no ha tocado la previsualización, se pide un número nuevo en
+            // el momento de guardar (con reintento ante colisión, A-4) en vez de reutilizar
+            // el valor ya obsoleto que se mostró al cargar la página.
+            string? manualOverride = nextSampleNumber == peekedSampleNumber ? null : nextSampleNumber;
+
+            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId);
 
             await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
             Nav.NavigateTo("/muestras");

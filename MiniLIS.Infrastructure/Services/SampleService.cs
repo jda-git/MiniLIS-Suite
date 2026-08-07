@@ -41,34 +41,64 @@ namespace MiniLIS.Infrastructure.Services
                 await _db.SaveChangesAsync();
 
                 // 3. Create Sample with auto-numbering or manual
-                string sampleNumber;
-                if (!string.IsNullOrWhiteSpace(manualSampleNumber))
+                bool isManual = !string.IsNullOrWhiteSpace(manualSampleNumber);
+                if (isManual && !NumberingService.ManualNumberPattern.IsMatch(manualSampleNumber!.Trim()))
                 {
-                    sampleNumber = manualSampleNumber.Trim();
-                    // If manual, update sequence if it's higher
-                    await _numberingService.UpdateSequenceIfHigherAsync(sampleNumber);
-                }
-                else
-                {
-                    sampleNumber = await _numberingService.GetNextSampleNumberAsync();
+                    throw new InvalidOperationException($"El número de muestra manual '{manualSampleNumber}' no tiene el formato AA-NNNN.");
                 }
 
-                var sample = new Sample
+                Sample sample = null!;
+                const int maxAttempts = 3;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++)
                 {
-                    SampleNumber = sampleNumber,
-                    ReceptionDate = DateTime.Now,
-                    ClinicalRequestId = request.Id,
-                    ClinicalRequest = request,
-                    Status = SampleStatus.Recibida,
-                    Diagnosis = sampleDiagnosis,
-                    StudyPanel = studyPanel ?? string.Empty,
-                    HasIncident = hasIncident,
-                    IncidentsNotes = incidentNotes ?? string.Empty,
-                    RegisteredByUserId = registeredByUserId
-                };
+                    string sampleNumber;
+                    if (isManual)
+                    {
+                        sampleNumber = manualSampleNumber!.Trim();
+                        await _numberingService.UpdateSequenceIfHigherAsync(sampleNumber);
+                    }
+                    else
+                    {
+                        sampleNumber = await _numberingService.GetNextSampleNumberAsync();
+                    }
 
-                _db.Samples.Add(sample);
-                await _db.SaveChangesAsync();
+                    sample = new Sample
+                    {
+                        SampleNumber = sampleNumber,
+                        ReceptionDate = DateTime.Now,
+                        ClinicalRequestId = request.Id,
+                        ClinicalRequest = request,
+                        Status = SampleStatus.Recibida,
+                        Diagnosis = sampleDiagnosis,
+                        StudyPanel = studyPanel ?? string.Empty,
+                        HasIncident = hasIncident,
+                        IncidentsNotes = incidentNotes ?? string.Empty,
+                        RegisteredByUserId = registeredByUserId
+                    };
+
+                    _db.Samples.Add(sample);
+                    try
+                    {
+                        await _db.SaveChangesAsync();
+                        break; // éxito
+                    }
+                    catch (DbUpdateException ex) when (!isManual && attempt < maxAttempts && IsUniqueSampleNumberViolation(ex))
+                    {
+                        // Carrera de numeración (A-4): dos altas concurrentes generaron el mismo
+                        // número. El índice único de A-2 la detecta aquí; se recalcula y reintenta.
+                        _db.Entry(sample).State = EntityState.Detached;
+                        _db.AuditLogs.Add(new AuditLog
+                        {
+                            EntityName = nameof(Sample),
+                            EntityId = sampleNumber,
+                            Action = "NumberingRetry",
+                            ActionContext = $"Colisión de numeración, intento {attempt} de {maxAttempts}",
+                            TimestampUtc = DateTime.UtcNow
+                        });
+                        await _db.SaveChangesAsync();
+                        await Task.Delay(50 * attempt);
+                    }
+                }
 
                 // 4. Create SamplePanel entries from selected panel IDs
                 int order = 1;
@@ -115,6 +145,10 @@ namespace MiniLIS.Infrastructure.Services
                 throw;
             }
         }
+
+        private static bool IsUniqueSampleNumberViolation(DbUpdateException ex) =>
+            ex.InnerException?.Message?.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) == true
+            && ex.InnerException.Message.Contains("Samples.SampleNumber", StringComparison.OrdinalIgnoreCase);
 
         public async Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate)
         {
