@@ -140,14 +140,24 @@
                                     {
                                         <div class="panel-audit-row">
                                             <div class="panel-info">
-                                                <span class="panel-name">@(p.Panel?.Name ?? p.CustomText)</span>
+                                                <span class="panel-name">@(p.Panel?.Name ?? p.CustomText)@(p.PanelVersion != null ? $" ({p.PanelVersion.DisplayCode})" : "")</span>
                                             </div>
                                             <div class="panel-audit-trail">
-                                                @if (p.IsRead)
+                                                @if (p.Tubes.Any())
                                                 {
-                                                    <span class="read-badge"><i class="bi bi-eye-fill"></i> LEÍDO</span>
-                                                    <span class="read-by">por <strong>@(p.ReadByUser?.FullName ?? "Técnico")</strong></span>
-                                                    <span class="read-at">el @p.ReadAt?.ToString("dd/MM/yyyy HH:mm")</span>
+                                                    @foreach (var t in p.Tubes.OrderBy(x => x.TubeNumber))
+                                                    {
+                                                        @if (t.IsRead)
+                                                        {
+                                                            <span class="read-badge"><i class="bi bi-eye-fill"></i> T@(t.TubeNumber) LEÍDO</span>
+                                                            <span class="read-by">por <strong>@(t.ReadByUser?.FullName ?? "Técnico")</strong></span>
+                                                            <span class="read-at">el @t.ReadAtUtc?.ToString("dd/MM/yyyy HH:mm")</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="unread-badge">T@(t.TubeNumber) PENDIENTE</span>
+                                                        }
+                                                    }
                                                 }
                                                 else
                                                 {

@@ -27,7 +27,10 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<ClinicalRequest> ClinicalRequests => Set<ClinicalRequest>();
         public DbSet<Sample> Samples => Set<Sample>();
         public DbSet<SamplePanel> SamplePanels => Set<SamplePanel>();
+        public DbSet<SampleTube> SampleTubes => Set<SampleTube>();
         public DbSet<Panel> Panels => Set<Panel>();
+        public DbSet<PanelVersion> PanelVersions => Set<PanelVersion>();
+        public DbSet<PanelTube> PanelTubes => Set<PanelTube>();
         public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
         public DbSet<Marker> Markers => Set<Marker>();
         public DbSet<ReportTemplate> ReportTemplates => Set<ReportTemplate>();
@@ -63,6 +66,46 @@ namespace MiniLIS.Infrastructure.Persistence
                 .HasOne(sp => sp.Panel)
                 .WithMany()
                 .HasForeignKey(sp => sp.PanelId);
+
+            // Versión congelada al solicitar (M-4): nunca se borra una PanelVersion usada por
+            // un estudio existente, así que el borrado se restringe en vez de propagarse.
+            modelBuilder.Entity<SamplePanel>()
+                .HasOne(sp => sp.PanelVersion)
+                .WithMany()
+                .HasForeignKey(sp => sp.PanelVersionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<SampleTube>()
+                .HasOne(t => t.SamplePanel)
+                .WithMany(sp => sp.Tubes)
+                .HasForeignKey(t => t.SamplePanelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PanelVersion>()
+                .HasOne(v => v.Panel)
+                .WithMany(p => p.Versions)
+                .HasForeignKey(v => v.PanelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PanelTube>()
+                .HasOne(t => t.PanelVersion)
+                .WithMany(v => v.Tubes)
+                .HasForeignKey(t => t.PanelVersionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Panel>()
+                .HasOne(p => p.DefaultReportTemplate)
+                .WithMany()
+                .HasForeignKey(p => p.DefaultReportTemplateId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // QmsReference (F-0) como propiedad de propietario: sin tabla propia.
+            modelBuilder.Entity<PanelVersion>().OwnsOne(v => v.QmsDocumentRef);
+
+            modelBuilder.Entity<Panel>().HasIndex(p => p.Code).IsUnique();
+            modelBuilder.Entity<PanelVersion>().HasIndex(v => new { v.PanelId, v.VersionNumber }).IsUnique();
+            modelBuilder.Entity<PanelTube>().HasIndex(t => new { t.PanelVersionId, t.TubeNumber }).IsUnique();
+            modelBuilder.Entity<SampleTube>().HasIndex(t => new { t.SamplePanelId, t.TubeNumber }).IsUnique();
 
             modelBuilder.Entity<SampleReport>()
                 .HasOne(r => r.Sample)

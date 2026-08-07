@@ -66,6 +66,18 @@
 
         <div class="filter-divider"></div>
 
+        <div class="filter-group">
+            <select class="filter-control" @bind="panelFilterId" @bind:after="ApplyFilters">
+                <option value="">-- Todas las familias de panel --</option>
+                @foreach (var panel in allPanelsForModal)
+                {
+                    <option value="@panel.Id">@panel.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="filter-divider"></div>
+
         <div class="filter-group filter-dates">
             <i class="bi bi-calendar3 filter-icon"></i>
             <input type="date" class="filter-control filter-date" @bind="fromDate" @bind:after="ApplyFilters" title="Desde" />
@@ -260,7 +272,7 @@
                         <table class="table table-hover align-middle mb-0 panel-modal-table">
                             <thead>
                                 <tr class="bg-light">
-                                    <th class="ps-3 text-uppercase text-muted fw-bold">Panel</th>
+                                    <th class="ps-3 text-uppercase text-muted fw-bold">Panel / Tubo</th>
                                     <th style="width:105px;" class="text-center text-uppercase text-muted fw-bold">Solicitado</th>
                                     <th style="width:160px;" class="text-center text-uppercase text-muted fw-bold">Leído</th>
                                     <th style="width:50px;"></th>
@@ -269,39 +281,61 @@
                             <tbody>
                                 @foreach (var sp in modalPanels)
                                 {
-                                    <tr class="panel-row">
+                                    <tr class="panel-row panel-header-row">
                                         <td class="fw-semibold text-dark ps-3">
                                             @(sp.Panel?.Name ?? sp.CustomText ?? "—")
+                                            @if (sp.PanelVersion != null)
+                                            {
+                                                <span class="text-muted small ms-1">(@sp.PanelVersion.DisplayCode)</span>
+                                            }
                                         </td>
                                         <td class="text-center">
                                             <div class="form-check form-switch d-inline-block">
                                                 <input class="form-check-input switch-requested cursor-pointer" type="checkbox" role="switch" checked="@sp.IsRequested" @onchange="@((ChangeEventArgs e) => sp.IsRequested = (bool)(e.Value ?? false))" />
                                             </div>
                                         </td>
-                                        <td class="text-center">
-                                            <div class="d-flex flex-column align-items-center justify-content-center">
-                                                <div class="form-check form-switch d-inline-block">
-                                                    <input class="form-check-input switch-read cursor-pointer" type="checkbox" role="switch" checked="@sp.IsRead" @onchange="@((ChangeEventArgs e) => ToggleReadInModal(sp, (bool)(e.Value ?? false)))" />
-                                                </div>
-                                                @if (sp.IsRead && (sp.ReadByUser != null || !string.IsNullOrEmpty(currentUserName)))
-                                                {
-                                                    <div class="read-signature-badge mt-1 shadow-xs animate-fade-in">
-                                                        <span class="read-user text-truncate" title="@(sp.ReadByUser?.FullName ?? currentUserName)">
-                                                            <i class="bi bi-person-fill me-1"></i>@(sp.ReadByUser?.FullName ?? currentUserName)
-                                                        </span>
-                                                        <span class="read-date">
-                                                            <i class="bi bi-clock-fill me-1"></i>@(sp.ReadAt?.ToString("dd/MM HH:mm"))
-                                                        </span>
-                                                    </div>
-                                                }
-                                            </div>
-                                        </td>
+                                        <td class="text-center text-muted small">@sp.Tubes.Count() tubo(s)</td>
                                         <td class="text-end pe-3">
                                             <button type="button" class="btn-delete-panel" @onclick="@(() => modalPanels.Remove(sp))" title="Eliminar Panel">
                                                 <i class="bi bi-trash3-fill"></i>
                                             </button>
                                         </td>
                                     </tr>
+                                    @foreach (var tube in sp.Tubes.OrderBy(t => t.TubeNumber))
+                                    {
+                                        <tr class="tube-row">
+                                            <td class="ps-4 text-secondary small">
+                                                <i class="bi bi-droplet-half me-1"></i>T@(tube.TubeNumber) — @tube.MarkerList
+                                                @if (tube.IsOptional)
+                                                {
+                                                    <span class="badge bg-secondary-subtle text-secondary ms-1">opcional</span>
+                                                }
+                                            </td>
+                                            <td></td>
+                                            <td class="text-center">
+                                                <div class="d-flex flex-column align-items-center justify-content-center">
+                                                    <div class="form-check form-switch d-inline-block">
+                                                        <input class="form-check-input switch-read cursor-pointer" type="checkbox" role="switch"
+                                                               checked="@tube.IsRead" disabled="@(sp.Id == 0)"
+                                                               title="@(sp.Id == 0 ? "Guarde el panel primero para poder marcar sus tubos" : null)"
+                                                               @onchange="@((ChangeEventArgs e) => ToggleTubeReadInModal(sp, tube, (bool)(e.Value ?? false)))" />
+                                                    </div>
+                                                    @if (tube.IsRead && (tube.ReadByUser != null || !string.IsNullOrEmpty(currentUserName)))
+                                                    {
+                                                        <div class="read-signature-badge mt-1 shadow-xs animate-fade-in">
+                                                            <span class="read-user text-truncate" title="@(tube.ReadByUser?.FullName ?? currentUserName)">
+                                                                <i class="bi bi-person-fill me-1"></i>@(tube.ReadByUser?.FullName ?? currentUserName)
+                                                            </span>
+                                                            <span class="read-date">
+                                                                <i class="bi bi-clock-fill me-1"></i>@(tube.ReadAtUtc?.ToString("dd/MM HH:mm"))
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td></td>
+                                        </tr>
+                                    }
                                 }
                             </tbody>
                         </table>
@@ -764,6 +798,7 @@
     private string searchTerm = "";
     private SampleStatus? statusFilter;
     private SampleType? typeFilter;
+    private int? panelFilterId;
     private DateTime? fromDate;
     private DateTime? toDate;
 
@@ -776,30 +811,38 @@
     private int? currentUserId;
     private string? currentUserName;
 
-    private async Task ToggleReadInModal(SamplePanel sp, bool isRead)
+    private async Task ToggleTubeReadInModal(SamplePanel sp, SampleTube tube, bool isRead)
     {
-        sp.IsRead = isRead;
-        if (isRead)
+        // El panel todavía no está guardado (Id=0): no hay tubo persistido que marcar
+        // todavía. El interruptor está deshabilitado en la plantilla para este caso.
+        if (sp.Id == 0) return;
+
+        if (isRead && !currentUserId.HasValue)
         {
-            if (!currentUserId.HasValue)
-            {
-                var authState = await AuthStateTask;
-                var user = await UserManager.GetUserAsync(authState.User);
-                currentUserId = user?.Id;
-                currentUserName = user?.FullName ?? user?.UserName;
-            }
-            sp.ReadByUserId = currentUserId;
-            sp.ReadAt = DateTime.Now;
+            var authState = await AuthStateTask;
+            var user = await UserManager.GetUserAsync(authState.User);
+            currentUserId = user?.Id;
+            currentUserName = user?.FullName ?? user?.UserName;
         }
-        else
+
+        try
         {
-            sp.ReadByUserId = null;
-            sp.ReadAt = null;
-            sp.ReadByUser = null;
+            // Acción inmediata y auditable por separado (M-4): marcar un tubo leído no
+            // espera al botón "Guardar Cambios" del resto del modal.
+            await SampleService.ToggleSampleTubeReadAsync(tube.Id, isRead, currentUserId);
+            tube.IsRead = isRead;
+            tube.ReadByUserId = isRead ? currentUserId : null;
+            tube.ReadAtUtc = isRead ? DateTime.UtcNow : null;
+            if (!isRead) tube.ReadByUser = null;
+        }
+        catch (Exception ex)
+        {
+            modalErrorMessage = $"Error al marcar el tubo: {ex.Message}";
         }
     }
 
     [Inject] private IMasterDataService MasterService { get; set; } = default!;
+    [Inject] private IPanelCatalogService PanelCatalogService { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -810,7 +853,7 @@
     private async Task LoadSamples()
     {
         isLoading = true;
-        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, fromDate, toDate, typeFilter);
+        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, fromDate, toDate, typeFilter, panelFilterId);
         isLoading = false;
     }
 
@@ -821,6 +864,7 @@
         searchTerm = "";
         statusFilter = null;
         typeFilter = null;
+        panelFilterId = null;
         fromDate = null;
         toDate = null;
         await LoadSamples();
@@ -837,37 +881,45 @@
         panelModalSample = sample;
         modalAddPanelId = 0;
         modalErrorMessage = null;
-        // Load fresh panels for this sample
-        var panels = await SampleService.GetSamplePanelsAsync(sample.Id);
-        modalPanels = panels.Select(p => new SamplePanel
-        {
-            Id = p.Id,
-            SampleId = p.SampleId,
-            PanelId = p.PanelId,
-            Panel = p.Panel,
-            IsRequested = p.IsRequested,
-            IsRead = p.IsRead,
-            ReadByUserId = p.ReadByUserId,
-            ReadAt = p.ReadAt,
-            ReadByUser = p.ReadByUser,
-            DisplayOrder = p.DisplayOrder,
-            CustomText = p.CustomText
-        }).ToList();
+        // Load fresh panels for this sample. Se reutilizan directamente las entidades
+        // devueltas (con sus SampleTube ya cargados) en vez de reconstruirlas a mano,
+        // para no tener que enumerar cada campo nuevo aquí cada vez que el modelo cambie.
+        modalPanels = await SampleService.GetSamplePanelsAsync(sample.Id);
     }
 
-    private void AddPanelToModal()
+    private async Task AddPanelToModal()
     {
         if (modalAddPanelId == 0) return;
         var panel = allPanelsForModal.FirstOrDefault(p => p.Id == modalAddPanelId);
         if (panel == null) return;
-        modalPanels.Add(new SamplePanel
+
+        var newPanel = new SamplePanel
         {
             PanelId = panel.Id,
             Panel = panel,
             IsRequested = true,
-            IsRead = false,
             DisplayOrder = modalPanels.Count + 1
-        });
+        };
+
+        // Vista previa de los tubos que traerá la versión vigente (M-4). No persiste nada
+        // todavía — SetSamplePanelsAsync vuelve a resolverlo al guardar, esto es solo para
+        // que el técnico vea de antemano qué tubos va a añadir.
+        var version = await PanelCatalogService.GetVigenteVersionAsync(panel.Id);
+        if (version != null)
+        {
+            newPanel.PanelVersion = version;
+            int tubeNumber = 1;
+            foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
+            {
+                newPanel.Tubes.Add(new SampleTube { TubeNumber = tubeNumber++, MarkerList = tube.MarkerList, IsOptional = tube.IsOptional });
+            }
+        }
+        else
+        {
+            modalErrorMessage = $"El panel '{panel.Name}' no tiene ninguna versión vigente y no se podrá guardar tal cual. Publique una versión desde Configuración.";
+        }
+
+        modalPanels.Add(newPanel);
         modalAddPanelId = 0;
     }
 

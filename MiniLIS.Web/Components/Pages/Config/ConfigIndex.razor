@@ -4,7 +4,9 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Roles = "Administrador")]
 @inject IMasterDataService MasterService
+@inject IPanelCatalogService PanelCatalogService
 @inject NavigationManager Nav
+@using MiniLIS.Web.Components.Shared
 
 <PageTitle>Configuración - MiniLIS Suite</PageTitle>
 
@@ -161,11 +163,11 @@
         {
             <div class="section-header">
                 <div>
-                    <h2 class="section-title">Paneles de Tubos</h2>
-                    <p class="section-subtitle">@panels.Count paneles configurados</p>
+                    <h2 class="section-title">Familias de Paneles</h2>
+                    <p class="section-subtitle">@panels.Count familias configuradas. La composición de tubos se gestiona por versión (botón "Versiones").</p>
                 </div>
-                <button class="btn-config btn-config-primary" @onclick="() => { editingPanel = new Panel(); showPanelForm = true; }">
-                    <i class="bi bi-plus-lg"></i> Nuevo Panel
+                <button class="btn-config btn-config-primary" @onclick="() => { editingPanel = new Panel { IsActive = true }; showPanelForm = true; }">
+                    <i class="bi bi-plus-lg"></i> Nueva Familia
                 </button>
             </div>
 
@@ -175,17 +177,33 @@
                     <div class="inline-form-rows">
                         <div class="inline-form-grid">
                             <div class="form-field">
-                                <label class="field-label">Nombre del Panel</label>
-                                <input type="text" class="field-input" placeholder="Ej: SLPC + 23" @bind="editingPanel.Name" />
+                                <label class="field-label">Código</label>
+                                <input type="text" class="field-input" placeholder="Ej: SLPC" maxlength="20" @bind="editingPanel.Code" />
+                            </div>
+                            <div class="form-field">
+                                <label class="field-label">Nombre</label>
+                                <input type="text" class="field-input" placeholder="Ej: Síndrome linfoproliferativo crónico" @bind="editingPanel.Name" />
                             </div>
                             <div class="form-field">
                                 <label class="field-label">Descripción</label>
                                 <input type="text" class="field-input" placeholder="Descripción" @bind="editingPanel.Description" />
                             </div>
                         </div>
-                        <div class="form-field">
-                            <label class="field-label">Listado de Tubos</label>
-                            <textarea class="field-input field-textarea" rows="3" @bind="editingPanel.TubeListText" placeholder="8+lambda/56+kappa/5/3/19/20+4/45/38&#10;23/10/79b/200/19/20/45/43"></textarea>
+                        <div class="inline-form-grid">
+                            <div class="form-field">
+                                <label class="field-label">Plantilla de informe sugerida</label>
+                                <select class="field-input" @bind="editingPanel.DefaultReportTemplateId">
+                                    <option value="">-- Ninguna --</option>
+                                    @foreach (var t in templates)
+                                    {
+                                        <option value="@t.Id">@t.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label class="field-label">Activo</label>
+                                <input type="checkbox" @bind="editingPanel.IsActive" />
+                            </div>
                         </div>
                         <div class="form-actions-inline">
                             <button class="btn-config btn-config-success" @onclick="SavePanel"><i class="bi bi-check-lg"></i> Guardar</button>
@@ -199,9 +217,10 @@
                 <table class="config-table">
                     <thead>
                         <tr>
+                            <th>Código</th>
                             <th class="col-panel-name">Nombre</th>
                             <th>Descripción</th>
-                            <th>Tubos</th>
+                            <th>Activo</th>
                             <th class="col-actions">Acciones</th>
                         </tr>
                     </thead>
@@ -209,12 +228,16 @@
                         @foreach (var p in panels)
                         {
                             <tr>
-                                <td><span class="panel-chip">@p.Name</span></td>
+                                <td><span class="panel-chip">@p.Code</span></td>
+                                <td>@p.Name</td>
                                 <td class="cell-desc">@(p.Description ?? "—")</td>
-                                <td class="cell-tubes">@(string.IsNullOrEmpty(p.TubeListText) ? "—" : (p.TubeListText.Length > 80 ? p.TubeListText.Substring(0, 77) + "..." : p.TubeListText))</td>
+                                <td>@(p.IsActive ? "Sí" : "No")</td>
                                 <td class="cell-actions">
-                                    <button class="action-icon action-edit" title="Editar" @onclick="() => { editingPanel = p; showPanelForm = true; }">
+                                    <button class="action-icon action-edit" title="Editar familia" @onclick="() => { editingPanel = p; showPanelForm = true; }">
                                         <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn-config btn-config-ghost" title="Versiones" @onclick="() => OpenVersions(p)">
+                                        <i class="bi bi-clock-history"></i> Versiones
                                     </button>
                                     <button class="action-icon action-delete" title="Eliminar" @onclick="() => DeletePanel(p.Id)">
                                         <i class="bi bi-trash"></i>
@@ -225,6 +248,165 @@
                     </tbody>
                 </table>
             </div>
+
+            @if (versionsPanel != null)
+            {
+                <div class="inline-form mt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h3 class="section-title" style="font-size:16px;">Versiones de "@versionsPanel.Name" (@versionsPanel.Code)</h3>
+                        <button class="btn-config btn-config-ghost" @onclick="CloseVersions">Cerrar</button>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(versionsErrorMessage))
+                    {
+                        <div class="alert alert-danger py-2 px-3 rounded small mb-2">@versionsErrorMessage</div>
+                    }
+
+                    @if (!showNewVersionPrompt)
+                    {
+                        <button class="btn-config btn-config-primary mb-3" @onclick="() => { showNewVersionPrompt = true; newVersionChangeNotes = string.Empty; }">
+                            <i class="bi bi-plus-lg"></i> Nueva versión
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="form-field mb-3">
+                            <label class="field-label">Notas de cambio (obligatorio)</label>
+                            <input type="text" class="field-input" @bind="newVersionChangeNotes" placeholder="Qué cambia respecto a la versión anterior..." />
+                            <div class="form-actions-inline mt-2">
+                                <button class="btn-config btn-config-success" @onclick="ConfirmNewVersion" disabled="@string.IsNullOrWhiteSpace(newVersionChangeNotes)">Crear borrador</button>
+                                <button class="btn-config btn-config-ghost" @onclick="() => showNewVersionPrompt = false">Cancelar</button>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="config-table-wrap">
+                        <table class="config-table">
+                            <thead>
+                                <tr>
+                                    <th>Versión</th>
+                                    <th>Estado</th>
+                                    <th>Vigencia</th>
+                                    <th>Estudios</th>
+                                    <th>Notas</th>
+                                    <th class="col-actions">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var v in panelVersions)
+                                {
+                                    <tr>
+                                        <td><span class="panel-chip">@v.DisplayCode</span></td>
+                                        <td>
+                                            <span class="status-pill @(v.Status == PanelVersionStatus.Vigente ? "status-finalizada" : v.Status == PanelVersionStatus.Borrador ? "status-recibida" : "status-rechazada")">@v.Status</span>
+                                        </td>
+                                        <td class="text-muted small">
+                                            @(v.EffectiveFromUtc?.ToString("dd/MM/yyyy") ?? "—")@(v.EffectiveToUtc != null ? $" – {v.EffectiveToUtc:dd/MM/yyyy}" : "")
+                                        </td>
+                                        <td class="text-center">@(versionUsageCounts.TryGetValue(v.Id, out var c) ? c : 0)</td>
+                                        <td class="cell-desc">@(v.ChangeNotes ?? "—")</td>
+                                        <td class="cell-actions">
+                                            <button class="action-icon action-edit" title="@(v.Status == PanelVersionStatus.Borrador ? "Editar borrador" : "Ver tubos")" @onclick="() => StartEditVersion(v)">
+                                                <i class="bi @(v.Status == PanelVersionStatus.Borrador ? "bi-pencil" : "bi-eye")"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if (editingVersion != null)
+                    {
+                        var readOnly = editingVersion.Status != PanelVersionStatus.Borrador;
+                        <div class="inline-form mt-3">
+                            <h4 class="section-title" style="font-size:14px;">@(readOnly ? "Tubos de " : "Editando ")@editingVersion.DisplayCode</h4>
+
+                            @if (!readOnly)
+                            {
+                                <div class="inline-form-grid mb-2">
+                                    <div class="form-field">
+                                        <label class="field-label">Notas de cambio</label>
+                                        <input type="text" class="field-input" @bind="editingChangeNotes" />
+                                    </div>
+                                    <div class="form-field">
+                                        <label class="field-label">Referencia PNT (QMS)</label>
+                                        <QmsReferenceInput @bind-Value="editingQmsCode" PatternKey="DocumentRefPattern" Placeholder="PNT-CIT-ANA-012 v3" />
+                                    </div>
+                                </div>
+                            }
+
+                            <table class="config-table mb-2">
+                                <thead>
+                                    <tr>
+                                        <th style="width:50px;">Nº</th>
+                                        <th>Combinación de anticuerpos</th>
+                                        <th>Notas</th>
+                                        <th style="width:90px;">Opcional</th>
+                                        @if (!readOnly) { <th style="width:50px;"></th> }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var t in editingTubes)
+                                    {
+                                        <tr>
+                                            <td>@t.TubeNumber</td>
+                                            <td>
+                                                @if (readOnly)
+                                                {
+                                                    @t.MarkerList
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" class="field-input" @bind="t.MarkerList" placeholder="8+lambda/56+kappa/5/3/19/20+4/45/38" />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (readOnly)
+                                                {
+                                                    @(t.Notes ?? "—")
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" class="field-input" @bind="t.Notes" />
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                @if (readOnly)
+                                                {
+                                                    @(t.IsOptional ? "Sí" : "No")
+                                                }
+                                                else
+                                                {
+                                                    <input type="checkbox" @bind="t.IsOptional" />
+                                                }
+                                            </td>
+                                            @if (!readOnly)
+                                            {
+                                                <td><button class="action-icon action-delete" @onclick="() => editingTubes.Remove(t)"><i class="bi bi-trash"></i></button></td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+
+                            @if (!readOnly)
+                            {
+                                <div class="form-actions-inline">
+                                    <button class="btn-config btn-config-ghost" @onclick="AddEditingTube"><i class="bi bi-plus-lg"></i> Añadir tubo</button>
+                                    <button class="btn-config btn-config-success" @onclick="SaveDraft"><i class="bi bi-save"></i> Guardar borrador</button>
+                                    <button class="btn-config btn-config-primary" @onclick="PublishDraft"><i class="bi bi-check2-circle"></i> Publicar como vigente</button>
+                                    <button class="btn-config btn-config-ghost" @onclick="() => editingVersion = null">Cerrar</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <button class="btn-config btn-config-ghost" @onclick="() => editingVersion = null">Cerrar</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         }
 
         @* ════════ TAB: AJUSTES (Intensidades) ════════ *@
@@ -866,6 +1048,18 @@
     private bool showPanelForm = false;
     private Panel editingPanel = new();
 
+    // Panel versions (M-4)
+    private Panel? versionsPanel;
+    private List<PanelVersion> panelVersions = new();
+    private Dictionary<int, int> versionUsageCounts = new();
+    private bool showNewVersionPrompt = false;
+    private string newVersionChangeNotes = "";
+    private string? versionsErrorMessage;
+    private PanelVersion? editingVersion;
+    private List<PanelTube> editingTubes = new();
+    private string editingChangeNotes = "";
+    private string? editingQmsCode;
+
     // Header Settings
     private string logoBase64 = "";
     private string logoAlignment = "Left";
@@ -927,11 +1121,12 @@
         await LoadData();
     }
 
-    // ── PANELS ──
+    // ── PANELS (familias) ──
     private async Task SavePanel()
     {
-        if (!string.IsNullOrWhiteSpace(editingPanel.Name))
+        if (!string.IsNullOrWhiteSpace(editingPanel.Name) && !string.IsNullOrWhiteSpace(editingPanel.Code))
         {
+            editingPanel.Code = editingPanel.Code.Trim().ToUpperInvariant();
             await MasterService.UpsertPanelAsync(editingPanel);
             showPanelForm = false;
             await LoadData();
@@ -941,7 +1136,101 @@
     private async Task DeletePanel(int id)
     {
         await MasterService.DeletePanelAsync(id);
+        if (versionsPanel?.Id == id) CloseVersions();
         await LoadData();
+    }
+
+    // ── PANEL VERSIONS (M-4) ──
+    private async Task OpenVersions(Panel panel)
+    {
+        versionsPanel = panel;
+        editingVersion = null;
+        showNewVersionPrompt = false;
+        versionsErrorMessage = null;
+        await ReloadVersions();
+    }
+
+    private void CloseVersions()
+    {
+        versionsPanel = null;
+        editingVersion = null;
+        showNewVersionPrompt = false;
+    }
+
+    private async Task ReloadVersions()
+    {
+        if (versionsPanel == null) return;
+        panelVersions = await PanelCatalogService.GetVersionsForPanelAsync(versionsPanel.Id);
+        versionUsageCounts.Clear();
+        foreach (var v in panelVersions)
+        {
+            versionUsageCounts[v.Id] = await PanelCatalogService.CountSamplePanelsUsingVersionAsync(v.Id);
+        }
+    }
+
+    private async Task ConfirmNewVersion()
+    {
+        if (versionsPanel == null || string.IsNullOrWhiteSpace(newVersionChangeNotes)) return;
+        versionsErrorMessage = null;
+        try
+        {
+            var vigente = panelVersions.FirstOrDefault(v => v.Status == PanelVersionStatus.Vigente);
+            var draft = await PanelCatalogService.CreateDraftVersionAsync(versionsPanel.Id, newVersionChangeNotes, vigente?.Id);
+            showNewVersionPrompt = false;
+            await ReloadVersions();
+            var reloaded = panelVersions.FirstOrDefault(v => v.Id == draft.Id);
+            if (reloaded != null) StartEditVersion(reloaded);
+        }
+        catch (Exception ex)
+        {
+            versionsErrorMessage = ex.Message;
+        }
+    }
+
+    private void StartEditVersion(PanelVersion v)
+    {
+        editingVersion = v;
+        editingTubes = v.Tubes.OrderBy(t => t.TubeNumber)
+            .Select(t => new PanelTube { TubeNumber = t.TubeNumber, MarkerList = t.MarkerList, Notes = t.Notes, IsOptional = t.IsOptional })
+            .ToList();
+        editingChangeNotes = v.ChangeNotes ?? "";
+        editingQmsCode = v.QmsDocumentRef.Code;
+    }
+
+    private void AddEditingTube() => editingTubes.Add(new PanelTube { TubeNumber = editingTubes.Count + 1, MarkerList = "" });
+
+    private async Task SaveDraft()
+    {
+        if (editingVersion == null) return;
+        versionsErrorMessage = null;
+        try
+        {
+            await PanelCatalogService.SaveDraftVersionAsync(editingVersion.Id, editingChangeNotes, editingQmsCode, editingTubes);
+            var versionId = editingVersion.Id;
+            await ReloadVersions();
+            var reloaded = panelVersions.FirstOrDefault(v => v.Id == versionId);
+            if (reloaded != null) StartEditVersion(reloaded);
+        }
+        catch (Exception ex)
+        {
+            versionsErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task PublishDraft()
+    {
+        if (editingVersion == null) return;
+        versionsErrorMessage = null;
+        try
+        {
+            await PanelCatalogService.PublishVersionAsync(editingVersion.Id);
+            editingVersion = null;
+            await ReloadVersions();
+        }
+        catch (Exception ex)
+        {
+            versionsErrorMessage = ex.Message;
+        }
     }
 
     // ── TEMPLATES ──

@@ -15,15 +15,18 @@ namespace MiniLIS.Infrastructure.Services
         private readonly ApplicationDbContext _db;
         private readonly INumberingService _numberingService;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IPanelCatalogService _panelCatalogService;
 
         public SampleService(
             ApplicationDbContext db,
             INumberingService numberingService,
-            ICurrentUserService currentUserService)
+            ICurrentUserService currentUserService,
+            IPanelCatalogService panelCatalogService)
         {
             _db = db;
             _numberingService = numberingService;
             _currentUserService = currentUserService;
+            _panelCatalogService = panelCatalogService;
         }
 
         public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
@@ -102,24 +105,45 @@ namespace MiniLIS.Infrastructure.Services
                     }
                 }
 
-                // 4. Create SamplePanel entries from selected panel IDs
+                // 4. Create SamplePanel entries from selected panel IDs, freezing la versión vigente
+                // en el momento del alta (M-4) y copiando sus tubos a SampleTube.
                 int order = 1;
                 if (panelIds != null && panelIds.Any())
                 {
                     foreach (var panelId in panelIds)
                     {
-                        _db.SamplePanels.Add(new SamplePanel
+                        var version = await _panelCatalogService.GetVigenteVersionAsync(panelId);
+                        if (version == null)
+                        {
+                            throw new InvalidOperationException($"El panel seleccionado (Id={panelId}) no tiene ninguna versión vigente. No se puede registrar la muestra con este panel.");
+                        }
+
+                        var samplePanel = new SamplePanel
                         {
                             SampleId = sample.Id,
                             PanelId = panelId,
+                            PanelVersionId = version.Id,
                             IsRequested = true,
-                            IsRead = false,
                             DisplayOrder = order++
-                        });
+                        };
+
+                        int tubeNumber = 1;
+                        foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
+                        {
+                            samplePanel.Tubes.Add(new SampleTube
+                            {
+                                TubeNumber = tubeNumber++,
+                                MarkerList = tube.MarkerList,
+                                IsOptional = tube.IsOptional
+                            });
+                        }
+
+                        _db.SamplePanels.Add(samplePanel);
                     }
                 }
 
-                // 5. Create SamplePanel entries for custom (free-text) panels
+                // 5. Create SamplePanel entries for custom (free-text) panels — sin versión de
+                // catálogo, un único tubo con el propio texto libre.
                 if (customPanelTexts != null && customPanelTexts.Any())
                 {
                     foreach (var text in customPanelTexts)
@@ -130,8 +154,8 @@ namespace MiniLIS.Infrastructure.Services
                             PanelId = null,
                             CustomText = text,
                             IsRequested = true,
-                            IsRead = false,
-                            DisplayOrder = order++
+                            DisplayOrder = order++,
+                            Tubes = { new SampleTube { TubeNumber = 1, MarkerList = text } }
                         });
                     }
                 }
@@ -152,7 +176,7 @@ namespace MiniLIS.Infrastructure.Services
             ex.InnerException?.Message?.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) == true
             && ex.InnerException.Message.Contains("Samples.SampleNumber", StringComparison.OrdinalIgnoreCase);
 
-        public async Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null)
+        public async Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null, int? panelId = null)
         {
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
@@ -160,7 +184,10 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(s => s.Panels)
                     .ThenInclude(sp => sp.Panel)
                 .Include(s => s.Panels)
-                    .ThenInclude(sp => sp.ReadByUser)
+                    .ThenInclude(sp => sp.PanelVersion)
+                .Include(s => s.Panels)
+                    .ThenInclude(sp => sp.Tubes)
+                        .ThenInclude(t => t.ReadByUser)
                 .Include(s => s.RegisteredByUser)
                 .Include(s => s.FinalizedByUser)
                 .Include(s => s.Report)
@@ -186,6 +213,11 @@ namespace MiniLIS.Infrastructure.Services
             if (sampleType.HasValue)
             {
                 query = query.Where(s => s.SampleType == sampleType.Value);
+            }
+
+            if (panelId.HasValue)
+            {
+                query = query.Where(s => s.Panels.Any(p => p.PanelId == panelId.Value));
             }
 
             if (fromDate.HasValue)
@@ -303,7 +335,9 @@ namespace MiniLIS.Infrastructure.Services
         {
             return await _db.SamplePanels
                 .Include(sp => sp.Panel)
-                .Include(sp => sp.ReadByUser)
+                .Include(sp => sp.PanelVersion)
+                .Include(sp => sp.Tubes)
+                    .ThenInclude(t => t.ReadByUser)
                 .Where(sp => sp.SampleId == sampleId)
                 .OrderBy(sp => sp.DisplayOrder)
                 .ToListAsync();
@@ -312,72 +346,104 @@ namespace MiniLIS.Infrastructure.Services
         public async Task SetSamplePanelsAsync(int sampleId, List<SamplePanel> panels)
         {
             _currentUserService.ActionContext = "Modificación de Paneles";
-            Console.WriteLine($"[DIAG] SetSamplePanelsAsync: SampleId={sampleId}, PanelsCount={panels?.Count ?? 0}");
             var sample = await _db.Samples
                 .Include(s => s.Panels)
+                    .ThenInclude(sp => sp.Tubes)
                 .FirstOrDefaultAsync(s => s.Id == sampleId);
-            
-            if (sample == null) {
-                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Sample {sampleId} not found!");
-                return;
-            }
 
-            // Use a transaction to ensure atomicity
+            if (sample == null) return;
+
             using var transaction = await _db.Database.BeginTransactionAsync();
             try
             {
-                // Remove existing
-                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Removing {sample.Panels.Count} existing panels.");
-                _db.SamplePanels.RemoveRange(sample.Panels);
-                await _db.SaveChangesAsync();
+                // Diff en vez de borrar-y-recrear (M-4): un panel que sigue presente en la
+                // lista recibida no se toca, así que sus SampleTube (y el progreso de lectura
+                // que llevan) sobreviven a una edición no relacionada con ese panel.
+                var incomingExisting = panels.Where(p => p.Id > 0).ToDictionary(p => p.Id);
+                var toRemove = sample.Panels.Where(existing => !incomingExisting.ContainsKey(existing.Id)).ToList();
+                var toAdd = panels.Where(p => p.Id == 0).ToList();
 
-                // Add new ones from the provided list
                 int order = 1;
-                foreach (var sp in panels)
+                foreach (var existing in sample.Panels.OrderBy(p => p.DisplayOrder))
                 {
-                    Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Adding panel PanelId={sp.PanelId}, CustomText='{sp.CustomText}', IsRead={sp.IsRead}");
+                    if (incomingExisting.TryGetValue(existing.Id, out var incoming))
+                    {
+                        existing.IsRequested = incoming.IsRequested;
+                        existing.CustomText = incoming.CustomText;
+                        existing.DisplayOrder = order++;
+                    }
+                }
+
+                if (toRemove.Any())
+                {
+                    _db.SamplePanels.RemoveRange(toRemove); // cascada: borra también sus SampleTube
+                }
+
+                foreach (var p in toAdd)
+                {
                     var newSp = new SamplePanel
                     {
                         SampleId = sampleId,
-                        PanelId = sp.PanelId,
-                        IsRequested = sp.IsRequested,
-                        IsRead = sp.IsRead,
-                        ReadByUserId = sp.ReadByUserId,
-                        ReadAt = sp.ReadAt,
-                        DisplayOrder = order++,
-                        CustomText = sp.CustomText
+                        PanelId = p.PanelId,
+                        IsRequested = p.IsRequested,
+                        CustomText = p.CustomText,
+                        DisplayOrder = order++
                     };
+
+                    if (p.PanelId.HasValue)
+                    {
+                        var version = await _panelCatalogService.GetVigenteVersionAsync(p.PanelId.Value);
+                        if (version == null)
+                        {
+                            throw new InvalidOperationException($"El panel seleccionado (Id={p.PanelId}) no tiene ninguna versión vigente.");
+                        }
+
+                        newSp.PanelVersionId = version.Id;
+                        int tubeNumber = 1;
+                        foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
+                        {
+                            newSp.Tubes.Add(new SampleTube
+                            {
+                                TubeNumber = tubeNumber++,
+                                MarkerList = tube.MarkerList,
+                                IsOptional = tube.IsOptional
+                            });
+                        }
+                    }
+                    else
+                    {
+                        newSp.Tubes.Add(new SampleTube { TubeNumber = 1, MarkerList = p.CustomText ?? string.Empty });
+                    }
+
                     _db.SamplePanels.Add(newSp);
                 }
 
                 await _db.SaveChangesAsync();
                 await transaction.CommitAsync();
-                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: Commit successful.");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"[DIAG] SetSamplePanelsAsync: ERROR: {ex.Message}");
                 await transaction.RollbackAsync();
                 throw;
             }
         }
 
-        public async Task TogglePanelReadAsync(int samplePanelId, bool isRead, int? userId = null)
+        public async Task ToggleSampleTubeReadAsync(int sampleTubeId, bool isRead, int? userId = null)
         {
-            _currentUserService.ActionContext = isRead ? "Lectura de Panel" : "Cancelación Lectura de Panel";
-            var sp = await _db.SamplePanels.FindAsync(samplePanelId);
-            if (sp != null)
+            _currentUserService.ActionContext = isRead ? "Lectura de Tubo" : "Cancelación de Lectura de Tubo";
+            var tube = await _db.SampleTubes.FindAsync(sampleTubeId);
+            if (tube != null)
             {
-                sp.IsRead = isRead;
+                tube.IsRead = isRead;
                 if (isRead)
                 {
-                    sp.ReadByUserId = userId;
-                    sp.ReadAt = DateTime.Now;
+                    tube.ReadByUserId = userId;
+                    tube.ReadAtUtc = DateTime.UtcNow;
                 }
                 else
                 {
-                    sp.ReadByUserId = null;
-                    sp.ReadAt = null;
+                    tube.ReadByUserId = null;
+                    tube.ReadAtUtc = null;
                 }
                 await _db.SaveChangesAsync();
             }

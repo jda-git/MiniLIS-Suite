@@ -7,7 +7,7 @@ namespace MiniLIS.Application.Interfaces
 {
     public interface ISampleService
     {
-        Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null);
+        Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null, int? panelId = null);
         Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status, int? userId = null);
         Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples, bool incluirIdentificadores = false);
         Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null);
@@ -18,6 +18,8 @@ namespace MiniLIS.Application.Interfaces
         // --- Panel management ---
         Task<List<SamplePanel>> GetSamplePanelsAsync(int sampleId);
         Task SetSamplePanelsAsync(int sampleId, List<SamplePanel> panels);
-        Task TogglePanelReadAsync(int samplePanelId, bool isRead, int? userId = null);
+
+        /// <summary>Marca un tubo concreto como leído/no leído (M-4). Acción inmediata, auditable por separado del resto de la edición.</summary>
+        Task ToggleSampleTubeReadAsync(int sampleTubeId, bool isRead, int? userId = null);
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Collections.Generic;
+using System.Linq;
 using MiniLIS.Domain.Common;
 
 namespace MiniLIS.Domain.Entities
@@ -69,27 +70,25 @@ namespace MiniLIS.Domain.Entities
     }
 
     /// <summary>
-    /// Join entity linking a Sample to a Panel with request/read tracking.
+    /// Join entity linking a Sample to a Panel with request tracking.
+    /// El progreso de lectura vive a nivel de tubo (SampleTube, M-4), no aquí.
     /// </summary>
     public class SamplePanel : AuditableEntity
     {
         public int Id { get; set; }
-        
+
         public int SampleId { get; set; }
         public Sample Sample { get; set; } = null!;
-        
+
         public int? PanelId { get; set; }
         public Panel? Panel { get; set; }
 
+        /// <summary>Versión congelada en el momento de solicitar el panel. Nunca se actualiza al cambiar el panel.</summary>
+        public int? PanelVersionId { get; set; }
+        public PanelVersion? PanelVersion { get; set; }
+
         /// <summary>True if this panel was requested for the sample.</summary>
         public bool IsRequested { get; set; } = true;
-
-        /// <summary>True if this panel/tube has been read on the cytometer by a technician.</summary>
-        public bool IsRead { get; set; } = false;
-
-        public int? ReadByUserId { get; set; }
-        public DateTime? ReadAt { get; set; }
-        public virtual MiniLIS.Domain.Identity.ApplicationUser? ReadByUser { get; set; }
 
         /// <summary>Display order within the sample's panel list.</summary>
         public int DisplayOrder { get; set; } = 0;
@@ -97,5 +96,41 @@ namespace MiniLIS.Domain.Entities
         /// <summary>Optional free-text for custom/ad-hoc panel entries not in the catalog.</summary>
         [MaxLength(300)]
         public string? CustomText { get; set; }
+
+        public ICollection<SampleTube> Tubes { get; set; } = new List<SampleTube>();
+
+        /// <summary>Verdadero si todos los tubos no opcionales están leídos (M-4).</summary>
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public bool IsRead => Tubes.Any() && Tubes.Where(t => !t.IsOptional).All(t => t.IsRead);
+    }
+
+    /// <summary>Un tubo real dentro de un SamplePanel: leído o no, con su fichero FCS (M-4).</summary>
+    public class SampleTube : AuditableEntity
+    {
+        public int Id { get; set; }
+
+        public int SamplePanelId { get; set; }
+        public SamplePanel SamplePanel { get; set; } = null!;
+
+        public int TubeNumber { get; set; }
+
+        /// <summary>Copia congelada de PanelTube.MarkerList en el momento de solicitar el panel.</summary>
+        [MaxLength(300)]
+        public string MarkerList { get; set; } = string.Empty;
+
+        public bool IsOptional { get; set; }
+
+        public bool IsRead { get; set; }
+        public int? ReadByUserId { get; set; }
+        public DateTime? ReadAtUtc { get; set; }
+        public virtual MiniLIS.Domain.Identity.ApplicationUser? ReadByUser { get; set; }
+
+        /// <summary>Código de equipo del QMS, no maestro propio (F-0 / I.2). Lo rellenará un ticket futuro.</summary>
+        [MaxLength(50)]
+        public string? AcquiredOnEquipmentCode { get; set; }
+
+        /// <summary>Nombre normalizado del fichero FCS. Lo rellenará un ticket futuro (M-6).</summary>
+        [MaxLength(200)]
+        public string? FcsFileName { get; set; }
     }
 }

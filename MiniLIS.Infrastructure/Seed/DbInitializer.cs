@@ -152,15 +152,23 @@ namespace MiniLIS.Infrastructure.Seed
 
             // 5. Seed Panels
             string[] panels = { "LNH", "SMD", "CD34", "Leucemia Aguda", "Mieloma" };
+            var seededCodes = new HashSet<string>(
+                await context.Panels.Where(p => p.Code != null && p.Code != "").Select(p => p.Code!).ToListAsync(),
+                StringComparer.OrdinalIgnoreCase);
             foreach (var pName in panels)
             {
                 if (!await context.Panels.AnyAsync(p => p.Name == pName))
                 {
-                    context.Panels.Add(new Panel { Name = pName });
+                    var code = MiniLIS.Infrastructure.Seed.PanelVersionSeeder.DeriveCode(pName, seededCodes);
+                    seededCodes.Add(code);
+                    context.Panels.Add(new Panel { Name = pName, Code = code });
                 }
             }
 
             await context.SaveChangesAsync();
+
+            // 5.5 Da a cada Panel sin PanelVersion una v1/Vigente (migración M-4, idempotente).
+            await PanelVersionSeeder.RunAsync(context, logger);
         }
     }
 }

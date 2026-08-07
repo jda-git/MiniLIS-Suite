@@ -44,6 +44,7 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<INumberingService, NumberingService>();
 builder.Services.AddScoped<IPatientService, PatientService>();
 builder.Services.AddScoped<IMasterDataService, MasterDataService>();
+builder.Services.AddScoped<IPanelCatalogService, PanelCatalogService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISampleService, SampleService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();

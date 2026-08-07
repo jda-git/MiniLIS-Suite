@@ -288,6 +288,8 @@
     private HashSet<int> selectedPanelIds = new();
     private string customPanelText = "";
     private List<string> customPanels = new();
+    // SamplePanel ya persistidos, para reenviar su Id y así conservar sus tubos/lectura (M-4).
+    private List<SamplePanel> existingPanels = new();
 
     // Keep references to original entities for updating
     private Sample? originalSample;
@@ -362,7 +364,7 @@
 
         // Load panels
         allPanels = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name).ToList();
-        var existingPanels = await SampleService.GetSamplePanelsAsync(SampleId);
+        existingPanels = await SampleService.GetSamplePanelsAsync(SampleId);
         selectedPanelIds = existingPanels.Where(sp => sp.PanelId.HasValue).Select(sp => sp.PanelId!.Value).ToHashSet();
         customPanels = existingPanels.Where(sp => !sp.PanelId.HasValue && !string.IsNullOrWhiteSpace(sp.CustomText)).Select(sp => sp.CustomText!).ToList();
 
@@ -452,24 +454,31 @@
 
             await SampleService.UpdateSampleAsync(originalSample);
 
-            // Save catalog panels
+            // Save catalog panels. Se reenvía el Id de los SamplePanel que ya existían y
+            // siguen seleccionados (M-4): así SetSamplePanelsAsync los reconoce como "sin
+            // cambios" y no toca sus tubos ni el progreso de lectura ya marcado.
             int order = 1;
-            var panelEntities = selectedPanelIds.Select(pid => new SamplePanel
+            var panelEntities = selectedPanelIds.Select(pid =>
             {
-                PanelId = pid,
-                IsRequested = true,
-                IsRead = false,
-                DisplayOrder = order++
+                var existing = existingPanels.FirstOrDefault(sp => sp.PanelId == pid);
+                return new SamplePanel
+                {
+                    Id = existing?.Id ?? 0,
+                    PanelId = pid,
+                    IsRequested = true,
+                    DisplayOrder = order++
+                };
             }).ToList();
             // Add custom panels
             foreach (var cp in customPanels)
             {
+                var existing = existingPanels.FirstOrDefault(sp => !sp.PanelId.HasValue && sp.CustomText == cp);
                 panelEntities.Add(new SamplePanel
                 {
+                    Id = existing?.Id ?? 0,
                     PanelId = null,
                     CustomText = cp,
                     IsRequested = true,
-                    IsRead = false,
                     DisplayOrder = order++
                 });
             }

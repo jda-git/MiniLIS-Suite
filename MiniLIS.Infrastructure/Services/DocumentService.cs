@@ -35,10 +35,15 @@ namespace MiniLIS.Infrastructure.Services
             // Ensure full loading
             var fullReport = await _db.SampleReports
                 .Include(r => r.Sample).ThenInclude(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.PanelVersion).ThenInclude(pv => pv!.Panel)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
+
+            var panelVersionsText = string.Join(", ", fullReport.Sample?.Panels
+                .Where(sp => sp.PanelVersion != null)
+                .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
 
@@ -171,7 +176,12 @@ namespace MiniLIS.Infrastructure.Services
                         if (!string.IsNullOrWhiteSpace(fullReport.PanelsUsedText))
                         {
                             col.Item().PaddingBottom(5).Text("PANELES EMPLEADOS").FontSize(11).FontColor(titleColor);
-                            col.Item().PaddingBottom(15).Text(fullReport.PanelsUsedText).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                            col.Item().PaddingBottom(!string.IsNullOrWhiteSpace(panelVersionsText) ? 2 : 15).Text(fullReport.PanelsUsedText).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                            if (!string.IsNullOrWhiteSpace(panelVersionsText))
+                            {
+                                // Trazabilidad de versión exacta (M-4), independiente del texto libre de arriba.
+                                col.Item().PaddingBottom(15).Text($"Versión de panel: {panelVersionsText}").FontSize(8).FontColor(Colors.Grey.Medium);
+                            }
                         }
 
                         if (!string.IsNullOrWhiteSpace(fullReport.Conclusions))
@@ -298,6 +308,7 @@ namespace MiniLIS.Infrastructure.Services
             // Ensure full loading
             var fullReport = await _db.SampleReports
                 .Include(r => r.Sample).ThenInclude(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.PanelVersion).ThenInclude(pv => pv!.Panel)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
                 .AsNoTracking()
@@ -481,6 +492,15 @@ namespace MiniLIS.Infrastructure.Services
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">PANELES EMPLEADOS</text:p>");
                 sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.PanelsUsedText)}</text:p>");
+
+                // Trazabilidad de versión exacta (M-4), independiente del texto libre de arriba.
+                var panelVersionsText = string.Join(", ", s?.Panels
+                    .Where(sp => sp.PanelVersion != null)
+                    .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
+                if (!string.IsNullOrWhiteSpace(panelVersionsText))
+                {
+                    sb.Append($@"<text:p text:style-name=""GreyText"">Versión de panel: {EncodeForOdt(panelVersionsText)}</text:p>");
+                }
             }
 
             // CONCLUSIÓN
