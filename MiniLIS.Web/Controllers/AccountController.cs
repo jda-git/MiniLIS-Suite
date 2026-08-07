@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using MiniLIS.Domain.Entities;
 using MiniLIS.Domain.Identity;
+using MiniLIS.Infrastructure.Persistence;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
@@ -13,11 +15,31 @@ namespace MiniLIS.Web.Controllers
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ApplicationDbContext _db;
+        private readonly ILogger<AccountController> _logger;
 
-        public AccountController(SignInManager<ApplicationUser> signInManager, UserManager<ApplicationUser> userManager)
+        public AccountController(SignInManager<ApplicationUser> signInManager, UserManager<ApplicationUser> userManager, ApplicationDbContext db, ILogger<AccountController> logger)
         {
             _signInManager = signInManager;
             _userManager = userManager;
+            _db = db;
+            _logger = logger;
+        }
+
+        private async Task LogLoginAttemptAsync(string username, string action)
+        {
+            var user = await _userManager.FindByNameAsync(username);
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = "Login",
+                EntityId = username,
+                Action = action,
+                UserId = user?.Id,
+                Username = username,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
         }
 
         [HttpPost("login")]
@@ -25,15 +47,25 @@ namespace MiniLIS.Web.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> Login([FromForm] LoginViewModel model)
         {
-            Console.WriteLine($"[DIAG] Login POST: Username='{model.Username}', RememberMe={model.RememberMe}");
-            
             if (ModelState.IsValid)
             {
-                var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password, model.RememberMe, lockoutOnFailure: false);
+                var user = await _userManager.FindByNameAsync(model.Username);
+
+                // Se comprueba antes del intento de sign-in para que un usuario desactivado
+                // no consuma el contador de intentos fallidos de Identity ni se beneficie
+                // de mensajes distintos a los de credenciales incorrectas (mismo mensaje
+                // genérico para las cuatro causas: evita enumerar usuarios).
+                if (user != null && !user.IsActive)
+                {
+                    await LogLoginAttemptAsync(model.Username, "LoginBlockedInactive");
+                    return Redirect("/login?error=Invalid login attempt");
+                }
+
+                var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password, model.RememberMe, lockoutOnFailure: true);
                 if (result.Succeeded)
                 {
-                    // Check if user must change password
-                    var user = await _userManager.FindByNameAsync(model.Username);
+                    await LogLoginAttemptAsync(model.Username, "Login");
+
                     if (user != null && user.MustChangePassword)
                     {
                         return LocalRedirect("/cambiar-contrasena");
@@ -41,16 +73,17 @@ namespace MiniLIS.Web.Controllers
 
                     return LocalRedirect(model.ReturnUrl ?? "/");
                 }
-                
-                return Redirect($"/login?error=Invalid login attempt");
-            }
 
-            foreach (var state in ModelState)
-            {
-                foreach (var error in state.Value.Errors)
+                if (result.IsLockedOut)
                 {
-                    Console.WriteLine($"[DIAG] ModelState Error in {state.Key}: {error.ErrorMessage}");
+                    await LogLoginAttemptAsync(model.Username, "LoginLockedOut");
                 }
+                else
+                {
+                    await LogLoginAttemptAsync(model.Username, "LoginFailed");
+                }
+
+                return Redirect($"/login?error=Invalid login attempt");
             }
 
             return Redirect($"/login?error=Please provide username and password");
