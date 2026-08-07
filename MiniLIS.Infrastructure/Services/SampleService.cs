@@ -26,7 +26,7 @@ namespace MiniLIS.Infrastructure.Services
             _currentUserService = currentUserService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, string sampleType, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
+        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null)
         {
             _currentUserService.ActionContext = "Registro de Muestra";
             using var transaction = await _db.Database.BeginTransactionAsync();
@@ -70,6 +70,8 @@ namespace MiniLIS.Infrastructure.Services
                         ClinicalRequest = request,
                         Status = SampleStatus.Recibida,
                         Diagnosis = sampleDiagnosis,
+                        SampleType = sampleType,
+                        SampleTypeOther = sampleTypeOther,
                         StudyPanel = studyPanel ?? string.Empty,
                         HasIncident = hasIncident,
                         IncidentsNotes = incidentNotes ?? string.Empty,
@@ -150,7 +152,7 @@ namespace MiniLIS.Infrastructure.Services
             ex.InnerException?.Message?.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) == true
             && ex.InnerException.Message.Contains("Samples.SampleNumber", StringComparison.OrdinalIgnoreCase);
 
-        public async Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate)
+        public async Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null)
         {
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
@@ -179,6 +181,11 @@ namespace MiniLIS.Infrastructure.Services
             if (status.HasValue)
             {
                 query = query.Where(s => s.Status == status.Value);
+            }
+
+            if (sampleType.HasValue)
+            {
+                query = query.Where(s => s.SampleType == sampleType.Value);
             }
 
             if (fromDate.HasValue)

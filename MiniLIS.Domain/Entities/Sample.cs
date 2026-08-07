@@ -45,6 +45,14 @@ namespace MiniLIS.Domain.Entities
         
         public string Diagnosis { get; set; } = string.Empty;
 
+        /// <summary>Tipo de muestra (A-3). Dato preanalítico, fijado en recepción.</summary>
+        [Required]
+        public SampleType SampleType { get; set; }
+
+        /// <summary>Obligatorio cuando SampleType == Otros.</summary>
+        [MaxLength(100)]
+        public string? SampleTypeOther { get; set; }
+
         /// <summary>Legacy text field for study panel. Kept for backward compat.</summary>
         [MaxLength(200)]
         public string StudyPanel { get; set; } = string.Empty;

@@ -43,16 +43,9 @@
         <div class="id-grid mt-2">
             <div class="id-field">
                 <label>Tipo de muestra:</label>
-                <div class="d-flex align-items-center gap-3 ms-2">
-                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "SP")" @onchange="@(() => tipoMuestra = "SP")" /> SP</label>
-                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "MO")" @onchange="@(() => tipoMuestra = "MO")" /> MO</label>
-                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "LCR")" @onchange="@(() => tipoMuestra = "LCR")" /> LCR</label>
-                    <label class="rpt-radio"><input type="radio" name="tmuestra" checked="@(tipoMuestra == "Otros")" @onchange="@(() => tipoMuestra = "Otros")" /> Otros</label>
-                    @if(tipoMuestra == "Otros")
-                    {
-                        <input type="text" @bind="otroTipoMuestra" class="form-control form-control-sm" style="width: 130px; font-size: 13px; height: 26px; margin-left: 8px;" placeholder="Especificar..." />
-                    }
-                </div>
+                <!-- Dato preanalítico fijado en recepción (A-3): de solo lectura aquí,
+                     corregible únicamente desde la ficha de la muestra (EditSample.razor). -->
+                <input type="text" value="@tipoMuestraDisplay" readonly class="rpt-input-style" style="max-width: 260px;" />
             </div>
         </div>
     </fieldset>
@@ -394,8 +387,7 @@
     private string motivoSolicitud = "";
     private string servicioSolicitante = "";
     private string medicoSolicitante = "";
-    private string tipoMuestra = "MO";
-    private string otroTipoMuestra = "";
+    private string tipoMuestraDisplay = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -419,24 +411,14 @@
         servicioSolicitante = report.Sample?.ClinicalRequest?.OriginService ?? "";
         medicoSolicitante = report.Sample?.ClinicalRequest?.DoctorName ?? "";
 
-        // Parse tipo muestra from Diagnosis if available
-        var diag = report.Sample?.Diagnosis ?? "";
-        var typeMatch = System.Text.RegularExpressions.Regex.Match(diag, @"\[TIPO:\s*(.+?)\]");
-        if (typeMatch.Success)
+        // Tipo de muestra (A-3): campo propio de la entidad, de solo lectura en este editor.
+        if (report.Sample != null)
         {
-            var t = typeMatch.Groups[1].Value.Trim();
-            if (t == "SP" || t == "MO" || t == "LCR") {
-                tipoMuestra = t;
-            } else {
-                tipoMuestra = "Otros";
-                otroTipoMuestra = t;
-            }
-            motivoSolicitud = diag.Replace(typeMatch.Value, "").Trim();
+            tipoMuestraDisplay = report.Sample.SampleType == SampleType.Otros
+                ? (report.Sample.SampleTypeOther ?? "Otros")
+                : report.Sample.SampleType.ToDisplayName();
         }
-        else
-        {
-            motivoSolicitud = diag;
-        }
+        motivoSolicitud = report.Sample?.Diagnosis ?? "";
 
         reportDate = report.ReportDate ?? DateTime.Today;
 
@@ -571,8 +553,9 @@
                     report.Sample.ClinicalRequest.DoctorName = medicoSolicitante;
                 }
                 
-                var t = tipoMuestra == "Otros" && !string.IsNullOrWhiteSpace(otroTipoMuestra) ? otroTipoMuestra : tipoMuestra;
-                report.Sample.Diagnosis = string.IsNullOrWhiteSpace(t) ? motivoSolicitud : $"[TIPO: {t}] {motivoSolicitud}";
+                // El tipo de muestra ya no se codifica aquí (A-3): es de solo lectura en este
+                // editor, solo corregible desde EditSample.razor.
+                report.Sample.Diagnosis = motivoSolicitud;
             }
 
             report.SelectedSignatures = selectedFacultativos.Any() ? string.Join("|", selectedFacultativos) : null;

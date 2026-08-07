@@ -325,29 +325,16 @@
         model.IncidentNotes = originalSample.IncidentsNotes;
         model.Status = originalSample.Status;
 
-        // Parse Diagnosis to extract TIPO prefix
-        var diag = originalSample.Diagnosis ?? "";
-        var typeMatch = System.Text.RegularExpressions.Regex.Match(diag, @"\[TIPO:\s*(.+?)\]\s*(.*)");
-        if (typeMatch.Success)
+        // Tipo de muestra (A-3): campo propio de la entidad, ya no un prefijo dentro de Diagnosis.
+        model.Diagnosis = originalSample.Diagnosis ?? "";
+        model.SampleTypeRadio = originalSample.SampleType switch
         {
-            var extractedType = typeMatch.Groups[1].Value.Trim();
-            model.Diagnosis = typeMatch.Groups[2].Value.Trim();
-
-            if (extractedType == "SP" || extractedType == "MO" || extractedType == "LCR")
-            {
-                model.SampleTypeRadio = extractedType;
-            }
-            else
-            {
-                model.SampleTypeRadio = "OTROS";
-                model.SampleTypeOtherText = extractedType;
-            }
-        }
-        else
-        {
-            model.Diagnosis = diag;
-            model.SampleTypeRadio = "MO";
-        }
+            SampleType.SangrePeriferica => "SP",
+            SampleType.MedulaOsea => "MO",
+            SampleType.LiquidoCefalorraquideo => "LCR",
+            _ => "OTROS"
+        };
+        model.SampleTypeOtherText = originalSample.SampleType == SampleType.Otros ? originalSample.SampleTypeOther : null;
 
         if (originalPatient != null)
         {
@@ -445,8 +432,15 @@
 
             // Update sample
             originalSample.SampleNumber = model.SampleNumber;
-            string actualType = model.SampleTypeRadio == "OTROS" ? model.SampleTypeOtherText! : model.SampleTypeRadio;
-            originalSample.Diagnosis = $"[TIPO: {actualType}] {model.Diagnosis}";
+            originalSample.SampleType = model.SampleTypeRadio switch
+            {
+                "SP" => SampleType.SangrePeriferica,
+                "MO" => SampleType.MedulaOsea,
+                "LCR" => SampleType.LiquidoCefalorraquideo,
+                _ => SampleType.Otros
+            };
+            originalSample.SampleTypeOther = originalSample.SampleType == SampleType.Otros ? model.SampleTypeOtherText : null;
+            originalSample.Diagnosis = model.Diagnosis ?? "";
             originalSample.ReceptionDate = model.ReceptionDate;
             // Build panel summary text
             var panelNames = allPanels.Where(p => selectedPanelIds.Contains(p.Id)).Select(p => p.Name).ToList();

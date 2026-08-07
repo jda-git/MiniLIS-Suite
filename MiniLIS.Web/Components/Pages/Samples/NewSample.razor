@@ -665,8 +665,14 @@
                 RequestNumber = model.RequestNumber ?? ""
             };
 
-            string actualType = model.SampleTypeRadio == "OTROS" ? model.SampleTypeOtherText! : model.SampleTypeRadio;
-            string finalDiagnosis = $"[TIPO: {actualType}] {model.Diagnosis}";
+            SampleType sampleType = model.SampleTypeRadio switch
+            {
+                "SP" => SampleType.SangrePeriferica,
+                "MO" => SampleType.MedulaOsea,
+                "LCR" => SampleType.LiquidoCefalorraquideo,
+                _ => SampleType.Otros
+            };
+            string? sampleTypeOther = sampleType == SampleType.Otros ? model.SampleTypeOtherText : null;
 
             var panelNames = allPanels.Where(p => selectedPanelIds.Contains(p.Id)).Select(p => p.Name).ToList();
             panelNames.AddRange(customPanels);
@@ -681,7 +687,7 @@
             // el valor ya obsoleto que se mostró al cargar la página.
             string? manualOverride = nextSampleNumber == peekedSampleNumber ? null : nextSampleNumber;
 
-            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, finalDiagnosis, actualType, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId);
+            var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, model.Diagnosis ?? "", sampleType, sampleTypeOther, studyPanelText, model.HasIncident, model.IncidentNotes ?? "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId);
 
             await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
             Nav.NavigateTo("/muestras");

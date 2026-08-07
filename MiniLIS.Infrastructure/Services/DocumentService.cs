@@ -90,17 +90,14 @@ namespace MiniLIS.Infrastructure.Services
                             });
                         });
 
-                        // Diagnosis parsing logic for Tipo and Motivo
-                        var rawDiag = sample?.Diagnosis ?? "";
-                        var finalTipoMuestra = sample?.StudyPanel ?? "MO";
-                        var finalMotivo = rawDiag;
-                        
-                        var typeMatch = Regex.Match(rawDiag, @"^\[TIPO:\s*(.+?)\]\s*");
-                        if (typeMatch.Success)
-                        {
-                            finalTipoMuestra = typeMatch.Groups[1].Value.Trim();
-                            finalMotivo = rawDiag.Replace(typeMatch.Value, "").Trim();
-                        }
+                        // Tipo de muestra (A-3): campo propio de la entidad, ya no se extrae por
+                        // regex del texto de Diagnosis.
+                        var finalMotivo = sample?.Diagnosis ?? "";
+                        var finalTipoMuestra = sample == null
+                            ? ""
+                            : sample.SampleType == SampleType.Otros
+                                ? (sample.SampleTypeOther ?? "Otros")
+                                : sample.SampleType.ToDisplayName();
 
                         // Black divider
                         headerCol.Item().BorderTop(1.5f).BorderBottom(1.5f).BorderColor(Colors.Black).PaddingVertical(8).Column(dataCol =>
@@ -425,10 +422,18 @@ namespace MiniLIS.Infrastructure.Services
             sb.Append("<table:table-cell />"); // Required to fill the row
             sb.Append("</table:table-row>");
 
+            // Tipo de muestra (A-3): campo propio de la entidad, ya no la cadena cruda de
+            // Diagnosis (que antes se volcaba sin limpiar el prefijo [TIPO: XX]).
+            var tipoMuestra = s == null
+                ? ""
+                : s.SampleType == SampleType.Otros
+                    ? (s.SampleTypeOther ?? "Otros")
+                    : s.SampleType.ToDisplayName();
+
             // Row 3: Sample Number, Type, Request Number
             sb.Append("<table:table-row>");
             sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">Nº MUESTRA: <text:span text:style-name=""Value"">{EncodeForOdt(s?.SampleNumber ?? "")}</text:span></text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">TIPO DE MUESTRA: <text:span text:style-name=""Value"">{EncodeForOdt(s?.Diagnosis ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">TIPO DE MUESTRA: <text:span text:style-name=""Value"">{EncodeForOdt(tipoMuestra)}</text:span></text:p></table:table-cell>");
             sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">Nº PETICIÓN: <text:span text:style-name=""Value"">{EncodeForOdt(r?.RequestNumber ?? "")}</text:span></text:p></table:table-cell>");
             sb.Append("</table:table-row>");
 
@@ -436,6 +441,13 @@ namespace MiniLIS.Infrastructure.Services
             sb.Append("<table:table-row>");
             sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">SERVICIO: <text:span text:style-name=""Value"">{EncodeForOdt(r?.OriginService ?? "")}</text:span></text:p></table:table-cell>");
             sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">SOLICITANTE: <text:span text:style-name=""Value"">{EncodeForOdt(r?.DoctorName ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append("<table:table-cell />");
+            sb.Append("</table:table-row>");
+
+            // Row 5: Motivo (antes venía mezclado sin separar dentro de la celda de tipo)
+            sb.Append("<table:table-row>");
+            sb.Append($@"<table:table-cell table:number-columns-spanned=""3""><text:p text:style-name=""Label"">MOTIVO: <text:span text:style-name=""Value"">{EncodeForOdt(s?.Diagnosis ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append("<table:table-cell />");
             sb.Append("<table:table-cell />");
             sb.Append("</table:table-row>");
 

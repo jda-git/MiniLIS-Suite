@@ -54,6 +54,18 @@
 
         <div class="filter-divider"></div>
 
+        <div class="filter-group">
+            <select class="filter-control" @bind="typeFilter" @bind:after="ApplyFilters">
+                <option value="">-- Todos los tipos --</option>
+                @foreach (var type in Enum.GetValues<SampleType>())
+                {
+                    <option value="@type">@type.ToDisplayName()</option>
+                }
+            </select>
+        </div>
+
+        <div class="filter-divider"></div>
+
         <div class="filter-group filter-dates">
             <i class="bi bi-calendar3 filter-icon"></i>
             <input type="date" class="filter-control filter-date" @bind="fromDate" @bind:after="ApplyFilters" title="Desde" />
@@ -76,6 +88,7 @@
                 <tr>
                     <th class="col-code">Código <i class="bi bi-arrow-down-up sort-icon"></i></th>
                     <th class="col-date">Fecha</th>
+                    <th class="col-type">Tipo</th>
                     <th class="col-nhc">NHC</th>
                     <th class="col-lab">Nº Lab</th>
                     <th class="col-name">Nombre</th>
@@ -91,7 +104,7 @@
                 @if (isLoading)
                 {
                     <tr>
-                        <td colspan="11" class="cell-empty">
+                        <td colspan="12" class="cell-empty">
                             <div class="spinner-border text-primary" role="status"></div>
                         </td>
                     </tr>
@@ -99,7 +112,7 @@
                 else if (!samples.Any())
                 {
                     <tr>
-                        <td colspan="11" class="cell-empty">
+                        <td colspan="12" class="cell-empty">
                             <i class="bi bi-inbox empty-icon"></i>
                             <span>Sin resultados para los filtros actuales</span>
                         </td>
@@ -112,6 +125,7 @@
                         <tr>
                             <td class="cell-code">@s.SampleNumber</td>
                             <td class="cell-date">@s.ReceptionDate.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="cell-type">@(s.SampleType == SampleType.Otros ? (s.SampleTypeOther ?? "Otros") : s.SampleType.ToCode())</td>
                             <td class="cell-nhc"><span class="nhc-chip">@s.ClinicalRequest?.Patient?.NHC</span></td>
                             <td class="cell-lab">@s.ClinicalRequest?.RequestNumber</td>
                             <td class="cell-name">
@@ -749,6 +763,7 @@
 
     private string searchTerm = "";
     private SampleStatus? statusFilter;
+    private SampleType? typeFilter;
     private DateTime? fromDate;
     private DateTime? toDate;
 
@@ -795,7 +810,7 @@
     private async Task LoadSamples()
     {
         isLoading = true;
-        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, fromDate, toDate);
+        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, fromDate, toDate, typeFilter);
         isLoading = false;
     }
 
@@ -805,6 +820,7 @@
     {
         searchTerm = "";
         statusFilter = null;
+        typeFilter = null;
         fromDate = null;
         toDate = null;
         await LoadSamples();
