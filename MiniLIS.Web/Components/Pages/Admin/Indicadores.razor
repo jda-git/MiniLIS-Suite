@@ -1,0 +1,447 @@
+@page "/indicadores"
+@using Microsoft.AspNetCore.Authorization
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@attribute [Authorize(Roles = "Administrador")]
+@inject IQualityIndicatorService QIService
+@inject IMasterDataService MasterService
+@inject NavigationManager Nav
+
+<PageTitle>Indicadores de Calidad - MiniLIS Suite</PageTitle>
+
+<div class="ind-container animate-fade-in">
+    <div class="ind-header d-flex align-items-center justify-content-between mb-4 p-4 rounded-3 text-white shadow-sm" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);">
+        <div>
+            <h1 class="ind-title-main text-white m-0 d-flex align-items-center">
+                <i class="bi bi-speedometer2 me-3 text-info fs-2"></i>
+                Cuadro de Indicadores de Calidad
+            </h1>
+            <p class="ind-subtitle-main text-info-emphasis opacity-75 m-0 mt-1">Cláusulas 8.8/8.9 ISO 15189 — indicadores de proceso, nunca de resultado clínico</p>
+        </div>
+        <button class="btn btn-outline-light btn-sm" @onclick="ExportPdf" disabled="@isExportingPdf">
+            @if (isExportingPdf)
+            {
+                <span class="spinner-border spinner-border-sm me-2"></span> <span>Generando...</span>
+            }
+            else
+            {
+                <i class="bi bi-file-earmark-pdf me-2"></i> <span>Exportar PDF revisión</span>
+            }
+        </button>
+    </div>
+
+    <div class="ind-card p-4 mb-4 shadow-sm border-0 bg-white">
+        <div class="d-flex align-items-center mb-3">
+            <span class="badge bg-primary-subtle text-primary me-2"><i class="bi bi-funnel-fill"></i></span>
+            <h6 class="text-uppercase tracking-wider fw-bold text-muted m-0 fs-7">Filtros Globales</h6>
+        </div>
+        <div class="row align-items-end g-3">
+            <div class="col-md-2">
+                <label class="form-label-small">Desde</label>
+                <input type="date" class="form-control form-control-sm" @bind="fromDate" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label-small">Hasta</label>
+                <input type="date" class="form-control form-control-sm" @bind="toDate" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label-small">Tipo de muestra</label>
+                <select class="form-select form-select-sm" @bind="selectedSampleType">
+                    <option value="">Todos</option>
+                    @foreach (var t in Enum.GetValues<SampleType>())
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label-small">Panel</label>
+                <select class="form-select form-select-sm" @bind="selectedPanelId">
+                    <option value="">Todos</option>
+                    @foreach (var p in allPanels)
+                    {
+                        <option value="@p.Id">@p.Code</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label-small">Peticionario</label>
+                <input type="text" class="form-control form-control-sm" placeholder="Servicio..." @bind="requesterFilter" />
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-info btn-sm text-white w-100 fw-semibold" @onclick="RecalcularAsync" disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span> <span>Calculando...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-arrow-repeat me-2"></i> <span>Actualizar</span>
+                    }
+                </button>
+            </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-sm btn-outline-secondary" @onclick='() => AplicarAtajo("mes")'>Mes en curso</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick='() => AplicarAtajo("trimestre")'>Trimestre</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick='() => AplicarAtajo("anio")'>Año en curso</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick='() => AplicarAtajo("anioAnterior")'>Año anterior</button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center text-muted py-5"><span class="spinner-border me-2"></span> Calculando indicadores...</div>
+    }
+    else
+    {
+        <div class="ind-grid">
+            @foreach (var card in cards)
+            {
+                <div class="ind-card-item @(GetSemaphoreClass(card))">
+                    <div class="ind-card-item-header" @onclick="() => ToggleExpand(card)">
+                        <div>
+                            <span class="ind-code">@card.Config.Code</span>
+                            <div class="ind-name">@card.Config.Name</div>
+                        </div>
+                        <div class="ind-sem-dot"></div>
+                    </div>
+                    <div class="ind-card-value">@GetDisplayValue(card)</div>
+                    <div class="ind-card-target">@GetTargetLabel(card)</div>
+                    <button class="btn btn-sm btn-link p-0 mt-2" @onclick="() => ToggleExpand(card)">
+                        @(card.Expanded ? "Ocultar detalle" : "Ver detalle")
+                    </button>
+
+                    @if (card.Expanded)
+                    {
+                        <div class="ind-detail">
+                            @if (card.Trend == null)
+                            {
+                                <div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span> Cargando tendencia...</div>
+                            }
+                            else
+                            {
+                                <div class="ind-sparkline-wrap">
+                                    <div class="fw-semibold small text-muted mb-1">Tendencia (12 meses)</div>
+                                    @((MarkupString)BuildSparklineSvg(card.Trend))
+                                </div>
+                            }
+
+                            @if (card.Tat != null)
+                            {
+                                <div class="small text-muted fst-italic mt-2">@card.Tat.ExclusionNote</div>
+                                @if (card.Tat.OpenCases.Any())
+                                {
+                                    <div class="mt-2">
+                                        <div class="fw-semibold small">Casos abiertos: @card.Tat.OpenCases.Count</div>
+                                        <ul class="ind-open-list">
+                                            @foreach (var oc in card.Tat.OpenCases.Take(10))
+                                            {
+                                                <li>
+                                                    <a href="/muestras/editar/@oc.SampleId" target="_blank">@oc.SampleNumber</a>
+                                                    — @oc.AgeHours.ToString("0.#") h
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="small text-success mt-2"><i class="bi bi-check-circle"></i> Sin casos abiertos</div>
+                                }
+                                <div class="mt-2">
+                                    <div class="fw-semibold small">Distribución</div>
+                                    @foreach (var b in card.Tat.Histogram)
+                                    {
+                                        <div class="ind-hist-row">
+                                            <span class="ind-hist-label">@b.Label</span>
+                                            <div class="ind-hist-bar" style="width:@(HistBarWidth(b.Count, card.Tat.Histogram))px"></div>
+                                            <span class="ind-hist-count">@b.Count</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (card.Pct != null && card.Pct.Breakdown.Any())
+                            {
+                                <div class="mt-2">
+                                    <div class="fw-semibold small">Desglose</div>
+                                    @foreach (var b in card.Pct.Breakdown.Take(8))
+                                    {
+                                        <div class="ind-breakdown-row"><span>@b.Label</span><span class="fw-semibold">@b.Count</span></div>
+                                    }
+                                </div>
+                            }
+
+                            @if (card.Act != null && card.Act.Breakdown.Any())
+                            {
+                                <div class="mt-2">
+                                    <div class="fw-semibold small">Desglose</div>
+                                    @foreach (var b in card.Act.Breakdown.Take(8))
+                                    {
+                                        <div class="ind-breakdown-row"><span>@b.Label</span><span class="fw-semibold">@b.Count</span></div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private DateTime fromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime toDate = DateTime.Today;
+    private SampleType? selectedSampleType;
+    private int? selectedPanelId;
+    private string? requesterFilter;
+    private List<Panel> allPanels = new();
+    private bool isLoading = true;
+    private bool isExportingPdf = false;
+
+    private List<IndicatorCard> cards = new();
+
+    private class IndicatorCard
+    {
+        public QualityIndicator Config { get; set; } = null!;
+        public TatIndicatorResult? Tat { get; set; }
+        public PercentageIndicatorResult? Pct { get; set; }
+        public ActivityIndicatorResult? Act { get; set; }
+        public List<MonthlyTrendPoint>? Trend { get; set; }
+        public bool Expanded { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        allPanels = (await MasterService.GetAllPanelsAsync()).ToList();
+        await RecalcularAsync();
+    }
+
+    private QualityIndicatorFilter CurrentFilter() => new QualityIndicatorFilter
+    {
+        SampleType = selectedSampleType,
+        PanelId = selectedPanelId,
+        RequesterService = string.IsNullOrWhiteSpace(requesterFilter) ? null : requesterFilter
+    };
+
+    private void AplicarAtajo(string atajo)
+    {
+        var hoy = DateTime.Today;
+        switch (atajo)
+        {
+            case "mes":
+                fromDate = new DateTime(hoy.Year, hoy.Month, 1);
+                toDate = hoy;
+                break;
+            case "trimestre":
+                fromDate = hoy.AddMonths(-3);
+                toDate = hoy;
+                break;
+            case "anio":
+                fromDate = new DateTime(hoy.Year, 1, 1);
+                toDate = hoy;
+                break;
+            case "anioAnterior":
+                fromDate = new DateTime(hoy.Year - 1, 1, 1);
+                toDate = new DateTime(hoy.Year - 1, 12, 31);
+                break;
+        }
+    }
+
+    private async Task RecalcularAsync()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        var indicators = await QIService.GetAllIndicatorsAsync();
+        var filtro = CurrentFilter();
+        var newCards = new List<IndicatorCard>();
+
+        foreach (var ind in indicators.Where(i => i.IsActive).OrderBy(i => i.DisplayOrder))
+        {
+            var card = new IndicatorCard { Config = ind };
+            switch (ind.Code)
+            {
+                case "TAT-TOTAL": card.Tat = await QIService.GetTatTotalAsync(fromDate, toDate, filtro); break;
+                case "TAT-PRE": card.Tat = await QIService.GetTatPreAsync(fromDate, toDate, filtro); break;
+                case "TAT-ADQ": card.Tat = await QIService.GetTatAdqAsync(fromDate, toDate, filtro); break;
+                case "TAT-ANA": card.Tat = await QIService.GetTatAnaAsync(fromDate, toDate, filtro); break;
+                case "PCT-RECHAZO": card.Pct = await QIService.GetPctRechazoAsync(fromDate, toDate, filtro); break;
+                case "PCT-SALVEDAD": card.Pct = await QIService.GetPctSalvedadAsync(fromDate, toDate, filtro); break;
+                case "PCT-INCIDENCIA": card.Pct = await QIService.GetPctIncidenciaAsync(fromDate, toDate, filtro); break;
+                case "PCT-FUERA-PLAZO": card.Pct = await QIService.GetPctFueraPlazoAsync(fromDate, toDate, filtro); break;
+                case "PCT-REAPERTURA": card.Pct = await QIService.GetPctReaperturaAsync(fromDate, toDate, filtro); break;
+                case "ACT-PANEL": card.Act = await QIService.GetActPanelAsync(fromDate, toDate, filtro); break;
+                case "ACT-MUESTRA": card.Act = await QIService.GetActMuestraAsync(fromDate, toDate, filtro); break;
+                case "ACT-PETICIONARIO": card.Act = await QIService.GetActPeticionarioAsync(fromDate, toDate, filtro); break;
+            }
+            newCards.Add(card);
+        }
+
+        cards = newCards;
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task ToggleExpand(IndicatorCard card)
+    {
+        card.Expanded = !card.Expanded;
+        if (card.Expanded && card.Trend == null)
+        {
+            card.Trend = await QIService.GetMonthlyTrendAsync(card.Config.Code, toDate, 12, CurrentFilter());
+        }
+        StateHasChanged();
+    }
+
+    private double? GetPrimaryValue(IndicatorCard card) =>
+        card.Tat?.MedianHours ?? card.Pct?.Percentage ?? (card.Act != null ? card.Act.Total : (double?)null);
+
+    private string GetDisplayValue(IndicatorCard card)
+    {
+        if (card.Tat != null)
+        {
+            var mediana = card.Tat.MedianHours.HasValue ? $"{card.Tat.MedianHours:0.#} h" : "—";
+            var p90 = card.Tat.P90Hours.HasValue ? $"{card.Tat.P90Hours:0.#} h" : "—";
+            return $"{mediana} (P90: {p90})";
+        }
+        if (card.Pct != null)
+        {
+            return card.Pct.Percentage.HasValue ? $"{card.Pct.Percentage:0.#}% ({card.Pct.Numerator}/{card.Pct.Denominator})" : "Sin datos";
+        }
+        if (card.Act != null)
+        {
+            return card.Act.Total.ToString();
+        }
+        return "—";
+    }
+
+    private string GetTargetLabel(IndicatorCard card)
+    {
+        if (card.Config.TargetValue == null) return "Objetivo sin definir";
+        var unit = card.Config.Unit == IndicatorUnit.Horas ? "h" : card.Config.Unit == IndicatorUnit.Porcentaje ? "%" : "";
+        return $"Objetivo: {card.Config.TargetValue:0.#}{unit}";
+    }
+
+    private string GetSemaphoreClass(IndicatorCard card)
+    {
+        var value = GetPrimaryValue(card);
+        var cfg = card.Config;
+        if (value == null || (cfg.CriticalThreshold == null && cfg.WarningThreshold == null)) return "sem-none";
+
+        bool worseIsHigher = cfg.Direction == IndicatorDirection.MenorEsMejor;
+
+        if (cfg.CriticalThreshold.HasValue)
+        {
+            bool critico = worseIsHigher ? value >= (double)cfg.CriticalThreshold.Value : value <= (double)cfg.CriticalThreshold.Value;
+            if (critico) return "sem-red";
+        }
+        if (cfg.WarningThreshold.HasValue)
+        {
+            bool aviso = worseIsHigher ? value >= (double)cfg.WarningThreshold.Value : value <= (double)cfg.WarningThreshold.Value;
+            if (aviso) return "sem-yellow";
+        }
+        return "sem-green";
+    }
+
+    private static double HistBarWidth(int count, List<HistogramBucket> all)
+    {
+        var max = all.Any() ? all.Max(b => b.Count) : 0;
+        if (max == 0) return 0;
+        return Math.Max(2, (double)count / max * 120);
+    }
+
+    private string BuildSparklineSvg(List<MonthlyTrendPoint> trend)
+    {
+        const int w = 240, h = 50, pad = 4;
+        var values = trend.Select(t => t.Value).ToList();
+        var known = values.Where(v => v.HasValue).Select(v => v!.Value).ToList();
+        if (!known.Any())
+        {
+            return "<div class=\"text-muted small\">Sin datos suficientes</div>";
+        }
+        double min = known.Min(), max = known.Max();
+        if (Math.Abs(max - min) < 0.0001) { max = min + 1; }
+
+        var points = new List<string>();
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (!values[i].HasValue) continue;
+            double x = pad + (w - 2 * pad) * ((double)i / Math.Max(1, values.Count - 1));
+            double y = h - pad - (h - 2 * pad) * ((values[i]!.Value - min) / (max - min));
+            points.Add($"{x:0.#},{y:0.#}");
+        }
+
+        var polyline = string.Join(" ", points);
+        var lastPoint = points.Last().Split(',');
+
+        return $@"<svg viewBox=""0 0 {w} {h}"" width=""{w}"" height=""{h}"" xmlns=""http://www.w3.org/2000/svg"">
+            <polyline points=""{polyline}"" fill=""none"" stroke=""#0ea5e9"" stroke-width=""2"" />
+            <circle cx=""{lastPoint[0]}"" cy=""{lastPoint[1]}"" r=""3"" fill=""#0ea5e9"" />
+        </svg>";
+    }
+
+    private void ExportPdf()
+    {
+        isExportingPdf = true;
+        StateHasChanged();
+        try
+        {
+            var url = $"/api/downloads/indicadores/pdf?desde={fromDate:yyyy-MM-dd}&hasta={toDate:yyyy-MM-dd}" +
+                (selectedSampleType.HasValue ? $"&tipo={selectedSampleType}" : "") +
+                (selectedPanelId.HasValue ? $"&panelId={selectedPanelId}" : "") +
+                (!string.IsNullOrWhiteSpace(requesterFilter) ? $"&peticionario={Uri.EscapeDataString(requesterFilter)}" : "");
+            Nav.NavigateTo(url, forceLoad: true);
+        }
+        finally
+        {
+            isExportingPdf = false;
+        }
+    }
+}
+
+<style>
+    .ind-container { padding: 0; }
+    .form-label-small { font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 2px; display: block; }
+
+    .ind-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+    }
+
+    .ind-card-item {
+        background: #fff;
+        border-radius: 10px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border-left: 4px solid #cbd5e1;
+    }
+    .ind-card-item.sem-green { border-left-color: #22c55e; }
+    .ind-card-item.sem-yellow { border-left-color: #eab308; }
+    .ind-card-item.sem-red { border-left-color: #ef4444; }
+    .ind-card-item.sem-none { border-left-color: #cbd5e1; }
+
+    .ind-card-item-header { display: flex; justify-content: space-between; align-items: start; cursor: pointer; }
+    .ind-code { font-size: 11px; font-weight: 700; color: #0ea5e9; letter-spacing: 0.03em; }
+    .ind-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .ind-sem-dot { width: 10px; height: 10px; border-radius: 50%; background: #cbd5e1; margin-top: 4px; }
+    .sem-green .ind-sem-dot { background: #22c55e; }
+    .sem-yellow .ind-sem-dot { background: #eab308; }
+    .sem-red .ind-sem-dot { background: #ef4444; }
+
+    .ind-card-value { font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 10px; }
+    .ind-card-target { font-size: 11px; color: #94a3b8; }
+
+    .ind-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+    .ind-open-list { list-style: none; padding: 0; margin: 4px 0; font-size: 12px; }
+    .ind-open-list li { padding: 2px 0; }
+
+    .ind-hist-row { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
+    .ind-hist-label { width: 60px; color: #64748b; }
+    .ind-hist-bar { height: 10px; background: #0ea5e9; border-radius: 2px; }
+    .ind-hist-count { color: #334155; font-weight: 600; }
+
+    .ind-breakdown-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; border-bottom: 1px dashed #e2e8f0; }
+</style>

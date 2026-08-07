@@ -43,6 +43,7 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<BackupRecord> BackupRecords => Set<BackupRecord>();
         public DbSet<RejectionReason> RejectionReasons => Set<RejectionReason>();
         public DbSet<SampleReceptionIssue> SampleReceptionIssues => Set<SampleReceptionIssue>();
+        public DbSet<QualityIndicator> QualityIndicators => Set<QualityIndicator>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -151,6 +152,8 @@ namespace MiniLIS.Infrastructure.Persistence
                 .WithMany()
                 .HasForeignKey(i => i.RejectionReasonId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<QualityIndicator>().HasIndex(q => q.Code).IsUnique();
         }
 
         public override int SaveChanges()

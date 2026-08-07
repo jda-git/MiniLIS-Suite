@@ -681,5 +681,117 @@ namespace MiniLIS.Infrastructure.Services
   </office:meta>
 </office:document-meta>";
         }
+
+        /// <summary>PDF de revisión por la dirección (F-1): portada, resumen de todos los
+        /// indicadores con objetivo/valor/cumplimiento, desgloses y nota metodológica. Los datos
+        /// ya vienen calculados (DocumentService no conoce IQualityIndicatorService); esto solo
+        /// compone el documento.</summary>
+        public async Task<byte[]> GenerateQualityReviewPdfAsync(QualityReviewData data)
+        {
+            var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
+            var headerLine1 = await _masterService.GetSettingAsync("Header:Line1") ?? "LABORATORIO DE HEMATOLOGÍA";
+            var headerLine2 = await _masterService.GetSettingAsync("Header:Line2") ?? "CITOMETRÍA DE FLUJO";
+            var titleColor = "#6D9EEB";
+
+            var doc = Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(1.5f, Unit.Centimetre);
+                    page.PageColor(Colors.White);
+                    page.DefaultTextStyle(x => x.FontSize(9).FontFamily(Fonts.Arial));
+
+                    page.Header().Column(headerCol =>
+                    {
+                        if (!string.IsNullOrEmpty(logoBase64))
+                        {
+                            try
+                            {
+                                var bytes = Convert.FromBase64String(logoBase64);
+                                headerCol.Item().Width(120).Image(bytes);
+                            }
+                            catch { }
+                        }
+                        headerCol.Item().PaddingTop(4).Text(headerLine1).FontSize(10).FontColor(Colors.Grey.Medium);
+                        headerCol.Item().Text(headerLine2).FontSize(10).FontColor(Colors.Grey.Medium);
+                        headerCol.Item().PaddingTop(10).BorderBottom(1.5f).BorderColor(Colors.Black).PaddingBottom(4)
+                            .Text("REVISIÓN POR LA DIRECCIÓN — CUADRO DE INDICADORES DE CALIDAD").FontSize(13).Bold();
+                        headerCol.Item().PaddingTop(4).Text($"Periodo: {data.Desde:dd/MM/yyyy} — {data.Hasta:dd/MM/yyyy}").FontSize(9);
+                        headerCol.Item().Text($"Filtros aplicados: {data.FiltrosAplicados}").FontSize(9);
+                        headerCol.Item().Text($"Generado: {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC").FontSize(8).FontColor(Colors.Grey.Medium);
+                    });
+
+                    page.Content().PaddingVertical(10).Column(col =>
+                    {
+                        foreach (var row in data.Rows)
+                        {
+                            col.Item().PaddingTop(10).Column(ind =>
+                            {
+                                ind.Item().Text(t =>
+                                {
+                                    t.Span($"{row.Code} — {row.Name}").FontSize(11).FontColor(titleColor).Bold();
+                                });
+                                if (!string.IsNullOrWhiteSpace(row.Definition))
+                                {
+                                    ind.Item().Text(row.Definition).FontSize(8).Italic().FontColor(Colors.Grey.Darken1);
+                                }
+                                ind.Item().PaddingTop(2).Row(r =>
+                                {
+                                    r.RelativeItem(2).Text(t => { t.Span("Valor del periodo: ").Bold(); t.Span(row.ValueLabel); });
+                                    r.RelativeItem(1).Text(t => { t.Span("Objetivo: ").Bold(); t.Span(row.TargetLabel); });
+                                    r.RelativeItem(1).Text(t => { t.Span("Cumplimiento: ").Bold(); t.Span(row.ComplianceLabel); });
+                                });
+
+                                if (row.Breakdown.Any())
+                                {
+                                    ind.Item().PaddingTop(2).Text("Desglose:").FontSize(8).Bold();
+                                    foreach (var b in row.Breakdown.Take(10))
+                                    {
+                                        ind.Item().Text($"  · {b.Label}: {b.Count}").FontSize(8);
+                                    }
+                                }
+
+                                if (row.OpenCases.Any())
+                                {
+                                    ind.Item().PaddingTop(2).Text($"Casos abiertos ({row.OpenCases.Count}), no incluidos en el TAT:").FontSize(8).Bold();
+                                    foreach (var oc in row.OpenCases.Take(10))
+                                    {
+                                        ind.Item().Text($"  · {oc.SampleNumber} — {oc.AgeHours:0.#} h de antigüedad").FontSize(8);
+                                    }
+                                }
+                            });
+                        }
+
+                        col.Item().PaddingTop(20).BorderTop(1).BorderColor(Colors.Grey.Lighten1).PaddingTop(10).Column(nota =>
+                        {
+                            nota.Item().Text("NOTA METODOLÓGICA").FontSize(11).Bold();
+                            nota.Item().PaddingTop(4).Text(
+                                "Mediana y percentil 90 (nunca la media): la media se distorsiona con los atípicos, " +
+                                "una muestra olvidada un mes desplaza el indicador entero. Método de percentil: " +
+                                "\"rango más cercano\" — ceil(P/100 × N) sobre la serie ordenada ascendentemente " +
+                                "(PercentileCalculator.NearestRank). Casos abiertos (recibidos pero no validados) se " +
+                                "reportan aparte de los TAT, nunca ocultos ni mezclados. Exclusiones: las muestras " +
+                                "rechazadas en recepción y las anuladas se excluyen del cálculo de TAT (no llegan a " +
+                                "validarse) pero sí cuentan en los indicadores de rechazo (PCT-RECHAZO, PCT-SALVEDAD). " +
+                                "Todas las marcas temporales son horas naturales en UTC, convertidas a hora local solo " +
+                                "para presentación. Los indicadores miden el proceso del laboratorio (tiempos, " +
+                                "rechazos, actividad), nunca el resultado clínico del paciente."
+                            ).FontSize(8);
+                        });
+                    });
+
+                    page.Footer().AlignRight().Text(x =>
+                    {
+                        x.Span("Página ").FontSize(8).FontColor(Colors.Grey.Medium);
+                        x.CurrentPageNumber().FontSize(8).FontColor(Colors.Grey.Medium);
+                        x.Span(" / ").FontSize(8).FontColor(Colors.Grey.Medium);
+                        x.TotalPages().FontSize(8).FontColor(Colors.Grey.Medium);
+                    });
+                });
+            });
+
+            return doc.GeneratePdf();
+        }
     }
 }

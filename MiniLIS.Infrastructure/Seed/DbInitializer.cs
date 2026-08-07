@@ -205,6 +205,43 @@ namespace MiniLIS.Infrastructure.Seed
             // 6.6 Migra las muestras con el antiguo HasIncident=true a ReceptionStatus=ConSalvedad
             // (F-4, idempotente: solo actúa sobre filas todavía no migradas).
             await ReceptionMigrator.RunAsync(context, logger);
+
+            // 7. Seed Quality Indicators (F-1). Umbrales sin definir a propósito: un umbral por
+            // defecto inventado es peor que ninguno — la unidad debe fijarlos conscientemente.
+            var indicators = new (string Code, string Name, string Definition, IndicatorUnit Unit, IndicatorDirection Direction)[]
+            {
+                ("TAT-TOTAL", "TAT total (recepción → validación)", "ValidatedAtUtc - ReceivedAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
+                ("TAT-PRE", "TAT preanalítico (recepción → registro)", "RegisteredAtUtc - ReceivedAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
+                ("TAT-ADQ", "TAT de adquisición (registro → adquisición)", "AcquiredAtUtc - RegisteredAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
+                ("TAT-ANA", "TAT analítico (adquisición → validación)", "ValidatedAtUtc - AcquiredAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
+                ("PCT-RECHAZO", "% muestras rechazadas", "rechazadas / recibidas", IndicatorUnit.Porcentaje, IndicatorDirection.MenorEsMejor),
+                ("PCT-SALVEDAD", "% aceptadas con salvedad", "con salvedad / recibidas", IndicatorUnit.Porcentaje, IndicatorDirection.MenorEsMejor),
+                ("PCT-INCIDENCIA", "% con incidencia preanalítica", "con incidencia / recibidas", IndicatorUnit.Porcentaje, IndicatorDirection.MenorEsMejor),
+                ("PCT-FUERA-PLAZO", "% informes fuera de objetivo", "TAT-TOTAL > objetivo", IndicatorUnit.Porcentaje, IndicatorDirection.MenorEsMejor),
+                ("ACT-PANEL", "Actividad por panel y versión", "recuento", IndicatorUnit.Recuento, IndicatorDirection.MayorEsMejor),
+                ("ACT-MUESTRA", "Actividad por tipo de muestra", "recuento", IndicatorUnit.Recuento, IndicatorDirection.MayorEsMejor),
+                ("ACT-PETICIONARIO", "Actividad por servicio", "recuento", IndicatorUnit.Recuento, IndicatorDirection.MayorEsMejor),
+                ("PCT-REAPERTURA", "% informes reabiertos tras validar", "reabiertos / validados", IndicatorUnit.Porcentaje, IndicatorDirection.MenorEsMejor),
+            };
+
+            int indicatorOrder = 1;
+            foreach (var (code, name, definition, unit, direction) in indicators)
+            {
+                if (!await context.QualityIndicators.AnyAsync(q => q.Code == code))
+                {
+                    context.QualityIndicators.Add(new QualityIndicator
+                    {
+                        Code = code,
+                        Name = name,
+                        Definition = definition,
+                        Unit = unit,
+                        Direction = direction,
+                        DisplayOrder = indicatorOrder
+                    });
+                }
+                indicatorOrder++;
+            }
+            await context.SaveChangesAsync();
         }
     }
 }

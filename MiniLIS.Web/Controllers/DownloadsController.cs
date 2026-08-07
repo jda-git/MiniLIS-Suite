@@ -4,6 +4,8 @@ using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace MiniLIS.Web.Controllers
@@ -16,15 +18,17 @@ namespace MiniLIS.Web.Controllers
         private readonly ApplicationDbContext _db;
         private readonly IDocumentService _documentService;
         private readonly ISampleService _sampleService;
+        private readonly IQualityIndicatorService _qualityIndicatorService;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
             _sampleService = sampleService;
+            _qualityIndicatorService = qualityIndicatorService;
             _userManager = userManager;
             _logger = logger;
             _configuration = configuration;
@@ -276,6 +280,126 @@ namespace MiniLIS.Web.Controllers
             await _db.SaveChangesAsync();
 
             return File(bytes, "text/csv", fileName);
+        }
+
+        [HttpGet("indicadores/pdf")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        public async Task<IActionResult> ExportIndicadoresPdf(
+            [FromQuery] DateTime desde,
+            [FromQuery] DateTime hasta,
+            [FromQuery] SampleType? tipo,
+            [FromQuery] int? panelId,
+            [FromQuery] string? peticionario)
+        {
+            try
+            {
+                var filtro = new QualityIndicatorFilter { SampleType = tipo, PanelId = panelId, RequesterService = peticionario };
+                var indicators = (await _qualityIndicatorService.GetAllIndicatorsAsync())
+                    .Where(i => i.IsActive).OrderBy(i => i.DisplayOrder).ToList();
+
+                var rows = new List<QualityReviewIndicatorRow>();
+                foreach (var ind in indicators)
+                {
+                    string valueLabel, targetLabel, complianceLabel;
+                    List<BreakdownItem> breakdown = new();
+                    List<OpenCaseItem> openCases = new();
+
+                    switch (ind.Code)
+                    {
+                        case "TAT-TOTAL": case "TAT-PRE": case "TAT-ADQ": case "TAT-ANA":
+                            var tat = ind.Code switch
+                            {
+                                "TAT-TOTAL" => await _qualityIndicatorService.GetTatTotalAsync(desde, hasta, filtro),
+                                "TAT-PRE" => await _qualityIndicatorService.GetTatPreAsync(desde, hasta, filtro),
+                                "TAT-ADQ" => await _qualityIndicatorService.GetTatAdqAsync(desde, hasta, filtro),
+                                _ => await _qualityIndicatorService.GetTatAnaAsync(desde, hasta, filtro)
+                            };
+                            valueLabel = tat.MedianHours.HasValue ? $"Mediana {tat.MedianHours:0.#} h / P90 {tat.P90Hours:0.#} h ({tat.CompletedCount} casos)" : "Sin casos completados";
+                            targetLabel = ind.TargetValue.HasValue ? $"{ind.TargetValue:0.#} h" : "Sin definir";
+                            complianceLabel = !ind.TargetValue.HasValue || !tat.MedianHours.HasValue ? "Sin objetivo"
+                                : tat.MedianHours.Value <= (double)ind.TargetValue.Value ? "Cumple" : "No cumple";
+                            openCases = tat.OpenCases;
+                            break;
+                        case "PCT-RECHAZO": case "PCT-SALVEDAD": case "PCT-INCIDENCIA": case "PCT-FUERA-PLAZO": case "PCT-REAPERTURA":
+                            var pct = ind.Code switch
+                            {
+                                "PCT-RECHAZO" => await _qualityIndicatorService.GetPctRechazoAsync(desde, hasta, filtro),
+                                "PCT-SALVEDAD" => await _qualityIndicatorService.GetPctSalvedadAsync(desde, hasta, filtro),
+                                "PCT-INCIDENCIA" => await _qualityIndicatorService.GetPctIncidenciaAsync(desde, hasta, filtro),
+                                "PCT-FUERA-PLAZO" => await _qualityIndicatorService.GetPctFueraPlazoAsync(desde, hasta, filtro),
+                                _ => await _qualityIndicatorService.GetPctReaperturaAsync(desde, hasta, filtro)
+                            };
+                            valueLabel = pct.Percentage.HasValue ? $"{pct.Percentage:0.#}% ({pct.Numerator}/{pct.Denominator})" : "Sin datos";
+                            targetLabel = ind.TargetValue.HasValue ? $"{ind.TargetValue:0.#}%" : "Sin definir";
+                            complianceLabel = !ind.TargetValue.HasValue || !pct.Percentage.HasValue ? "Sin objetivo"
+                                : pct.Percentage.Value <= (double)ind.TargetValue.Value ? "Cumple" : "No cumple";
+                            breakdown = pct.Breakdown;
+                            break;
+                        default: // ACT-*
+                            var act = ind.Code switch
+                            {
+                                "ACT-PANEL" => await _qualityIndicatorService.GetActPanelAsync(desde, hasta, filtro),
+                                "ACT-MUESTRA" => await _qualityIndicatorService.GetActMuestraAsync(desde, hasta, filtro),
+                                _ => await _qualityIndicatorService.GetActPeticionarioAsync(desde, hasta, filtro)
+                            };
+                            valueLabel = act.Total.ToString();
+                            targetLabel = "N/A (indicador de actividad)";
+                            complianceLabel = "N/A";
+                            breakdown = act.Breakdown;
+                            break;
+                    }
+
+                    rows.Add(new QualityReviewIndicatorRow
+                    {
+                        Code = ind.Code,
+                        Name = ind.Name,
+                        Definition = ind.Definition,
+                        ValueLabel = valueLabel,
+                        TargetLabel = targetLabel,
+                        ComplianceLabel = complianceLabel,
+                        Breakdown = breakdown,
+                        OpenCases = openCases
+                    });
+                }
+
+                var filtrosTexto = new List<string>();
+                if (tipo.HasValue) filtrosTexto.Add($"Tipo de muestra: {tipo}");
+                if (panelId.HasValue) filtrosTexto.Add($"Panel Id: {panelId}");
+                if (!string.IsNullOrWhiteSpace(peticionario)) filtrosTexto.Add($"Peticionario: {peticionario}");
+
+                var data = new QualityReviewData
+                {
+                    Desde = desde,
+                    Hasta = hasta,
+                    FiltrosAplicados = filtrosTexto.Any() ? string.Join(", ", filtrosTexto) : "Ninguno",
+                    Rows = rows
+                };
+
+                var bytes = await _documentService.GenerateQualityReviewPdfAsync(data);
+
+                var user = await _userManager.GetUserAsync(User);
+                _db.AuditLogs.Add(new AuditLog
+                {
+                    EntityName = "QualityReviewReport",
+                    EntityId = $"{desde:yyyyMMdd}-{hasta:yyyyMMdd}",
+                    Action = "Export",
+                    UserId = user?.Id,
+                    Username = user?.UserName,
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    ActionContext = "Exportación PDF de revisión de indicadores de calidad",
+                    TimestampUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+
+                var fileName = $"Indicadores_Calidad_{desde:yyyyMMdd}_{hasta:yyyyMMdd}.pdf";
+                return File(bytes, "application/pdf", fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando el PDF de revisión de indicadores de calidad");
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
+            }
         }
     }
 }
