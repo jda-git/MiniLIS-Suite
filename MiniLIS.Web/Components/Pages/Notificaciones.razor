@@ -1,11 +1,15 @@
 @page "/notificaciones"
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
 @using MiniLIS.Infrastructure.Persistence
 @using MiniLIS.Domain.Entities
+@using MiniLIS.Domain.Identity
 @attribute [Authorize]
 @inject ApplicationDbContext context
 @inject IJSRuntime JS
+@inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>Notificaciones - MiniLIS Suite</PageTitle>
 
@@ -19,9 +23,13 @@
             </h1>
         </div>
         <div class="d-flex gap-2">
-            <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportToCsv" disabled="@(!filteredReports.Any())">
-                <i class="bi bi-file-earmark-excel"></i> Exportar CSV
-            </button>
+            <AuthorizeView Roles="Administrador,Facultativo">
+                <Authorized>
+                    <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportToCsv" disabled="@(!filteredReports.Any())">
+                        <i class="bi bi-file-earmark-excel"></i> Exportar CSV
+                    </button>
+                </Authorized>
+            </AuthorizeView>
         </div>
     </div>
 
@@ -327,6 +335,9 @@
 </style>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
     private DateTime? StartDate;
     private DateTime? EndDate;
     private string AlertType = "Todos";
@@ -406,6 +417,12 @@
     {
         if (!filteredReports.Any()) return;
 
+        var authState = await AuthStateTask;
+        if (!authState.User.IsInRole("Administrador") && !authState.User.IsInRole("Facultativo"))
+        {
+            return;
+        }
+
         var sb = new System.Text.StringBuilder();
         // BOM for Excel so it opens correctly in Spanish layout
         sb.Append('\uFEFF');
@@ -425,7 +442,20 @@
 
         var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
         var base64 = Convert.ToBase64String(bytes);
-        
+
+        var currentUser = await UserManager.GetUserAsync(authState.User);
+        context.AuditLogs.Add(new AuditLog
+        {
+            EntityName = "NotificacionesCsvExport",
+            EntityId = filteredReports.Count.ToString(),
+            Action = "Export",
+            UserId = currentUser?.Id,
+            Username = currentUser?.UserName,
+            ActionContext = "Exportación CSV de notificaciones",
+            TimestampUtc = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
         await JS.InvokeVoidAsync("downloadFileFromBase64", $"Notificaciones_{DateTime.Now:yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
     }
 

@@ -13,5 +13,6 @@ namespace MiniLIS.Domain.Entities
         public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
         public string? Changes { get; set; } // Detailed descriptive text of changes
         public string? ActionContext { get; set; } // Context flow/action name
+        public string? IpAddress { get; set; }
     }
 }

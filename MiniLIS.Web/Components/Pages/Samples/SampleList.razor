@@ -903,7 +903,11 @@
 
     private void ExportExcel()
     {
-        var url = $"/api/downloads/muestras/csv?t={DateTime.Now.Ticks}";
+        // El backend exige un rango de fechas (C-2); si no hay filtro activo,
+        // se usa por defecto el último año.
+        var desde = (fromDate ?? DateTime.Today.AddDays(-366)).ToString("yyyy-MM-dd");
+        var hasta = (toDate ?? DateTime.Today).ToString("yyyy-MM-dd");
+        var url = $"/api/downloads/muestras/csv?desde={desde}&hasta={hasta}&t={DateTime.Now.Ticks}";
         JS.InvokeVoidAsync("triggerDownload", url);
     }
 }

@@ -18,14 +18,16 @@ namespace MiniLIS.Web.Controllers
         private readonly ISampleService _sampleService;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
+        private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
             _sampleService = sampleService;
             _userManager = userManager;
             _logger = logger;
+            _configuration = configuration;
         }
 
         [HttpGet("informe/{id}/pdf/{fileName?}")]
@@ -118,15 +120,50 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("muestras/csv")]
-        public async Task<IActionResult> ExportMuestras()
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador,Facultativo")]
+        public async Task<IActionResult> ExportMuestras(
+            [FromQuery] DateTime? desde,
+            [FromQuery] DateTime? hasta,
+            [FromQuery] bool incluirIdentificadores = false)
         {
+            if (desde is null || hasta is null)
+                return Problem(title: "Debe indicarse un rango de fechas (desde y hasta).", statusCode: 400);
+
+            if (hasta.Value < desde.Value)
+                return Problem(title: "La fecha 'hasta' no puede ser anterior a 'desde'.", statusCode: 400);
+
+            var maxDias = _configuration.GetValue<int?>("Export:MaxRangoDias") ?? 366;
+            if ((hasta.Value.Date - desde.Value.Date).TotalDays > maxDias)
+                return Problem(title: $"El rango no puede superar {maxDias} días.", statusCode: 400);
+
+            if (incluirIdentificadores && !User.IsInRole("Administrador"))
+                return Forbid();
+
+            var start = desde.Value.Date;
+            var end = hasta.Value.Date.AddDays(1).AddTicks(-1);
+
             var samples = await _db.Samples
                 .Include(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
+                .Where(s => s.ReceptionDate >= start && s.ReceptionDate <= end)
                 .OrderByDescending(s => s.ReceptionDate)
                 .ToListAsync();
 
-            var bytes = await _sampleService.ExportSamplesToCsvAsync(samples);
+            var bytes = await _sampleService.ExportSamplesToCsvAsync(samples, incluirIdentificadores);
             var fileName = $"Muestras_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+
+            var user = await _userManager.GetUserAsync(User);
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = "SampleCsvExport",
+                EntityId = $"{start:yyyyMMdd}-{hasta.Value.Date:yyyyMMdd}",
+                Action = "Export",
+                UserId = user?.Id,
+                Username = user?.UserName,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                ActionContext = incluirIdentificadores ? "Exportación CSV con identificadores" : "Exportación CSV seudonimizada",
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
 
             return File(bytes, "text/csv", fileName);
         }

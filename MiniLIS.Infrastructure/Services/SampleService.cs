@@ -191,15 +191,38 @@ namespace MiniLIS.Infrastructure.Services
             return true;
         }
 
-        public async Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples)
+        public async Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples, bool incluirIdentificadores = false)
         {
             var sb = new StringBuilder();
-            // Header
-            sb.AppendLine("N Muestra;Fecha;NHC;Paciente;Origen;Estado;Sospecha");
 
-            foreach (var s in samples)
+            if (incluirIdentificadores)
             {
-                sb.AppendLine($"{s.SampleNumber};{s.ReceptionDate:dd/MM/yyyy};{s.ClinicalRequest?.Patient?.NHC};{s.ClinicalRequest?.Patient?.FullName};{s.ClinicalRequest?.OriginService};{s.Status};{s.Diagnosis}");
+                sb.AppendLine("N Muestra;Fecha;NHC;Paciente;Origen;Estado;Sospecha");
+                foreach (var s in samples)
+                {
+                    sb.AppendLine(string.Join(';',
+                        CsvUtils.EscapeField(s.SampleNumber),
+                        CsvUtils.EscapeField(s.ReceptionDate.ToString("dd/MM/yyyy")),
+                        CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.NHC),
+                        CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.FullName),
+                        CsvUtils.EscapeField(s.ClinicalRequest?.OriginService),
+                        CsvUtils.EscapeField(s.Status.ToString()),
+                        CsvUtils.EscapeField(s.Diagnosis)));
+                }
+            }
+            else
+            {
+                // Seudonimizado por defecto: sin NHC ni nombre del paciente (C-2).
+                sb.AppendLine("N Muestra;Fecha;Origen;Estado;Sospecha");
+                foreach (var s in samples)
+                {
+                    sb.AppendLine(string.Join(';',
+                        CsvUtils.EscapeField(s.SampleNumber),
+                        CsvUtils.EscapeField(s.ReceptionDate.ToString("dd/MM/yyyy")),
+                        CsvUtils.EscapeField(s.ClinicalRequest?.OriginService),
+                        CsvUtils.EscapeField(s.Status.ToString()),
+                        CsvUtils.EscapeField(s.Diagnosis)));
+                }
             }
 
             // Return as UTF-8 with BOM for Excel compatibility
