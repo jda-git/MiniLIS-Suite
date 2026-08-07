@@ -1,7 +1,9 @@
 @page "/excedente"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
 @using MiniLIS.Infrastructure.Persistence
 @using MiniLIS.Domain.Entities
+@attribute [Authorize]
 @inject ApplicationDbContext context
 @inject IJSRuntime JS
 

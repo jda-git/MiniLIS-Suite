@@ -22,6 +22,7 @@ namespace MiniLIS.Web.Controllers
 
         [HttpPost("login")]
         [ValidateAntiForgeryToken]
+        [AllowAnonymous]
         public async Task<IActionResult> Login([FromForm] LoginViewModel model)
         {
             Console.WriteLine($"[DIAG] Login POST: Username='{model.Username}', RememberMe={model.RememberMe}");
@@ -56,6 +57,7 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("logout")]
+        [AllowAnonymous]
         public async Task<IActionResult> Logout()
         {
             await _signInManager.SignOutAsync();

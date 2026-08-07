@@ -56,6 +56,19 @@ builder.Services.AddControllersWithViews(); // Required for AccountController an
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddAuthorization();
+// NOTA (C-1): se evaluó un FallbackPolicy global (RequireAuthenticatedUser) como
+// defensa en profundidad adicional, pero en este modelo de hosting híbrido
+// (Blazor Interactive Server + controladores MVC) todas las páginas Blazor —
+// protegidas y anónimas— comparten el mismo endpoint de enrutado
+// (MapRazorComponents), sin metadatos de autorización por página a nivel HTTP.
+// Un FallbackPolicy ahí rompe, según cómo se exima: o bien el circuito SignalR de
+// páginas anónimas como /login (401 en la negociación), o bien la redirección
+// automática de páginas protegidas (AuthorizeRouteView -> RedirectToLogin, que
+// depende de que el framework trate la petición como no autorizada a nivel HTTP).
+// El mecanismo existente — @attribute [Authorize] por página + AuthorizeRouteView —
+// ya protege correctamente el resto de la aplicación (verificado), así que la
+// corrección se limita a añadir el atributo que faltaba en las dos páginas
+// vulnerables, sin tocar la política global.
 
 var app = builder.Build();
 
