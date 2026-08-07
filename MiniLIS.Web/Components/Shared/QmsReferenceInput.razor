@@ -1,0 +1,74 @@
+@using System.Text.RegularExpressions
+@inject IConfiguration Configuration
+
+<div class="qms-reference-input">
+    <div class="input-group input-group-sm">
+        <span class="input-group-text"><i class="bi bi-journal-text"></i></span>
+        <input type="text" class="form-control" value="@Value" placeholder="@Placeholder"
+               @oninput="OnInput" />
+        @if (showLink)
+        {
+            <a class="btn btn-outline-secondary" href="@(baseUrl.TrimEnd('/') + "/" + Value)" target="_blank" rel="noopener noreferrer" title="Ver en QMS Flow Doc">
+                <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+        }
+    </div>
+    @if (showWarning)
+    {
+        <div class="form-text text-warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            El código no coincide con el formato esperado. Se puede guardar igualmente.
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Clave de configuración bajo "Qms:" cuyo patrón de validación se usa
+    /// (p. ej. "DocumentRefPattern", "NonConformityRefPattern", "EquipmentRefPattern").
+    /// El formato del QMS puede cambiar; por eso el patrón viene de configuración, no del código.
+    /// </summary>
+    [Parameter] public string PatternKey { get; set; } = "DocumentRefPattern";
+
+    [Parameter] public string Placeholder { get; set; } = "PNT-CIT-ANA-012 v3";
+
+    private string? pattern;
+    private string baseUrl = string.Empty;
+    private bool showWarning;
+    private bool showLink => !string.IsNullOrWhiteSpace(baseUrl) && !string.IsNullOrWhiteSpace(Value);
+
+    protected override void OnInitialized()
+    {
+        pattern = Configuration[$"Qms:{PatternKey}"];
+        baseUrl = Configuration["Qms:BaseUrl"] ?? string.Empty;
+        UpdateWarning();
+    }
+
+    protected override void OnParametersSet()
+    {
+        UpdateWarning();
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString();
+        UpdateWarning();
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private void UpdateWarning()
+    {
+        // Aviso no bloqueante (I.2 / F-0): un formato de codificación del QMS que aún
+        // no se reconoce no debe impedir guardar un registro asistencial.
+        if (string.IsNullOrWhiteSpace(Value) || string.IsNullOrWhiteSpace(pattern))
+        {
+            showWarning = false;
+            return;
+        }
+
+        showWarning = !Regex.IsMatch(Value, pattern);
+    }
+}
