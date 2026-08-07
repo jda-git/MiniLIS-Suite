@@ -48,6 +48,7 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<WorklistExportColumn> WorklistExportColumns => Set<WorklistExportColumn>();
         public DbSet<StoredSpecimen> StoredSpecimens => Set<StoredSpecimen>();
         public DbSet<StoredSpecimenEvent> StoredSpecimenEvents => Set<StoredSpecimenEvent>();
+        public DbSet<SampleDataFile> SampleDataFiles => Set<SampleDataFile>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -176,6 +177,14 @@ namespace MiniLIS.Infrastructure.Persistence
                 .WithMany(s => s.Events)
                 .HasForeignKey(e => e.StoredSpecimenId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<SampleDataFile>()
+                .HasOne(f => f.SampleTube)
+                .WithMany()
+                .HasForeignKey(f => f.SampleTubeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<SampleDataFile>().HasIndex(f => f.SampleTubeId).IsUnique();
         }
 
         public override int SaveChanges()

@@ -7,6 +7,7 @@
 @inject IPanelCatalogService PanelCatalogService
 @inject IQualityIndicatorService QualityIndicatorService
 @inject IWorklistExportService WorklistExportService
+@inject IFcsLinkService FcsLinkService
 @inject NavigationManager Nav
 @using MiniLIS.Web.Components.Shared
 
@@ -43,6 +44,9 @@
         </button>
         <button class="config-tab @(activeTab == "worklist" ? "active" : "")" @onclick='() => SetTab("worklist")'>
             <i class="bi bi-file-earmark-arrow-down"></i> Hoja de Trabajo
+        </button>
+        <button class="config-tab @(activeTab == "fcs" ? "active" : "")" @onclick='() => SetTab("fcs")'>
+            <i class="bi bi-link-45deg"></i> Ficheros FCS
         </button>
         <button class="config-tab @(activeTab == "rejectionReasons" ? "active" : "")" @onclick='() => SetTab("rejectionReasons")'>
             <i class="bi bi-clipboard-x"></i> Motivos de Rechazo
@@ -766,6 +770,61 @@
             }
         }
 
+        @* ════════ TAB: FICHEROS FCS (M-6) ════════ *@
+        else if (activeTab == "fcs")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Enlace con los Ficheros FCS</h2>
+                    <p class="section-subtitle">Carpeta compartida donde el citómetro escribe los ficheros brutos. Sin subida: el escaneo es periódico (cada 24 h) o manual desde aquí.</p>
+                </div>
+            </div>
+
+            <div class="alert alert-warning small">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <strong>Renombrar el fichero no elimina la identidad del paciente.</strong> Los ficheros FCS almacenan pares clave/valor
+                en su segmento TEXT, y claves como <code>$SRC</code> o <code>$SMNO</code> contienen lo que el operador tecleó en el
+                software de adquisición. La seudonimización real exige que en el citómetro se introduzca el número de estudio, nunca
+                el nombre — que es exactamente lo que resuelve la hoja de trabajo (F-6). Este módulo no puede corregirlo por sí solo.
+            </div>
+
+            <div class="inline-form">
+                <div class="inline-form-grid">
+                    <div class="form-field" style="flex:1;">
+                        <label class="field-label">Carpeta raíz de los ficheros FCS</label>
+                        <input type="text" class="field-input w-100" placeholder="\\servidor\citometro\fcs" @bind="fcsRootPath" />
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn-config btn-config-success" @onclick="SaveFcsRootPath"><i class="bi bi-save"></i> Guardar</button>
+                    <button class="btn-config btn-config-primary" @onclick="RunFcsVerification" disabled="@isRunningFcsVerification">
+                        @if (isRunningFcsVerification)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-arrow-repeat"></i> Ejecutar verificación ahora
+                    </button>
+                </div>
+                @if (fcsVerificationResult != null)
+                {
+                    <div class="alert @(fcsVerificationResult.RootPathConfigured ? "alert-info" : "alert-danger") mt-3 small">
+                        @if (!fcsVerificationResult.RootPathConfigured)
+                        {
+                            <span>Carpeta no configurada o inexistente.</span>
+                        }
+                        else
+                        {
+                            <span>
+                                @fcsVerificationResult.FilesScanned ficheros escaneados · @fcsVerificationResult.NewlyLinked enlazados nuevos ·
+                                @fcsVerificationResult.Reverified reverificados ·
+                                <strong class="@(fcsVerificationResult.Discrepancies > 0 ? "text-danger" : "")">@fcsVerificationResult.Discrepancies discrepancias</strong>
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
         @* ════════ TAB: AJUSTES (Intensidades) ════════ *@
         else if (activeTab == "system")
         {
@@ -1423,6 +1482,11 @@
     private WorklistExportProfile? editingWorklistProfile;
     private List<WorklistExportColumn> editingWorklistColumns = new();
 
+    // Ficheros FCS (M-6)
+    private string? fcsRootPath;
+    private bool isRunningFcsVerification;
+    private FcsVerificationSummary? fcsVerificationResult;
+
     // Panel versions (M-4)
     private Panel? versionsPanel;
     private List<PanelVersion> panelVersions = new();
@@ -1461,6 +1525,7 @@
         qualityIndicators = await QualityIndicatorService.GetAllIndicatorsAsync();
         labelSettings = await MasterService.GetLabelSettingsAsync();
         worklistProfiles = await WorklistExportService.GetProfilesAsync();
+        fcsRootPath = await MasterService.GetSettingAsync("Fcs:RootPath");
         intensitySettings = await MasterService.GetIntensitySettingsAsync();
 
         templateMarkerCounts.Clear();
@@ -1560,6 +1625,27 @@
         await WorklistExportService.MarkProfileValidatedAsync(editingWorklistProfileId.Value);
         worklistProfiles = await WorklistExportService.GetProfilesAsync();
         await LoadWorklistProfileForEdit(editingWorklistProfileId.Value);
+    }
+
+    // ── FICHEROS FCS (M-6) ──
+    private async Task SaveFcsRootPath()
+    {
+        await MasterService.SaveSettingAsync("Fcs:RootPath", fcsRootPath ?? "", "Carpeta raíz de los ficheros FCS (M-6)");
+    }
+
+    private async Task RunFcsVerification()
+    {
+        isRunningFcsVerification = true;
+        fcsVerificationResult = null;
+        StateHasChanged();
+        try
+        {
+            fcsVerificationResult = await FcsLinkService.RunVerificationPassAsync();
+        }
+        finally
+        {
+            isRunningFcsVerification = false;
+        }
     }
 
     // ── PANELS (familias) ──

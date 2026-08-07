@@ -55,10 +55,12 @@ builder.Services.AddScoped<IQualityIndicatorService, QualityIndicatorService>();
 builder.Services.AddScoped<IWorklistService, WorklistService>();
 builder.Services.AddScoped<IWorklistExportService, WorklistExportService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
+builder.Services.AddScoped<IFcsLinkService, FcsLinkService>();
 builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.BackupWorker>();
+builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.FcsVerificationWorker>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()

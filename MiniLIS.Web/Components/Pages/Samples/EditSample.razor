@@ -10,6 +10,7 @@
 @inject IMasterDataService MasterService
 @inject ILocalTimeService LocalTimeService
 @inject IStorageService StorageService
+@inject IFcsLinkService FcsLinkService
 @inject Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> UserManager
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
@@ -359,6 +360,51 @@
             </div>
         </div>
     }
+
+    <div class="iso-panel mt-3">
+        <h5 class="mb-2"><i class="bi bi-link-45deg me-2"></i>Ficheros FCS</h5>
+        <div class="alert alert-warning py-2 px-3 small">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Renombrar el fichero no elimina la identidad del paciente: las claves internas <code>$SRC</code>/<code>$SMNO</code>
+            del FCS contienen lo que el operador tecleó en el citómetro. Use siempre la hoja de trabajo (Hoja del Citómetro)
+            para que el número de estudio, nunca el nombre, llegue al fichero.
+        </div>
+        @if (fcsFiles == null)
+        {
+            <span class="text-muted small">Cargando...</span>
+        }
+        else if (!fcsFiles.Any())
+        {
+            <span class="text-muted small">Ningún tubo de esta muestra tiene fichero FCS enlazado todavía.</span>
+        }
+        else
+        {
+            <table class="table table-sm">
+                <thead><tr><th>Tubo</th><th>Fichero</th><th>SHA-256</th><th>Verificado</th><th>Estado</th></tr></thead>
+                <tbody>
+                    @foreach (var f in fcsFiles)
+                    {
+                        <tr>
+                            <td>T@(f.SampleTube.TubeNumber)</td>
+                            <td>@f.FileName</td>
+                            <td class="small text-muted">@f.Sha256.Substring(0, Math.Min(12, f.Sha256.Length))…</td>
+                            <td>@(f.LastVerifiedAtUtc.HasValue ? LocalTimeService.ToLocal(f.LastVerifiedAtUtc.Value).ToString("dd/MM/yyyy HH:mm") : "—")</td>
+                            <td>
+                                @if (f.LastVerificationOk)
+                                {
+                                    <span class="badge bg-success">OK</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">Discrepancia</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
     }
 </div>
 
@@ -419,6 +465,9 @@
 
     // Histórico de estudios previos del paciente (F-2)
     private List<PatientStudyHistoryItem>? patientHistory;
+
+    // Ficheros FCS (M-6)
+    private List<SampleDataFile>? fcsFiles;
     private string editPatientMotivo = "";
 
     // Recepción (F-4)
@@ -537,6 +586,8 @@
         {
             patientHistory = await PatientService.GetPatientHistoryAsync(originalPatient.Id, originalSample.Id);
         }
+
+        fcsFiles = await FcsLinkService.GetFilesForSampleAsync(SampleId);
 
         isLoading = false;
     }
