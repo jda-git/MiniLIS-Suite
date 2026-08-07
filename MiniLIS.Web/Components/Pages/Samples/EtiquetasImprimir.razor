@@ -1,0 +1,172 @@
+@page "/etiquetas/imprimir"
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@using MiniLIS.Infrastructure.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ISampleService SampleService
+@inject IMasterDataService MasterService
+@inject ILocalTimeService LocalTimeService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Etiquetas - MiniLIS Suite</PageTitle>
+
+@if (isLoading)
+{
+    <div class="text-center py-5 no-print"><span class="spinner-border text-primary"></span></div>
+}
+else if (!samples.Any())
+{
+    <div class="alert alert-warning no-print m-4">No se ha encontrado ninguna muestra para las etiquetas solicitadas.</div>
+}
+else
+{
+    <div class="print-toolbar no-print">
+        <button class="btn btn-primary btn-sm" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir (@totalLabels etiqueta@(totalLabels == 1 ? "" : "s"))</button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="Volver">Volver</button>
+    </div>
+
+    <div class="labels-sheet">
+        @foreach (var s in samples)
+        {
+            for (var copy = 0; copy < settings.CopiesPerSample; copy++)
+            {
+                <div class="label" style="width:@(settings.WidthMm)mm; height:@(settings.HeightMm)mm; padding:@(settings.MarginMm)mm;">
+                    @((MarkupString)BuildBarcodeSvg(s.SampleNumber))
+                    <div class="label-main-row">
+                        <span class="label-number" style="font-size:@(settings.MainFontPt)pt;">@s.SampleNumber</span>
+                        @if (settings.ShowSampleType)
+                        {
+                            <span class="label-type" style="font-size:@(settings.MainFontPt)pt;">@s.SampleType.ToCode()</span>
+                        }
+                    </div>
+                    @{
+                        var patient = s.ClinicalRequest?.Patient;
+                        var hasNhc = !string.IsNullOrWhiteSpace(patient?.NHC);
+                        var hasNasi = !string.IsNullOrWhiteSpace(patient?.NASI);
+                    }
+                    @if (hasNhc)
+                    {
+                        <div class="label-id" style="font-size:@(settings.SecondaryFontPt)pt;">NHC: @patient!.NHC</div>
+                    }
+                    else if (hasNasi)
+                    {
+                        <div class="label-id" style="font-size:@(settings.SecondaryFontPt)pt;">NASI: @patient!.NASI</div>
+                    }
+                    else
+                    {
+                        <div class="label-noid" style="font-size:@(settings.SecondaryFontPt)pt;">SIN IDENTIFICADOR</div>
+                    }
+                    @if (settings.ShowReceptionDate)
+                    {
+                        <div class="label-date" style="font-size:@(settings.SecondaryFontPt)pt;">@LocalTimeService.ToLocal(s.ReceivedAtUtc ?? s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")</div>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
+<style>
+    .no-print { }
+    @@media print {
+        .no-print { display: none !important; }
+        .label { page-break-after: always; }
+    }
+    @@page {
+        size: @(settings.WidthMm)mm @(settings.HeightMm)mm;
+        margin: 0;
+    }
+
+    .print-toolbar { display: flex; gap: 10px; padding: 16px; }
+    .labels-sheet { display: flex; flex-direction: column; align-items: flex-start; gap: 4mm; padding: 4mm; }
+
+    .label {
+        box-sizing: border-box;
+        border: 1px solid #cbd5e1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+    }
+    .label-main-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 1mm; }
+    .label-number { font-weight: 700; color: #0f172a; }
+    .label-type { font-weight: 700; color: #0f172a; }
+    .label-id { color: #1e293b; }
+    .label-date { color: #475569; }
+    .label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; }
+
+    @@media print {
+        .label { border: none; }
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Ids { get; set; }
+
+    private List<Sample> samples = new();
+    private LabelSettings settings = new();
+    private bool isLoading = true;
+    private int totalLabels => samples.Count * settings.CopiesPerSample;
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = await MasterService.GetLabelSettingsAsync();
+
+        var ids = (Ids ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => int.TryParse(s.Trim(), out var id) ? id : (int?)null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        samples = ids.Any() ? await SampleService.GetSamplesByIdsAsync(ids) : new List<Sample>();
+        isLoading = false;
+    }
+
+    private async Task Imprimir()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+
+    private void Volver()
+    {
+        Nav.NavigateTo("/muestras");
+    }
+
+    // Code 128B renderizado directamente a SVG (F-5): sin dependencia de generación de
+    // imágenes (SkiaSharp/ImageSharp), coherente con el resto de gráficos del proyecto (F-1).
+    private string BuildBarcodeSvg(string data)
+    {
+        var widths = Code128Encoder.EncodeToModuleWidths(data);
+        var totalModules = widths.Sum();
+
+        // Módulo cuadrado: ancho total del código = altura de barra configurada / 2 aprox,
+        // pero preferimos que el código quepa dentro del ancho de la etiqueta menos el margen.
+        double svgHeightMm = settings.BarcodeHeightMm;
+        double moduleWidthMm = Math.Max(0.25, (settings.WidthMm - 2 * settings.MarginMm) / totalModules);
+        double svgWidthMm = moduleWidthMm * totalModules;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg width=\"{svgWidthMm.ToString(System.Globalization.CultureInfo.InvariantCulture)}mm\" height=\"{svgHeightMm.ToString(System.Globalization.CultureInfo.InvariantCulture)}mm\" viewBox=\"0 0 {totalModules} 1\" preserveAspectRatio=\"none\" xmlns=\"http://www.w3.org/2000/svg\">");
+        sb.Append("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"white\"/>");
+
+        double x = 0;
+        var isBar = true;
+        foreach (var w in widths)
+        {
+            if (isBar)
+            {
+                sb.Append($"<rect x=\"{x.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" y=\"0\" width=\"{w}\" height=\"1\" fill=\"black\"/>");
+            }
+            x += w;
+            isBar = !isBar;
+        }
+        sb.Append("</svg>");
+        return sb.ToString();
+    }
+}

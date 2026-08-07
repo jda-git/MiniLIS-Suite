@@ -40,5 +40,28 @@ namespace MiniLIS.Application.Interfaces
         
         Task<string?> GetSettingAsync(string key);
         Task SaveSettingAsync(string key, string value, string? description = null);
+
+        // LABEL SETTINGS (F-5)
+        Task<LabelSettings> GetLabelSettingsAsync();
+        Task UpsertLabelSettingsAsync(LabelSettings settings);
+    }
+
+    /// <summary>Configuración de impresión de etiquetas (F-5). Persistida como un único
+    /// SystemSetting JSON ("Label:Settings"), mismo patrón que otras configuraciones
+    /// estructuradas — no necesita su propia tabla.</summary>
+    public class LabelSettings
+    {
+        public double WidthMm { get; set; } = 50;
+        public double HeightMm { get; set; } = 25;
+        public double MarginMm { get; set; } = 2;
+        public double BarcodeHeightMm { get; set; } = 8;
+        public int MainFontPt { get; set; } = 14;
+        public int SecondaryFontPt { get; set; } = 8;
+        public bool ShowSampleType { get; set; } = true;
+        public bool ShowReceptionDate { get; set; } = true;
+        public int CopiesPerSample { get; set; } = 1;
+        /// <summary>"Html" (único implementado) | "Zpl" (fuera de alcance: exige confirmar
+        /// modelo Zebra concreto, ver F-5).</summary>
+        public string Renderer { get; set; } = "Html";
     }
 }

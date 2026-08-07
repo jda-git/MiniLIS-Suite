@@ -276,6 +276,9 @@
             <button type="button" class="btn btn-light px-4 py-2 border text-muted fw-semibold shadow-sm" @onclick="Cancel">
                 <i class="bi bi-arrow-left me-2"></i>Volver
             </button>
+            <button type="button" class="btn btn-outline-primary px-4 py-2 fw-semibold shadow-sm" @onclick="ReimprimirEtiqueta">
+                <i class="bi bi-upc-scan me-2"></i>Reimprimir etiqueta
+            </button>
             <button type="submit" class="btn btn-success px-5 py-2 fw-semibold shadow-sm" disabled="@isSubmitting">
                 @if (isSubmitting)
                 {
@@ -635,6 +638,12 @@
     }
 
     private void Cancel() => Nav.NavigateTo("/muestras");
+
+    private async Task ReimprimirEtiqueta()
+    {
+        await SampleService.LogLabelReprintAsync(SampleId);
+        await JS.InvokeVoidAsync("open", $"/etiquetas/imprimir?ids={SampleId}", "_blank");
+    }
 
     public class EditModel
     {

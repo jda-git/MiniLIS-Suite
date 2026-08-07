@@ -784,7 +784,14 @@
 
             var sample = await SampleRegistry.RegisterSampleAsync(patient.Id, request, model.Diagnosis ?? "", sampleType, sampleTypeOther, studyPanelText, false, "", selectedPanelIds.ToList(), customPanels, manualOverride, currentUserId, reception);
 
-            await JS.InvokeVoidAsync("alert", "Muestra registrada correctamente con número: " + sample.SampleNumber);
+            // F-5: ofrece imprimir la etiqueta recién generada en una pestaña aparte, sin
+            // bloquear el flujo principal (el registro ya está guardado).
+            var quiereImprimir = await JS.InvokeAsync<bool>("confirm",
+                $"Muestra registrada correctamente con número: {sample.SampleNumber}\n\n¿Imprimir etiqueta ahora?");
+            if (quiereImprimir)
+            {
+                await JS.InvokeVoidAsync("open", $"/etiquetas/imprimir?ids={sample.Id}", "_blank");
+            }
             Nav.NavigateTo("/muestras");
         }
         catch (Exception ex)

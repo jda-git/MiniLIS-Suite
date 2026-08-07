@@ -238,6 +238,26 @@ namespace MiniLIS.Infrastructure.Services
             await _db.SaveChangesAsync();
         }
 
+        public async Task<LabelSettings> GetLabelSettingsAsync()
+        {
+            var json = await GetSettingAsync("Label:Settings");
+            if (string.IsNullOrWhiteSpace(json)) return new LabelSettings();
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<LabelSettings>(json) ?? new LabelSettings();
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return new LabelSettings();
+            }
+        }
+
+        public async Task UpsertLabelSettingsAsync(LabelSettings settings)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(settings);
+            await SaveSettingAsync("Label:Settings", json, "Configuración de impresión de etiquetas (F-5)");
+        }
+
         // --- TEMPLATE CONCLUSIONS ---
         public async Task<List<TemplateConclusion>> GetTemplateConclusionsAsync(int templateId)
         {

@@ -352,6 +352,32 @@ namespace MiniLIS.Infrastructure.Services
                 .FirstOrDefaultAsync(s => s.Id == sampleId);
         }
 
+        public async Task<List<Sample>> GetSamplesByIdsAsync(List<int> sampleIds)
+        {
+            return await _db.Samples
+                .Include(s => s.ClinicalRequest)
+                    .ThenInclude(cr => cr.Patient)
+                .Where(s => sampleIds.Contains(s.Id))
+                .ToListAsync();
+        }
+
+        public async Task LogLabelReprintAsync(int sampleId)
+        {
+            var userId = await _currentUserService.GetUserIdAsync();
+            var username = await _currentUserService.GetUsernameAsync();
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(Sample),
+                EntityId = sampleId.ToString(),
+                Action = "Reprint",
+                UserId = userId,
+                Username = username,
+                ActionContext = "Reimpresión de etiqueta (F-5)",
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+        }
+
         public async Task<bool> UpdateSampleAsync(Sample sample)
         {
             _currentUserService.ActionContext = "Modificación de Muestra";

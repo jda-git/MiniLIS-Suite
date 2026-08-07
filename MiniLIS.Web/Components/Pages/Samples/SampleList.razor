@@ -24,6 +24,9 @@
             </h1>
         </div>
         <div class="d-flex gap-2">
+            <button class="btn-bandeja btn-bandeja-outline" @onclick="ImprimirSeleccionadas" disabled="@(selectedSampleIds.Count == 0)">
+                <i class="bi bi-upc-scan"></i> Imprimir etiquetas (@selectedSampleIds.Count)
+            </button>
             <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportExcel">
                 <i class="bi bi-file-earmark-spreadsheet"></i> Exportar Excel
             </button>
@@ -111,6 +114,7 @@
         <table class="bandeja-table">
             <thead>
                 <tr>
+                    <th class="col-select"><input type="checkbox" checked="@AllSelected" @onchange="ToggleSelectAll" /></th>
                     <th class="col-code">Código <i class="bi bi-arrow-down-up sort-icon"></i></th>
                     <th class="col-date">Fecha</th>
                     <th class="col-type">Tipo</th>
@@ -129,7 +133,7 @@
                 @if (isLoading)
                 {
                     <tr>
-                        <td colspan="12" class="cell-empty">
+                        <td colspan="13" class="cell-empty">
                             <div class="spinner-border text-primary" role="status"></div>
                         </td>
                     </tr>
@@ -137,7 +141,7 @@
                 else if (!samples.Any())
                 {
                     <tr>
-                        <td colspan="12" class="cell-empty">
+                        <td colspan="13" class="cell-empty">
                             <i class="bi bi-inbox empty-icon"></i>
                             <span>Sin resultados para los filtros actuales</span>
                         </td>
@@ -148,6 +152,7 @@
                     @foreach (var s in samples)
                     {
                         <tr>
+                            <td class="cell-select"><input type="checkbox" checked="@selectedSampleIds.Contains(s.Id)" @onchange="@(e => ToggleSelect(s.Id, (bool)e.Value!))" /></td>
                             <td class="cell-code">@s.SampleNumber</td>
                             <td class="cell-date">@LocalTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")</td>
                             <td class="cell-type">@(s.SampleType == SampleType.Otros ? (s.SampleTypeOther ?? "Otros") : s.SampleType.ToCode())</td>
@@ -551,6 +556,7 @@
     .bandeja-table tbody tr:last-child td { border-bottom: none; }
 
     /* Cell styles */
+    .col-select, .cell-select { width: 32px; text-align: center; }
     .col-code { padding-left: 20px !important; }
     .cell-code { padding-left: 20px !important; font-weight: 700; color: #1e293b; font-family: 'JetBrains Mono', 'Consolas', monospace; }
     .cell-date { color: #64748b; font-size: 12px; white-space: nowrap; }
@@ -807,6 +813,29 @@
     private List<Sample> samples = new();
     private bool isLoading = true;
     private Patient? previewPatient;
+
+    // Selección para impresión de etiquetas por lotes (F-5)
+    private HashSet<int> selectedSampleIds = new();
+    private bool AllSelected => samples.Any() && samples.All(s => selectedSampleIds.Contains(s.Id));
+
+    private void ToggleSelect(int sampleId, bool isChecked)
+    {
+        if (isChecked) selectedSampleIds.Add(sampleId);
+        else selectedSampleIds.Remove(sampleId);
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        var check = (bool)e.Value!;
+        selectedSampleIds = check ? samples.Select(s => s.Id).ToHashSet() : new HashSet<int>();
+    }
+
+    private async Task ImprimirSeleccionadas()
+    {
+        if (selectedSampleIds.Count == 0) return;
+        var ids = string.Join(",", selectedSampleIds);
+        await JS.InvokeVoidAsync("open", $"/etiquetas/imprimir?ids={ids}", "_blank");
+    }
 
     private string searchTerm = "";
     private SampleStatus? statusFilter;
