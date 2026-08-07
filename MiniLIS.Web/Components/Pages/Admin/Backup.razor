@@ -105,6 +105,7 @@
                                         <th>Fecha</th>
                                         <th>Archivo</th>
                                         <th>Tamaño</th>
+                                        <th>Integridad</th>
                                         <th class="text-end">Acciones</th>
                                     </tr>
                                 </thead>
@@ -115,7 +116,28 @@
                                             <td>@b.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
                                             <td><code class="file-name">@b.FileName</code></td>
                                             <td>@FormatSize(b.SizeBytes)</td>
+                                            <td>
+                                                @if (b.LastVerifiedAtUtc == null)
+                                                {
+                                                    <span class="badge bg-secondary">Sin verificar</span>
+                                                }
+                                                else if (b.LastVerificationOk)
+                                                {
+                                                    <span class="badge bg-success" title="@b.Sha256">
+                                                        <i class="bi bi-check-lg"></i> OK @b.LastVerifiedAtUtc?.ToLocalTime().ToString("dd/MM HH:mm")
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-danger" title="@b.Sha256">
+                                                        <i class="bi bi-x-lg"></i> Fallo @b.LastVerifiedAtUtc?.ToLocalTime().ToString("dd/MM HH:mm")
+                                                    </span>
+                                                }
+                                            </td>
                                             <td class="text-end">
+                                                <button class="btn-restore-mini" @onclick="() => VerifyBackup(b)" disabled="@verifyingIds.Contains(b.Id)" title="Volver a verificar la integridad">
+                                                    <i class="bi bi-shield-check"></i> Verificar
+                                                </button>
                                                 <button class="btn-restore-mini" @onclick="() => ConfirmRestore(b)" title="Restaurar esta copia">
                                                     <i class="bi bi-arrow-counterclockwise"></i> Restaurar
                                                 </button>
@@ -375,6 +397,26 @@
     private async Task LoadBackups()
     {
         backups = await BackupService.GetAvailableBackupsAsync();
+    }
+
+    private HashSet<int> verifyingIds = new();
+
+    private async Task VerifyBackup(BackupInfo b)
+    {
+        verifyingIds.Add(b.Id);
+        try
+        {
+            await BackupService.VerifyBackupAsync(b.Id);
+            await LoadBackups();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al verificar: " + ex.Message);
+        }
+        finally
+        {
+            verifyingIds.Remove(b.Id);
+        }
     }
 
     private async Task SaveSettings()

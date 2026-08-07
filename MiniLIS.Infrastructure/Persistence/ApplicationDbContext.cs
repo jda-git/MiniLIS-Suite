@@ -37,6 +37,7 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<ReportSignatory> ReportSignatories => Set<ReportSignatory>();
         public DbSet<TemplateConclusion> TemplateConclusions => Set<TemplateConclusion>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+        public DbSet<BackupRecord> BackupRecords => Set<BackupRecord>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
