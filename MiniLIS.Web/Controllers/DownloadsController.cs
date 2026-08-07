@@ -17,13 +17,15 @@ namespace MiniLIS.Web.Controllers
         private readonly IDocumentService _documentService;
         private readonly ISampleService _sampleService;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
+        private readonly ILogger<DownloadsController> _logger;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger)
         {
             _db = db;
             _documentService = documentService;
             _sampleService = sampleService;
             _userManager = userManager;
+            _logger = logger;
         }
 
         [HttpGet("informe/{id}/pdf/{fileName?}")]
@@ -67,7 +69,9 @@ namespace MiniLIS.Web.Controllers
             }
             catch (Exception ex)
             {
-                return Content($"ERROR DETECTADO: {ex.Message} \n\n {ex.StackTrace}");
+                _logger.LogError(ex, "Error generando PDF para el informe {Id}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
             }
         }
 
@@ -107,7 +111,9 @@ namespace MiniLIS.Web.Controllers
             }
             catch (Exception ex)
             {
-                return Content($"ERROR DETECTADO EN ODT: {ex.Message} \n\n {ex.StackTrace}");
+                _logger.LogError(ex, "Error generando ODT para el informe {Id}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
             }
         }
 
