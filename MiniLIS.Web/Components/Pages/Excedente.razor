@@ -5,8 +5,11 @@
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using MiniLIS.Domain.Identity
+@using MiniLIS.Infrastructure.Services
 @attribute [Authorize]
 @inject IExcedenteService ExcedenteService
+@inject IStorageService StorageService
+@inject ILocalTimeService LocalTimeService
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 
@@ -145,7 +148,228 @@
             </tbody>
         </table>
     </div>
+
+    <!-- ════════ ALÍCUOTAS ALMACENADAS (F-7) ════════ -->
+    <div class="bandeja-header mt-5">
+        <div>
+            <h1 class="bandeja-title"><i class="bi bi-snow2"></i> Alícuotas Almacenadas</h1>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn-bandeja btn-bandeja-outline" @onclick="ToggleStorageView">
+                <i class="bi @(storageViewIsTree ? "bi-list-ul" : "bi-diagram-3")"></i> @(storageViewIsTree ? "Vista lista" : "Vista por ubicación")
+            </button>
+            <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportStorageCsv" disabled="@(!storedSpecimens.Any())">
+                <i class="bi bi-file-earmark-excel"></i> Exportar CSV
+            </button>
+        </div>
+    </div>
+
+    @if (storageExpiryAlerts.Any())
+    {
+        <div class="alert alert-warning py-2 px-3 mb-3 small">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            @storageExpiryAlerts.Count(a => a.ExpiryDateUtc < DateTime.UtcNow) vencidas, @storageExpiryAlerts.Count(a => a.ExpiryDateUtc >= DateTime.UtcNow) próximas a vencer (30 días).
+        </div>
+    }
+
+    <div class="filter-strip">
+        <div class="filter-group">
+            <i class="bi bi-search filter-icon"></i>
+            <input type="text" class="filter-control" placeholder="Nº estudio, NHC o ubicación..." @bind="storageSearchTerm" @bind:event="oninput" @onkeyup="ApplyStorageFilters" />
+        </div>
+        <div class="filter-divider"></div>
+        <div class="filter-group">
+            <select class="filter-control" @bind="storageStatusFilter" @bind:after="ApplyStorageFilters">
+                <option value="">-- Todos los estados --</option>
+                @foreach (var st in Enum.GetValues<StoredSpecimenStatus>())
+                {
+                    <option value="@st">@st</option>
+                }
+            </select>
+        </div>
+        <div class="filter-group">
+            <select class="filter-control" @bind="storageTypeFilter" @bind:after="ApplyStorageFilters">
+                <option value="">-- Todos los tipos --</option>
+                @foreach (var t in Enum.GetValues<StoredSpecimenType>())
+                {
+                    <option value="@t">@t</option>
+                }
+            </select>
+        </div>
+        <div class="filter-actions">
+            <button class="btn-filter-clear" @onclick="ClearStorageFilters" title="Limpiar filtros"><i class="bi bi-x-lg"></i></button>
+        </div>
+    </div>
+
+    @if (isLoadingStorage)
+    {
+        <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+    }
+    else if (!storageViewIsTree)
+    {
+        <div class="bandeja-table-wrap">
+            <table class="bandeja-table">
+                <thead>
+                    <tr>
+                        <th>Nº muestra</th><th>Tipo</th><th>Ubicación</th><th>Alícuotas</th><th>Estado</th><th>Caduca</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (!storedSpecimens.Any())
+                    {
+                        <tr><td colspan="7" class="cell-empty">Sin alícuotas almacenadas con los filtros actuales</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var sp in storedSpecimens)
+                        {
+                            <tr>
+                                <td style="font-weight:600;">@sp.Sample?.SampleNumber</td>
+                                <td>@sp.Type</td>
+                                <td>@sp.LocationDisplay</td>
+                                <td>@sp.AliquotCount</td>
+                                <td>@sp.Status</td>
+                                <td class="@(sp.ExpiryDateUtc.HasValue && sp.ExpiryDateUtc < DateTime.UtcNow ? "text-danger fw-bold" : "")">
+                                    @sp.ExpiryDateUtc?.ToString("dd/MM/yyyy")
+                                </td>
+                                <td class="cell-actions">
+                                    <button class="action-icon action-edit" title="Registrar evento" @onclick="() => OpenEventModal(sp)"><i class="bi bi-arrow-repeat"></i></button>
+                                    <button class="action-icon action-panel" title="Ver etiqueta" @onclick="() => OpenStorageLabel(sp)"><i class="bi bi-upc-scan"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="storage-tree">
+            @foreach (var freezerGroup in storedSpecimens.GroupBy(s => s.FreezerCode ?? "(sin congelador)"))
+            {
+                <div class="storage-tree-freezer">
+                    <div class="storage-tree-freezer-title"><i class="bi bi-snow2"></i> @freezerGroup.Key</div>
+                    @foreach (var rackGroup in freezerGroup.GroupBy(s => s.Rack ?? "(sin rack)"))
+                    {
+                        <div class="storage-tree-rack">
+                            <div class="storage-tree-rack-title">Rack @rackGroup.Key</div>
+                            @foreach (var boxGroup in rackGroup.GroupBy(s => s.Box ?? "(sin caja)"))
+                            {
+                                <div class="storage-tree-box">
+                                    <div class="storage-tree-box-title">Caja @boxGroup.Key</div>
+                                    <div class="storage-tree-items">
+                                        @foreach (var sp in boxGroup)
+                                        {
+                                            <span class="storage-tree-item" title="@sp.Type - @sp.Status" @onclick="() => OpenEventModal(sp)">
+                                                @sp.Position · @sp.Sample?.SampleNumber
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
 </div>
+
+@if (eventModalSpecimen != null)
+{
+    <div class="modal-backdrop-custom" @onclick="CloseEventModal">
+        <div class="modal-card animate-fade-in" @onclick:stopPropagation="true">
+            <div class="modal-card-header d-flex align-items-center justify-content-between">
+                <h5 class="d-flex align-items-center m-0 text-white fw-bold">
+                    <i class="bi bi-snow2 me-2"></i> @eventModalSpecimen.Sample?.SampleNumber — @eventModalSpecimen.Type
+                </h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="CloseEventModal"></button>
+            </div>
+            <div class="modal-card-body">
+                <p class="small text-muted">Ubicación: @eventModalSpecimen.LocationDisplay · @eventModalSpecimen.AliquotCount alícuota(s) · Estado: @eventModalSpecimen.Status</p>
+
+                <div class="mb-2">
+                    <label class="field-label">Acción</label>
+                    <select class="field-input w-100" @bind="eventModalType">
+                        <option value="Descongelacion">Descongelación</option>
+                        <option value="Traslado">Traslado</option>
+                        <option value="Eliminacion">Eliminación</option>
+                        <option value="Cesion">Cesión</option>
+                    </select>
+                </div>
+
+                @if (eventModalType == "Descongelacion")
+                {
+                    <div class="mb-2">
+                        <label class="field-label">Alícuotas consumidas</label>
+                        <input type="number" min="0" class="field-input w-100" @bind="eventModalAliquotsConsumed" />
+                    </div>
+                }
+                @if (eventModalType == "Traslado")
+                {
+                    <div class="mb-2">
+                        <label class="field-label">Nueva ubicación (Congelador / Rack / Caja / Posición)</label>
+                        <input type="text" class="field-input w-100" placeholder="CONG-2 / B / 4 / A3" @bind="eventModalNewLocation" />
+                    </div>
+                }
+                <div class="mb-2">
+                    <label class="field-label">Motivo @(eventModalType == "Eliminacion" ? "(obligatorio)" : "")</label>
+                    <textarea class="field-input w-100" rows="2" @bind="eventModalReason"></textarea>
+                </div>
+
+                @if (!string.IsNullOrEmpty(eventModalError))
+                {
+                    <div class="alert alert-danger py-2 px-3 small">@eventModalError</div>
+                }
+
+                <h6 class="mt-3">Histórico de eventos</h6>
+                <ul class="storage-event-list">
+                    @foreach (var ev in eventModalSpecimen.Events.OrderByDescending(e => e.EventAtUtc))
+                    {
+                        <li>@LocalTimeService.ToLocal(ev.EventAtUtc).ToString("dd/MM/yyyy HH:mm") — @ev.EventType @(string.IsNullOrWhiteSpace(ev.Reason) ? "" : $"({ev.Reason})")</li>
+                    }
+                </ul>
+
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button class="btn-bandeja btn-bandeja-outline" @onclick="CloseEventModal">Cancelar</button>
+                    <button class="btn-bandeja" style="background:#16a34a;color:#fff;" @onclick="SaveEvent">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (labelSpecimen != null)
+{
+    <div class="modal-backdrop-custom" @onclick="() => labelSpecimen = null">
+        <div class="modal-card animate-fade-in" style="max-width:340px;" @onclick:stopPropagation="true">
+            <div class="modal-card-header d-flex align-items-center justify-content-between">
+                <h5 class="text-white fw-bold m-0">Etiqueta de alícuota</h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => labelSpecimen = null"></button>
+            </div>
+            <div class="modal-card-body text-center">
+                @((MarkupString)BuildStorageLabelSvg(labelSpecimen))
+                <div class="mt-2 fw-bold">@labelSpecimen.Sample?.SampleNumber · @GetTypeCode(labelSpecimen.Type) · @labelSpecimen.Position</div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .storage-tree { display: flex; flex-direction: column; gap: 12px; }
+    .storage-tree-freezer { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+    .storage-tree-freezer-title { font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+    .storage-tree-rack { margin-left: 12px; border-left: 2px solid #e2e8f0; padding-left: 12px; margin-bottom: 8px; }
+    .storage-tree-rack-title { font-weight: 600; color: #334155; font-size: 13px; }
+    .storage-tree-box { margin-left: 12px; margin-top: 6px; }
+    .storage-tree-box-title { font-size: 12px; color: #64748b; font-weight: 600; }
+    .storage-tree-items { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .storage-tree-item { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+    .storage-tree-item:hover { background: #e0f2fe; }
+    .storage-event-list { list-style: none; padding: 0; font-size: 12px; max-height: 120px; overflow-y: auto; }
+    .storage-event-list li { padding: 3px 0; border-bottom: 1px dashed #e2e8f0; }
+</style>
 
 <style>
     /* ── Page ─────────────────────────────────────────────── */
@@ -359,9 +583,140 @@
     private bool isLoading = false;
     private List<SampleReport> filteredReports = new();
 
+    // Alícuotas almacenadas (F-7)
+    private List<StoredSpecimen> storedSpecimens = new();
+    private List<StoredSpecimen> storageExpiryAlerts = new();
+    private bool isLoadingStorage = false;
+    private bool storageViewIsTree = false;
+    private string storageSearchTerm = "";
+    private string storageStatusFilter = "";
+    private string storageTypeFilter = "";
+
+    private StoredSpecimen? eventModalSpecimen;
+    private string eventModalType = "Descongelacion";
+    private string? eventModalReason;
+    private string? eventModalNewLocation;
+    private int? eventModalAliquotsConsumed;
+    private string? eventModalError;
+
+    private StoredSpecimen? labelSpecimen;
+
     protected override async Task OnInitializedAsync()
     {
         await FilterData();
+        await LoadStorage();
+    }
+
+    private void ToggleStorageView() => storageViewIsTree = !storageViewIsTree;
+
+    private async Task LoadStorage()
+    {
+        isLoadingStorage = true;
+        try
+        {
+            StoredSpecimenStatus? status = Enum.TryParse<StoredSpecimenStatus>(storageStatusFilter, out var st) ? st : null;
+            StoredSpecimenType? type = Enum.TryParse<StoredSpecimenType>(storageTypeFilter, out var ty) ? ty : null;
+            storedSpecimens = await StorageService.SearchAsync(storageSearchTerm, status, type, null);
+            storageExpiryAlerts = await StorageService.GetExpiryAlertsAsync(30);
+        }
+        finally
+        {
+            isLoadingStorage = false;
+        }
+    }
+
+    private async Task ApplyStorageFilters() => await LoadStorage();
+
+    private async Task ClearStorageFilters()
+    {
+        storageSearchTerm = "";
+        storageStatusFilter = "";
+        storageTypeFilter = "";
+        await LoadStorage();
+    }
+
+    private async Task ExportStorageCsv()
+    {
+        if (!storedSpecimens.Any()) return;
+        var authState = await AuthStateTask;
+        var incluirIdentificadores = false; // seudonimizado por defecto (C-2)
+        var bytes = await StorageService.ExportToCsvAsync(storedSpecimens, incluirIdentificadores);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"Almacenamiento_{DateTime.Now:yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
+    }
+
+    private void OpenEventModal(StoredSpecimen sp)
+    {
+        eventModalSpecimen = sp;
+        eventModalType = "Descongelacion";
+        eventModalReason = null;
+        eventModalNewLocation = null;
+        eventModalAliquotsConsumed = null;
+        eventModalError = null;
+    }
+
+    private void CloseEventModal() => eventModalSpecimen = null;
+
+    private async Task SaveEvent()
+    {
+        if (eventModalSpecimen == null) return;
+        eventModalError = null;
+
+        if (eventModalType == "Eliminacion" && string.IsNullOrWhiteSpace(eventModalReason))
+        {
+            eventModalError = "El motivo es obligatorio para eliminar una alícuota.";
+            return;
+        }
+        if (eventModalType == "Traslado" && string.IsNullOrWhiteSpace(eventModalNewLocation))
+        {
+            eventModalError = "Indique la nueva ubicación.";
+            return;
+        }
+
+        var authState = await AuthStateTask;
+        var currentUser = await UserManager.GetUserAsync(authState.User);
+
+        await StorageService.AddEventAsync(eventModalSpecimen.Id, eventModalType, eventModalReason, eventModalNewLocation, eventModalAliquotsConsumed, currentUser?.Id);
+        eventModalSpecimen = null;
+        await LoadStorage();
+    }
+
+    private void OpenStorageLabel(StoredSpecimen sp) => labelSpecimen = sp;
+
+    private string GetTypeCode(StoredSpecimenType t) => t switch
+    {
+        StoredSpecimenType.TuboOriginal => "TUB",
+        StoredSpecimenType.CelulasViables => "CEL",
+        StoredSpecimenType.PelletCelular => "PEL",
+        StoredSpecimenType.ADN => "ADN",
+        StoredSpecimenType.ARN => "ARN",
+        StoredSpecimenType.Plasma => "PLA",
+        StoredSpecimenType.Suero => "SUE",
+        _ => "OTR"
+    };
+
+    // Etiqueta de alícuota reutilizando Code128Encoder (F-5): "{SampleNumber} · {TypeCode} · {Position}"
+    private string BuildStorageLabelSvg(StoredSpecimen sp)
+    {
+        var data = $"{sp.Sample?.SampleNumber}-{GetTypeCode(sp.Type)}-{sp.Position}";
+        var widths = Code128Encoder.EncodeToModuleWidths(data);
+        var totalModules = widths.Sum();
+        double moduleWidthPx = 2;
+        double svgWidth = moduleWidthPx * totalModules;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg width=\"{svgWidth}\" height=\"50\" viewBox=\"0 0 {totalModules} 1\" preserveAspectRatio=\"none\" xmlns=\"http://www.w3.org/2000/svg\">");
+        sb.Append("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"white\"/>");
+        double x = 0;
+        var isBar = true;
+        foreach (var w in widths)
+        {
+            if (isBar) sb.Append($"<rect x=\"{x}\" y=\"0\" width=\"{w}\" height=\"1\" fill=\"black\"/>");
+            x += w;
+            isBar = !isBar;
+        }
+        sb.Append("</svg>");
+        return sb.ToString();
     }
 
     private async Task ApplyFilters() => await FilterData();

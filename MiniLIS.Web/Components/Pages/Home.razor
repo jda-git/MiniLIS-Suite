@@ -7,6 +7,7 @@
 @implements IDisposable
 @inject IDashboardService DashService
 @inject ILocalTimeService LocalTimeService
+@inject IStorageService StorageService
 
 <PageTitle>Panel de Control - MiniLIS Suite</PageTitle>
 
@@ -233,6 +234,37 @@
                 </div>
             </div>
 
+            <!-- Alertas de Caducidad de Excedente (F-7) -->
+            @if (expiryAlerts != null && expiryAlerts.Any())
+            {
+                <div class="dash-card">
+                    <div class="dash-card-header">
+                        <div class="kpi-icon kpi-icon-red"><i class="bi bi-snow2"></i></div>
+                        <h3 class="kpi-title">Excedente próximo a caducar</h3>
+                    </div>
+                    <div class="dash-card-body no-pad">
+                        <table class="activity-table">
+                            <thead>
+                                <tr><th>Muestra</th><th>Tipo</th><th>Caduca</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var sp in expiryAlerts.Take(6))
+                                {
+                                    <tr>
+                                        <td class="act-sample">@sp.Sample?.SampleNumber</td>
+                                        <td>@sp.Type</td>
+                                        <td class="@(sp.ExpiryDateUtc < DateTime.UtcNow ? "text-danger fw-bold" : "")">
+                                            @LocalTimeService.ToLocal(sp.ExpiryDateUtc!.Value).ToString("dd/MM/yyyy")
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        <div class="p-2"><a href="/excedente" class="small">Ver todas en Excedente →</a></div>
+                    </div>
+                </div>
+            }
+
             <!-- Distribución por Panel -->
             <div class="dash-card">
                 <div class="dash-card-header">
@@ -416,6 +448,7 @@
     .kpi-icon-amber { background: #fffbeb; color: #d97706; }
     .kpi-icon-indigo { background: #eef2ff; color: #4f46e5; }
     .kpi-icon-purple { background: #f3e8ff; color: #7c3aed; }
+    .kpi-icon-red { background: #fef2f2; color: #dc2626; }
     .kpi-title { font-size: 14px; font-weight: 700; color: #1e293b; margin: 0; }
     .kpi-subtitle { font-size: 11px; color: #94a3b8; margin: 2px 0 0; }
     .kpi-card-body { padding: 20px; }
@@ -572,6 +605,7 @@
 @code {
     private DashboardStatsDto? stats;
     private List<RecentActivityDto>? recentActivity;
+    private List<StoredSpecimen>? expiryAlerts;
     private System.Threading.Timer? timer;
 
     protected override async Task OnInitializedAsync()
@@ -587,6 +621,7 @@
     {
         stats = await DashService.GetStatsAsync();
         recentActivity = await DashService.GetRecentActivityAsync(8);
+        expiryAlerts = await StorageService.GetExpiryAlertsAsync(30);
     }
 
     private string GetActivityClass(SampleStatus status) => status switch

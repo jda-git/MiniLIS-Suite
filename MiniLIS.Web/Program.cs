@@ -54,6 +54,7 @@ builder.Services.AddScoped<IStatisticsService, StatisticsService>();
 builder.Services.AddScoped<IQualityIndicatorService, QualityIndicatorService>();
 builder.Services.AddScoped<IWorklistService, WorklistService>();
 builder.Services.AddScoped<IWorklistExportService, WorklistExportService>();
+builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 

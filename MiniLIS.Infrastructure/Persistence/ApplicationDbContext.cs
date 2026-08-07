@@ -46,6 +46,8 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<QualityIndicator> QualityIndicators => Set<QualityIndicator>();
         public DbSet<WorklistExportProfile> WorklistExportProfiles => Set<WorklistExportProfile>();
         public DbSet<WorklistExportColumn> WorklistExportColumns => Set<WorklistExportColumn>();
+        public DbSet<StoredSpecimen> StoredSpecimens => Set<StoredSpecimen>();
+        public DbSet<StoredSpecimenEvent> StoredSpecimenEvents => Set<StoredSpecimenEvent>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -161,6 +163,18 @@ namespace MiniLIS.Infrastructure.Persistence
                 .HasOne(c => c.Profile)
                 .WithMany(p => p.Columns)
                 .HasForeignKey(c => c.WorklistExportProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<StoredSpecimen>()
+                .HasOne(s => s.Sample)
+                .WithMany()
+                .HasForeignKey(s => s.SampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<StoredSpecimenEvent>()
+                .HasOne(e => e.StoredSpecimen)
+                .WithMany(s => s.Events)
+                .HasForeignKey(e => e.StoredSpecimenId)
                 .OnDelete(DeleteBehavior.Cascade);
         }
 

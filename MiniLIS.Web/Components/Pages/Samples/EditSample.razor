@@ -9,6 +9,9 @@
 @inject ISampleService SampleService
 @inject IMasterDataService MasterService
 @inject ILocalTimeService LocalTimeService
+@inject IStorageService StorageService
+@inject Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> UserManager
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -279,6 +282,9 @@
             <button type="button" class="btn btn-outline-primary px-4 py-2 fw-semibold shadow-sm" @onclick="ReimprimirEtiqueta">
                 <i class="bi bi-upc-scan me-2"></i>Reimprimir etiqueta
             </button>
+            <button type="button" class="btn btn-outline-info px-4 py-2 fw-semibold shadow-sm" @onclick="() => showAliquotForm = !showAliquotForm">
+                <i class="bi bi-snow2 me-2"></i>Alta de alícuota
+            </button>
             <button type="submit" class="btn btn-success px-5 py-2 fw-semibold shadow-sm" disabled="@isSubmitting">
                 @if (isSubmitting)
                 {
@@ -288,6 +294,71 @@
             </button>
         </div>
     </EditForm>
+
+    @if (showAliquotForm)
+    {
+        <div class="iso-panel mt-3">
+            <h5 class="mb-3"><i class="bi bi-snow2 me-2"></i>Nueva alícuota de excedente</h5>
+            @if (!string.IsNullOrEmpty(aliquotError))
+            {
+                <div class="alert alert-danger py-2 px-3 small">@aliquotError</div>
+            }
+            <div class="clin-row">
+                <div class="clin-field" style="width: 200px;">
+                    <label>Tipo</label>
+                    <select class="clin-input" @bind="aliquotType">
+                        @foreach (var t in Enum.GetValues<StoredSpecimenType>())
+                        {
+                            <option value="@t">@t</option>
+                        }
+                    </select>
+                </div>
+                @if (aliquotType == StoredSpecimenType.Otros)
+                {
+                    <div class="clin-field" style="width: 200px;">
+                        <label>Especificar tipo</label>
+                        <input type="text" class="clin-input" @bind="aliquotTypeOther" />
+                    </div>
+                }
+                <div class="clin-field" style="width: 120px;">
+                    <label>Alícuotas</label>
+                    <input type="number" min="1" class="clin-input" @bind="aliquotCount" />
+                </div>
+                <div class="clin-field" style="width: 180px;">
+                    <label>Caducidad (opcional)</label>
+                    <input type="date" class="clin-input" @bind="aliquotExpiry" />
+                </div>
+            </div>
+            <div class="clin-row mt-2">
+                <div class="clin-field" style="width: 150px;">
+                    <label>Congelador (QMS)</label>
+                    <input type="text" class="clin-input" @bind="aliquotFreezer" />
+                </div>
+                <div class="clin-field" style="width: 120px;">
+                    <label>Rack</label>
+                    <input type="text" class="clin-input" @bind="aliquotRack" />
+                </div>
+                <div class="clin-field" style="width: 120px;">
+                    <label>Caja</label>
+                    <input type="text" class="clin-input" @bind="aliquotBox" />
+                </div>
+                <div class="clin-field" style="width: 120px;">
+                    <label>Posición</label>
+                    <input type="text" class="clin-input" placeholder="A3" @bind="aliquotPosition" />
+                </div>
+            </div>
+            <div class="clin-row mt-2">
+                <div class="clin-field" style="width: 100%;">
+                    <label>Notas</label>
+                    <input type="text" class="clin-input" @bind="aliquotNotes" />
+                </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="button" class="btn btn-light border" @onclick="() => showAliquotForm = false">Cancelar</button>
+                <button type="button" class="btn btn-info text-white" @onclick="SaveAliquot">Guardar alícuota</button>
+            </div>
+        </div>
+    }
     }
 </div>
 
@@ -643,6 +714,43 @@
     {
         await SampleService.LogLabelReprintAsync(SampleId);
         await JS.InvokeVoidAsync("open", $"/etiquetas/imprimir?ids={SampleId}", "_blank");
+    }
+
+    // Alta de alícuota de excedente (F-7)
+    private bool showAliquotForm = false;
+    private StoredSpecimenType aliquotType = StoredSpecimenType.TuboOriginal;
+    private string? aliquotTypeOther;
+    private int aliquotCount = 1;
+    private DateTime? aliquotExpiry;
+    private string? aliquotFreezer;
+    private string? aliquotRack;
+    private string? aliquotBox;
+    private string? aliquotPosition;
+    private string? aliquotNotes;
+    private string? aliquotError;
+
+    private async Task SaveAliquot()
+    {
+        aliquotError = null;
+        if (aliquotType == StoredSpecimenType.Otros && string.IsNullOrWhiteSpace(aliquotTypeOther))
+        {
+            aliquotError = "Especifique el tipo cuando selecciona \"Otros\".";
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+
+        DateTime? expiryUtc = aliquotExpiry.HasValue ? LocalTimeService.ToUtc(aliquotExpiry.Value.Date) : null;
+
+        await StorageService.AddAsync(SampleId, aliquotType, aliquotTypeOther, aliquotFreezer, aliquotRack, aliquotBox, aliquotPosition, aliquotCount, expiryUtc, aliquotNotes, user?.Id);
+
+        showAliquotForm = false;
+        aliquotTypeOther = null;
+        aliquotFreezer = aliquotRack = aliquotBox = aliquotPosition = aliquotNotes = null;
+        aliquotCount = 1;
+        aliquotExpiry = null;
+        successMessage = "Alícuota registrada correctamente. Consulte Excedente > Alícuotas Almacenadas.";
     }
 
     public class EditModel
