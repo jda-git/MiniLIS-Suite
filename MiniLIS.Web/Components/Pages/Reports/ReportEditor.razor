@@ -3,6 +3,7 @@
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @using MiniLIS.Domain.Identity
+@using MiniLIS.Web.Components.Shared
 @attribute [Authorize]
 @inject NavigationManager Nav
 @inject IReportService ReportService
@@ -24,6 +25,10 @@
     }
     else
     {
+    @if (patientHistory != null)
+    {
+        <PatientHistoryPanel History="patientHistory" />
+    }
     <!-- ═══════════════  SECCIÓN 1 · IDENTIFICACIÓN  ═══════════════ -->
     <fieldset class="rpt-fieldset">
         <legend>Identificación</legend>
@@ -380,6 +385,10 @@
     private List<string> readPanelNames = new();
 
     [Inject] private ISampleService SampleService { get; set; } = default!;
+    [Inject] private IPatientService PatientService { get; set; } = default!;
+
+    // Histórico de estudios previos del paciente (F-2)
+    private List<PatientStudyHistoryItem>? patientHistory;
 
     // Identification fields (editable)
     private string patientName = "";
@@ -408,6 +417,11 @@
         // Populate identification from sample data
         var patient = report.Sample?.ClinicalRequest?.Patient;
         patientName = patient?.FullName ?? "";
+
+        if (patient != null)
+        {
+            patientHistory = await PatientService.GetPatientHistoryAsync(patient.Id, SampleId);
+        }
         peticionElectronica = report.Sample?.ClinicalRequest?.RequestNumber ?? "";
         servicioSolicitante = report.Sample?.ClinicalRequest?.OriginService ?? "";
         medicoSolicitante = report.Sample?.ClinicalRequest?.DoctorName ?? "";

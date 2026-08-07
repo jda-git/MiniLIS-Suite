@@ -24,6 +24,24 @@ namespace MiniLIS.Application.Interfaces
         Task<Patient> UpdatePatientDemographicsAsync(int patientId, Patient newData, string motivo);
 
         Task<List<Patient>> SearchByNameAsync(string name);
+
+        /// <summary>Histórico de estudios previos del mismo paciente (F-2). Recuperación pura:
+        /// muestra, nunca compara ni calcula diferencias entre estudios. Registra la consulta
+        /// en AuditLogs (Action = "Read") — no hay interceptor de lectura, se hace explícito aquí.</summary>
+        Task<List<PatientStudyHistoryItem>> GetPatientHistoryAsync(int patientId, int? excludeSampleId = null);
+    }
+
+    public class PatientStudyHistoryItem
+    {
+        public int SampleId { get; init; }
+        public string SampleNumber { get; init; } = string.Empty;
+        public DateTime? ReceivedAtUtc { get; init; }
+        public SampleType SampleType { get; init; }
+        public List<string> Panels { get; init; } = new(); // DisplayCode: "SLPC-v02"
+        public SampleStatus Status { get; init; }
+        public Guid? ReportPublicId { get; init; }
+        public bool HasReport { get; init; }
+        public string? Diagnosis { get; init; }
     }
 
     public class PatientLookupResult

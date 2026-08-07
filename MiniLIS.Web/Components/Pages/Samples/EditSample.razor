@@ -3,6 +3,7 @@
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @using System.ComponentModel.DataAnnotations
+@using MiniLIS.Web.Components.Shared
 @attribute [Authorize]
 @inject IPatientService PatientService
 @inject ISampleService SampleService
@@ -46,6 +47,10 @@
     }
     else
     {
+    @if (patientHistory != null)
+    {
+        <PatientHistoryPanel History="patientHistory" />
+    }
     <EditForm Model="model" OnValidSubmit="HandleUpdate">
         <DataAnnotationsValidator />
         
@@ -337,6 +342,9 @@
     private Sample? originalSample;
     private ClinicalRequest? originalRequest;
     private Patient? originalPatient;
+
+    // Histórico de estudios previos del paciente (F-2)
+    private List<PatientStudyHistoryItem>? patientHistory;
     private string editPatientMotivo = "";
 
     // Recepción (F-4)
@@ -450,6 +458,11 @@
         existingPanels = await SampleService.GetSamplePanelsAsync(SampleId);
         selectedPanelIds = existingPanels.Where(sp => sp.PanelId.HasValue).Select(sp => sp.PanelId!.Value).ToHashSet();
         customPanels = existingPanels.Where(sp => !sp.PanelId.HasValue && !string.IsNullOrWhiteSpace(sp.CustomText)).Select(sp => sp.CustomText!).ToList();
+
+        if (originalPatient != null)
+        {
+            patientHistory = await PatientService.GetPatientHistoryAsync(originalPatient.Id, originalSample.Id);
+        }
 
         isLoading = false;
     }

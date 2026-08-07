@@ -1,0 +1,79 @@
+@* Histórico de estudios previos del paciente (F-2). Recuperación pura: muestra, nunca
+   compara ni calcula diferencias entre estudios. Ver EditSample.razor / ReportEditor.razor. *@
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+
+<details class="ph-panel mb-3">
+    <summary class="ph-summary">
+        <i class="bi bi-clock-history me-2"></i>
+        @if (History.Count == 0)
+        {
+            <span>Sin estudios previos</span>
+        }
+        else
+        {
+            <span>@History.Count estudio@(History.Count == 1 ? "" : "s") previo@(History.Count == 1 ? "" : "s")</span>
+        }
+    </summary>
+
+    @if (History.Count > 0)
+    {
+        <div class="ph-list">
+            @foreach (var h in History)
+            {
+                <div class="ph-item">
+                    <span class="ph-type-badge ph-type-@h.SampleType.ToCode().ToLowerInvariant()">@h.SampleType.ToCode()</span>
+                    <span class="ph-date">@(h.ReceivedAtUtc.HasValue ? LocalTimeService.ToLocal(h.ReceivedAtUtc.Value).ToString("dd/MM/yyyy") : "—")</span>
+                    <span class="ph-number">@h.SampleNumber</span>
+                    <span class="ph-panels">@(h.Panels.Any() ? string.Join(", ", h.Panels) : "—")</span>
+                    <span class="ph-status">@h.Status</span>
+                    @if (h.HasReport && h.ReportPublicId.HasValue)
+                    {
+                        <a class="ph-link" href="/api/downloads/informe/@h.ReportPublicId/pdf?preview=true" target="_blank" rel="noopener">
+                            <i class="bi bi-file-earmark-pdf"></i> Informe
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="ph-no-report">Sin informe</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+</details>
+
+<style>
+    .ph-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+    .ph-summary { cursor: pointer; font-weight: 600; font-size: 13px; color: #334155; list-style: none; }
+    .ph-summary::-webkit-details-marker { display: none; }
+    .ph-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .ph-item {
+        display: grid;
+        grid-template-columns: 44px 90px 90px 1fr 110px 90px;
+        align-items: center;
+        gap: 10px;
+        font-size: 12px;
+        padding: 6px 8px;
+        background: #fff;
+        border-radius: 6px;
+        border: 1px solid #eef2f7;
+    }
+    .ph-type-badge { font-weight: 700; font-size: 11px; padding: 2px 6px; border-radius: 4px; text-align: center; color: #fff; }
+    .ph-type-sp { background: #0ea5e9; }
+    .ph-type-mo { background: #8b5cf6; }
+    .ph-type-lcr { background: #f59e0b; }
+    .ph-type-otr { background: #64748b; }
+    .ph-date { color: #64748b; }
+    .ph-number { font-weight: 600; color: #1e293b; }
+    .ph-panels { color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ph-status { color: #64748b; }
+    .ph-link { color: #0ea5e9; text-decoration: none; font-weight: 600; }
+    .ph-link:hover { text-decoration: underline; }
+    .ph-no-report { color: #94a3b8; font-style: italic; }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public List<PatientStudyHistoryItem> History { get; set; } = new();
+    [Inject] private ILocalTimeService LocalTimeService { get; set; } = null!;
+}

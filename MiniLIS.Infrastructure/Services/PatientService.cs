@@ -95,6 +95,58 @@ namespace MiniLIS.Infrastructure.Services
                 .ToListAsync();
         }
 
+        public async Task<List<PatientStudyHistoryItem>> GetPatientHistoryAsync(int patientId, int? excludeSampleId = null)
+        {
+            var query = _db.Samples
+                .Include(s => s.ClinicalRequest)
+                .Include(s => s.Panels).ThenInclude(p => p.PanelVersion).ThenInclude(pv => pv!.Panel)
+                .Include(s => s.Report)
+                .Where(s => s.ClinicalRequest.PatientId == patientId);
+
+            if (excludeSampleId.HasValue)
+            {
+                query = query.Where(s => s.Id != excludeSampleId.Value);
+            }
+
+            var samples = await query
+                .OrderByDescending(s => s.ReceivedAtUtc ?? s.ReceptionDate)
+                .ToListAsync();
+
+            var history = samples.Select(s => new PatientStudyHistoryItem
+            {
+                SampleId = s.Id,
+                SampleNumber = s.SampleNumber,
+                ReceivedAtUtc = s.ReceivedAtUtc,
+                SampleType = s.SampleType,
+                Panels = s.Panels
+                    .Where(p => p.PanelVersion != null)
+                    .Select(p => p.PanelVersion!.DisplayCode)
+                    .ToList(),
+                Status = s.Status,
+                ReportPublicId = s.Report?.PublicId,
+                HasReport = s.Report != null,
+                Diagnosis = s.Diagnosis
+            }).ToList();
+
+            // M-2 Regla 3: no hay interceptor de lectura (ApplyAuditing solo dispara en
+            // Add/Modify), así que la consulta del histórico se audita de forma explícita aquí.
+            var userId = await _currentUserService.GetUserIdAsync();
+            var username = await _currentUserService.GetUsernameAsync();
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(Patient),
+                EntityId = patientId.ToString(),
+                Action = "Read",
+                UserId = userId,
+                Username = username,
+                ActionContext = "Consulta de histórico de estudios previos (F-2)",
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+
+            return history;
+        }
+
         /// <summary>Mayúsculas, sin tildes, espacios colapsados — para comparar sin disparar
         /// el aviso de discrepancia por diferencias puramente tipográficas.</summary>
         private static string Normalize(string? value)
