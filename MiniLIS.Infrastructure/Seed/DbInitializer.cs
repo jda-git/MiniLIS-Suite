@@ -1,17 +1,20 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Domain.Identity;
 using MiniLIS.Infrastructure.Persistence;
 using System;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 
 namespace MiniLIS.Infrastructure.Seed
 {
     public static class DbInitializer
     {
-        public static async Task SeedIdentityAsync(IServiceProvider serviceProvider)
+        public static async Task SeedIdentityAsync(IServiceProvider serviceProvider, IConfiguration configuration, ILogger logger)
         {
             var context = serviceProvider.GetRequiredService<ApplicationDbContext>();
             var roleManager = serviceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
@@ -27,27 +30,47 @@ namespace MiniLIS.Infrastructure.Seed
                 }
             }
 
-            // 2. Seed Default Admin
-            const string adminEmail = "admin@minilis.com";
-            const string adminUser = adminEmail;
-            
-            var existingAdmin = await userManager.FindByNameAsync(adminUser);
-            if (existingAdmin == null)
+            // 2. Seed Default Admin — solo si NINGÚN usuario tiene el rol Administrador,
+            // no si existe un usuario con este nombre concreto. Así renombrar o desactivar
+            // el admin sembrado no provoca que se recree con la contraseña por defecto.
+            var existingAdmins = await userManager.GetUsersInRoleAsync("Administrador");
+            if (existingAdmins.Count == 0)
             {
+                var adminUser = configuration["Seed:AdminUser"] ?? "admin@minilis.com";
+                var adminPassword = configuration["Seed:AdminPassword"];
+                var generated = string.IsNullOrWhiteSpace(adminPassword);
+                if (generated)
+                {
+                    // Cumple sobradamente la política de contraseñas configurada (mín. 6, sin requisitos de complejidad).
+                    adminPassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
+                }
+
                 var admin = new ApplicationUser
                 {
                     UserName = adminUser,
-                    Email = adminEmail,
+                    Email = adminUser,
                     FullName = "Administrador del Sistema",
                     EmailConfirmed = true,
                     IsActive = true,
                     MustChangePassword = true
                 };
 
-                var createPowerUser = await userManager.CreateAsync(admin, "Admin123!");
+                var createPowerUser = await userManager.CreateAsync(admin, adminPassword!);
                 if (createPowerUser.Succeeded)
                 {
                     await userManager.AddToRoleAsync(admin, "Administrador");
+                    if (generated)
+                    {
+                        logger.LogWarning(
+                            "[SEED] Administrador inicial creado: {AdminUser} / contraseña temporal generada: {AdminPassword} " +
+                            "— este mensaje solo se emite una vez, cámbiela en el primer inicio de sesión.",
+                            adminUser, adminPassword);
+                    }
+                }
+                else
+                {
+                    logger.LogError("[SEED] No se pudo crear el administrador inicial: {Errors}",
+                        string.Join("; ", createPowerUser.Errors.Select(e => e.Description)));
                 }
             }
 
