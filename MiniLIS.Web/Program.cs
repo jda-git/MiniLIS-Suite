@@ -49,6 +49,8 @@ builder.Services.AddScoped<ISampleService, SampleService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IStatisticsService, StatisticsService>();
+builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.BackupWorker>();
 

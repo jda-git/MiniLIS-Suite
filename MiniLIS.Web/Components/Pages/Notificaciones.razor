@@ -1,13 +1,12 @@
 @page "/notificaciones"
-@using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MiniLIS.Infrastructure.Persistence
+@using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using MiniLIS.Domain.Identity
 @attribute [Authorize]
-@inject ApplicationDbContext context
+@inject INotificationService NotificationService
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 
@@ -367,45 +366,7 @@
         isLoading = true;
         try
         {
-            var query = context.SampleReports
-                .Include(r => r.Sample)
-                    .ThenInclude(s => s.ClinicalRequest)
-                        .ThenInclude(c => c.Patient)
-                .Where(r => r.HasCriticalValueAlert || r.HasNewDiagnosisAlert)
-                .AsQueryable();
-
-            if (StartDate.HasValue)
-            {
-                query = query.Where(r => r.ReportDate >= StartDate.Value.Date);
-            }
-            if (EndDate.HasValue)
-            {
-                query = query.Where(r => r.ReportDate <= EndDate.Value.Date.AddDays(1).AddTicks(-1));
-            }
-
-            if (AlertType == "Critico")
-            {
-                query = query.Where(r => r.HasCriticalValueAlert);
-            }
-            else if (AlertType == "NuevoDiag")
-            {
-                query = query.Where(r => r.HasNewDiagnosisAlert);
-            }
-
-            if (!string.IsNullOrWhiteSpace(SearchText))
-            {
-                var lowerSearch = SearchText.ToLower();
-                query = query.Where(r => 
-                    (r.Conclusions != null && r.Conclusions.ToLower().Contains(lowerSearch)) ||
-                    (r.Sample != null && r.Sample.ClinicalRequest != null && r.Sample.ClinicalRequest.Patient != null && 
-                     (r.Sample.ClinicalRequest.Patient.FullName.ToLower().Contains(lowerSearch) || 
-                      r.Sample.ClinicalRequest.Patient.NHC.ToLower().Contains(lowerSearch))) ||
-                    (r.CriticalValueText != null && r.CriticalValueText.ToLower().Contains(lowerSearch)) ||
-                    (r.NewDiagnosisText != null && r.NewDiagnosisText.ToLower().Contains(lowerSearch))
-                );
-            }
-
-            filteredReports = await query.OrderByDescending(r => r.ReportDate).ToListAsync();
+            filteredReports = await NotificationService.GetFilteredReportsAsync(SearchText, AlertType, StartDate, EndDate);
         }
         finally
         {
@@ -423,50 +384,10 @@
             return;
         }
 
-        var sb = new System.Text.StringBuilder();
-        // BOM for Excel so it opens correctly in Spanish layout
-        sb.Append('\uFEFF');
-        sb.AppendLine("Fecha Informe;NHC;Nombre Paciente;Diagnóstico;Aviso Valor Crítico;Aviso Nuevo Diagnóstico");
-
-        foreach (var report in filteredReports)
-        {
-            var date = report.ReportDate?.ToString("dd/MM/yyyy") ?? "";
-            var nhc = EscapeCsv(report.Sample?.ClinicalRequest?.Patient?.NHC);
-            var name = EscapeCsv(report.Sample?.ClinicalRequest?.Patient?.FullName);
-            var diag = EscapeCsv(report.Conclusions);
-            var crit = EscapeCsv(report.CriticalValueText);
-            var newDiag = EscapeCsv(report.NewDiagnosisText);
-
-            sb.AppendLine($"{date};{nhc};{name};{diag};{crit};{newDiag}");
-        }
-
-        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var currentUser = await UserManager.GetUserAsync(authState.User);
+        var bytes = await NotificationService.ExportToCsvAsync(filteredReports, currentUser?.Id, currentUser?.UserName);
         var base64 = Convert.ToBase64String(bytes);
 
-        var currentUser = await UserManager.GetUserAsync(authState.User);
-        context.AuditLogs.Add(new AuditLog
-        {
-            EntityName = "NotificacionesCsvExport",
-            EntityId = filteredReports.Count.ToString(),
-            Action = "Export",
-            UserId = currentUser?.Id,
-            Username = currentUser?.UserName,
-            ActionContext = "Exportación CSV de notificaciones",
-            TimestampUtc = DateTime.UtcNow
-        });
-        await context.SaveChangesAsync();
-
         await JS.InvokeVoidAsync("downloadFileFromBase64", $"Notificaciones_{DateTime.Now:yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
-    }
-
-    private string EscapeCsv(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return "";
-        var v = value.Replace("\"", "\"\"");
-        if (v.Contains(";") || v.Contains("\"") || v.Contains("\n"))
-        {
-            return $"\"{v}\"";
-        }
-        return v;
     }
 }

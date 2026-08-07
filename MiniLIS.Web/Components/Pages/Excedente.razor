@@ -1,13 +1,12 @@
 @page "/excedente"
-@using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MiniLIS.Infrastructure.Persistence
+@using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using MiniLIS.Domain.Identity
 @attribute [Authorize]
-@inject ApplicationDbContext context
+@inject IExcedenteService ExcedenteService
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 
@@ -381,51 +380,7 @@
         isLoading = true;
         try
         {
-            var query = context.SampleReports
-                .Include(r => r.Sample)
-                    .ThenInclude(s => s.ClinicalRequest)
-                        .ThenInclude(c => c.Patient)
-                .Where(r => r.HasBiobank || r.HasGenomics || r.HasNgs)
-                .AsQueryable();
-
-            if (StartDate.HasValue)
-            {
-                query = query.Where(r => r.ReportDate >= StartDate.Value.Date);
-            }
-            if (EndDate.HasValue)
-            {
-                query = query.Where(r => r.ReportDate <= EndDate.Value.Date.AddDays(1).AddTicks(-1));
-            }
-
-            if (DestinationType == "Biobanco")
-            {
-                query = query.Where(r => r.HasBiobank);
-            }
-            else if (DestinationType == "Genomica")
-            {
-                query = query.Where(r => r.HasGenomics);
-            }
-            else if (DestinationType == "Ngs")
-            {
-                query = query.Where(r => r.HasNgs);
-            }
-
-            if (!string.IsNullOrWhiteSpace(SearchText))
-            {
-                var lowerSearch = SearchText.ToLower();
-                query = query.Where(r => 
-                    (r.Conclusions != null && r.Conclusions.ToLower().Contains(lowerSearch)) ||
-                    (r.Sample != null && r.Sample.ClinicalRequest != null && r.Sample.ClinicalRequest.Patient != null && 
-                     (r.Sample.ClinicalRequest.Patient.FullName.ToLower().Contains(lowerSearch) || 
-                      r.Sample.ClinicalRequest.Patient.NHC.ToLower().Contains(lowerSearch))) ||
-                    (r.Sample != null && r.Sample.SampleNumber != null && r.Sample.SampleNumber.ToLower().Contains(lowerSearch)) ||
-                    (r.BiobankText != null && r.BiobankText.ToLower().Contains(lowerSearch)) ||
-                    (r.GenomicsText != null && r.GenomicsText.ToLower().Contains(lowerSearch)) ||
-                    (r.NgsText != null && r.NgsText.ToLower().Contains(lowerSearch))
-                );
-            }
-
-            filteredReports = await query.OrderByDescending(r => r.ReportDate).ToListAsync();
+            filteredReports = await ExcedenteService.GetFilteredReportsAsync(SearchText, DestinationType, StartDate, EndDate);
         }
         finally
         {
@@ -443,52 +398,10 @@
             return;
         }
 
-        var sb = new System.Text.StringBuilder();
-        // BOM for Excel so it opens correctly in Spanish layout
-        sb.Append('\uFEFF');
-        sb.AppendLine("NHC;Nombre Paciente;Fecha Muestra;Diagnóstico;Código Muestra;Biobanco;Genómica;NGS");
-
-        foreach (var report in filteredReports)
-        {
-            var nhc = EscapeCsv(report.Sample?.ClinicalRequest?.Patient?.NHC);
-            var name = EscapeCsv(report.Sample?.ClinicalRequest?.Patient?.FullName);
-            var sampleDate = report.Sample != null ? report.Sample.ReceptionDate.ToString("dd/MM/yyyy") : "";
-            var diag = EscapeCsv(report.Conclusions);
-            var code = EscapeCsv(report.Sample?.SampleNumber);
-            var biobank = report.HasBiobank ? EscapeCsv(report.BiobankText) : "";
-            var genomics = report.HasGenomics ? EscapeCsv(report.GenomicsText) : "";
-            var ngs = report.HasNgs ? EscapeCsv(report.NgsText) : "";
-
-            sb.AppendLine($"{nhc};{name};{sampleDate};{diag};{code};{biobank};{genomics};{ngs}");
-        }
-
-        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var currentUser = await UserManager.GetUserAsync(authState.User);
+        var bytes = await ExcedenteService.ExportToCsvAsync(filteredReports, currentUser?.Id, currentUser?.UserName);
         var base64 = Convert.ToBase64String(bytes);
 
-        var currentUser = await UserManager.GetUserAsync(authState.User);
-        context.AuditLogs.Add(new AuditLog
-        {
-            EntityName = "ExcedenteCsvExport",
-            EntityId = filteredReports.Count.ToString(),
-            Action = "Export",
-            UserId = currentUser?.Id,
-            Username = currentUser?.UserName,
-            ActionContext = "Exportación CSV de excedente",
-            TimestampUtc = DateTime.UtcNow
-        });
-        await context.SaveChangesAsync();
-
         await JS.InvokeVoidAsync("downloadFileFromBase64", $"Excedente_{DateTime.Now:yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
-    }
-
-    private string EscapeCsv(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return "";
-        var v = value.Replace("\"", "\"\"");
-        if (v.Contains(";") || v.Contains("\"") || v.Contains("\n"))
-        {
-            return $"\"{v}\"";
-        }
-        return v;
     }
 }
