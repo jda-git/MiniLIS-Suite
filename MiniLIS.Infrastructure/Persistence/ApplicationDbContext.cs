@@ -44,6 +44,8 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<RejectionReason> RejectionReasons => Set<RejectionReason>();
         public DbSet<SampleReceptionIssue> SampleReceptionIssues => Set<SampleReceptionIssue>();
         public DbSet<QualityIndicator> QualityIndicators => Set<QualityIndicator>();
+        public DbSet<WorklistExportProfile> WorklistExportProfiles => Set<WorklistExportProfile>();
+        public DbSet<WorklistExportColumn> WorklistExportColumns => Set<WorklistExportColumn>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -154,6 +156,12 @@ namespace MiniLIS.Infrastructure.Persistence
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<QualityIndicator>().HasIndex(q => q.Code).IsUnique();
+
+            modelBuilder.Entity<WorklistExportColumn>()
+                .HasOne(c => c.Profile)
+                .WithMany(p => p.Columns)
+                .HasForeignKey(c => c.WorklistExportProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
 
         public override int SaveChanges()

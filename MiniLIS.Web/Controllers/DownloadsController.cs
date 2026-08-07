@@ -19,16 +19,18 @@ namespace MiniLIS.Web.Controllers
         private readonly IDocumentService _documentService;
         private readonly ISampleService _sampleService;
         private readonly IQualityIndicatorService _qualityIndicatorService;
+        private readonly IWorklistExportService _worklistExportService;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
             _sampleService = sampleService;
             _qualityIndicatorService = qualityIndicatorService;
+            _worklistExportService = worklistExportService;
             _userManager = userManager;
             _logger = logger;
             _configuration = configuration;
@@ -399,6 +401,32 @@ namespace MiniLIS.Web.Controllers
                 _logger.LogError(ex, "Error generando el PDF de revisión de indicadores de calidad");
                 return StatusCode(StatusCodes.Status500InternalServerError,
                     "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
+            }
+        }
+
+        [HttpGet("hoja-trabajo")]
+        public async Task<IActionResult> ExportHojaTrabajo([FromQuery] string sampleIds, [FromQuery] int profileId)
+        {
+            try
+            {
+                var ids = (sampleIds ?? string.Empty)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => int.TryParse(s.Trim(), out var id) ? id : (int?)null)
+                    .Where(id => id.HasValue)
+                    .Select(id => id!.Value)
+                    .ToList();
+
+                if (!ids.Any())
+                    return Problem(title: "Debe seleccionar al menos una muestra.", statusCode: 400);
+
+                var result = await _worklistExportService.ExportAsync(ids, profileId);
+                return File(result.FileBytes, "text/csv", result.FileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando la hoja de trabajo del citómetro");
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "No se ha podido generar la hoja de trabajo. Inténtelo de nuevo o contacte con el administrador.");
             }
         }
     }

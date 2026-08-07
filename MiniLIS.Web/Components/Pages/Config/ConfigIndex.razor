@@ -6,6 +6,7 @@
 @inject IMasterDataService MasterService
 @inject IPanelCatalogService PanelCatalogService
 @inject IQualityIndicatorService QualityIndicatorService
+@inject IWorklistExportService WorklistExportService
 @inject NavigationManager Nav
 @using MiniLIS.Web.Components.Shared
 
@@ -39,6 +40,9 @@
         </button>
         <button class="config-tab @(activeTab == "labels" ? "active" : "")" @onclick='() => SetTab("labels")'>
             <i class="bi bi-upc-scan"></i> Etiquetas
+        </button>
+        <button class="config-tab @(activeTab == "worklist" ? "active" : "")" @onclick='() => SetTab("worklist")'>
+            <i class="bi bi-file-earmark-arrow-down"></i> Hoja de Trabajo
         </button>
         <button class="config-tab @(activeTab == "rejectionReasons" ? "active" : "")" @onclick='() => SetTab("rejectionReasons")'>
             <i class="bi bi-clipboard-x"></i> Motivos de Rechazo
@@ -627,6 +631,139 @@
                     ZPL (Zebra) queda fuera de alcance hasta confirmar un modelo concreto en la unidad.
                 </p>
             </div>
+        }
+
+        @* ════════ TAB: HOJA DE TRABAJO (F-6) ════════ *@
+        else if (activeTab == "worklist")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Perfiles de Exportación — Hoja de Trabajo del Citómetro</h2>
+                    <p class="section-subtitle">
+                        El esquema de FACSDiva/FACSuite no se ha inventado: son perfiles de partida. Antes de usar uno en
+                        producción, exporta una lista de ejemplo desde el propio equipo, compara la estructura de columnas
+                        y ajusta este perfil hasta que coincida.
+                    </p>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+                @foreach (var p in worklistProfiles)
+                {
+                    <button class="btn-config @(editingWorklistProfileId == p.Id ? "btn-config-primary" : "btn-config-ghost")" @onclick="() => LoadWorklistProfileForEdit(p.Id)">
+                        @p.Name
+                        @if (!p.ValidatedAgainstInstrument)
+                        {
+                            <i class="bi bi-exclamation-triangle-fill ms-1" style="color:#eab308;" title="Pendiente de validar"></i>
+                        }
+                    </button>
+                }
+            </div>
+
+            @if (editingWorklistProfile != null)
+            {
+                @if (!editingWorklistProfile.ValidatedAgainstInstrument)
+                {
+                    <div class="inline-form mb-3" style="border-color:#eab308;">
+                        <strong><i class="bi bi-exclamation-triangle-fill"></i> Pendiente de validar contra el equipo real.</strong>
+                        <button class="btn-config btn-config-success ms-3" @onclick="MarkWorklistProfileValidated">Marcar como validado</button>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-success small">Validado el @editingWorklistProfile.ValidatedAtUtc?.ToString("dd/MM/yyyy") contra el equipo real.</p>
+                }
+
+                <div class="inline-form-grid">
+                    <div class="form-field">
+                        <label class="field-label">Nombre</label>
+                        <input type="text" class="field-input" @bind="editingWorklistProfile.Name" />
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Instrumento</label>
+                        <input type="text" class="field-input" @bind="editingWorklistProfile.TargetInstrument" />
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Extensión</label>
+                        <input type="text" class="field-input" @bind="editingWorklistProfile.FileExtension" />
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Delimitador</label>
+                        <input type="text" class="field-input" @bind="editingWorklistProfile.Delimiter" />
+                    </div>
+                </div>
+                <div class="inline-form-grid">
+                    <div class="form-field">
+                        <label class="field-label">Codificación</label>
+                        <select class="field-input" @bind="editingWorklistProfile.Encoding">
+                            <option value="UTF-8">UTF-8</option>
+                            <option value="ANSI">ANSI</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Fin de línea</label>
+                        <select class="field-input" @bind="editingWorklistProfile.LineEnding">
+                            <option value="CRLF">CRLF (Windows)</option>
+                            <option value="LF">LF (Unix)</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Granularidad</label>
+                        <select class="field-input" @bind="editingWorklistProfile.Granularity">
+                            <option value="PorTubo">Por tubo</option>
+                            <option value="PorMuestra">Por muestra</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Fila de cabecera</label>
+                        <input type="checkbox" @bind="editingWorklistProfile.IncludeHeaderRow" />
+                    </div>
+                </div>
+
+                <h3 class="section-title mt-3" style="font-size:15px;">Columnas</h3>
+                <table class="config-table mb-2">
+                    <thead>
+                        <tr><th>Orden</th><th>Cabecera</th><th>Plantilla</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var col in editingWorklistColumns)
+                        {
+                            <tr>
+                                <td style="width:60px;"><input type="number" class="field-input" @bind="col.DisplayOrder" /></td>
+                                <td><input type="text" class="field-input" @bind="col.ColumnHeader" /></td>
+                                <td><input type="text" class="field-input" style="width:100%;" @bind="col.ValueTemplate" /></td>
+                                <td><button class="action-icon action-delete" @onclick="() => editingWorklistColumns.Remove(col)"><i class="bi bi-trash"></i></button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <button class="btn-config btn-config-ghost mb-3" @onclick="AddWorklistColumn"><i class="bi bi-plus-lg"></i> Añadir columna</button>
+
+                <div>
+                    <button class="btn-config btn-config-success" @onclick="SaveWorklistProfile"><i class="bi bi-save"></i> Guardar perfil</button>
+                </div>
+
+                <h3 class="section-title mt-4" style="font-size:15px;">Marcadores disponibles</h3>
+                <p class="section-subtitle">Ninguno de estos marcadores puede devolver nombre, NHC ni NASI — no existen en el motor de sustitución.</p>
+                <table class="config-table">
+                    <thead><tr><th>Marcador</th><th>Ejemplo</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>{SampleNumber}</code></td><td>26-00042</td></tr>
+                        <tr><td><code>{SampleTypeCode}</code></td><td>MO</td></tr>
+                        <tr><td><code>{SampleTypeName}</code></td><td>Médula ósea</td></tr>
+                        <tr><td><code>{TubeNumber}</code></td><td>2</td></tr>
+                        <tr><td><code>{TubeNumberPadded}</code></td><td>02</td></tr>
+                        <tr><td><code>{PanelCode}</code></td><td>SLPC</td></tr>
+                        <tr><td><code>{PanelVersion}</code></td><td>03</td></tr>
+                        <tr><td><code>{PanelDisplayCode}</code></td><td>SLPC-v03</td></tr>
+                        <tr><td><code>{MarkerList}</code></td><td>8+lambda/56+kappa/5/3/19/20+4/45/38</td></tr>
+                        <tr><td><code>{FcsFileName}</code></td><td>26-00042_MO_T02_SLPC-v03.fcs</td></tr>
+                        <tr><td><code>{ReceptionDate}</code></td><td>2026-08-05</td></tr>
+                        <tr><td><code>{WorklistDate}</code></td><td>2026-08-06</td></tr>
+                        <tr><td><code>{SequenceInWorklist}</code></td><td>7</td></tr>
+                    </tbody>
+                </table>
+            }
         }
 
         @* ════════ TAB: AJUSTES (Intensidades) ════════ *@
@@ -1280,6 +1417,12 @@
     // Configuración de etiquetas (F-5)
     private LabelSettings labelSettings = new();
 
+    // Perfiles de hoja de trabajo (F-6)
+    private List<WorklistExportProfile> worklistProfiles = new();
+    private int? editingWorklistProfileId;
+    private WorklistExportProfile? editingWorklistProfile;
+    private List<WorklistExportColumn> editingWorklistColumns = new();
+
     // Panel versions (M-4)
     private Panel? versionsPanel;
     private List<PanelVersion> panelVersions = new();
@@ -1317,6 +1460,7 @@
         rejectionReasons = await MasterService.GetAllRejectionReasonsAsync();
         qualityIndicators = await QualityIndicatorService.GetAllIndicatorsAsync();
         labelSettings = await MasterService.GetLabelSettingsAsync();
+        worklistProfiles = await WorklistExportService.GetProfilesAsync();
         intensitySettings = await MasterService.GetIntensitySettingsAsync();
 
         templateMarkerCounts.Clear();
@@ -1387,6 +1531,35 @@
     {
         await MasterService.UpsertLabelSettingsAsync(labelSettings);
         StateHasChanged();
+    }
+
+    // ── HOJA DE TRABAJO (F-6) ──
+    private async Task LoadWorklistProfileForEdit(int profileId)
+    {
+        editingWorklistProfileId = profileId;
+        editingWorklistProfile = await WorklistExportService.GetProfileWithColumnsAsync(profileId);
+        editingWorklistColumns = editingWorklistProfile?.Columns.OrderBy(c => c.DisplayOrder).ToList() ?? new();
+    }
+
+    private void AddWorklistColumn()
+    {
+        editingWorklistColumns.Add(new WorklistExportColumn { DisplayOrder = editingWorklistColumns.Count + 1, ColumnHeader = "Nueva columna", ValueTemplate = "{SampleNumber}" });
+    }
+
+    private async Task SaveWorklistProfile()
+    {
+        if (editingWorklistProfile == null) return;
+        await WorklistExportService.UpsertProfileAsync(editingWorklistProfile, editingWorklistColumns);
+        worklistProfiles = await WorklistExportService.GetProfilesAsync();
+        await LoadWorklistProfileForEdit(editingWorklistProfile.Id);
+    }
+
+    private async Task MarkWorklistProfileValidated()
+    {
+        if (editingWorklistProfileId == null) return;
+        await WorklistExportService.MarkProfileValidatedAsync(editingWorklistProfileId.Value);
+        worklistProfiles = await WorklistExportService.GetProfilesAsync();
+        await LoadWorklistProfileForEdit(editingWorklistProfileId.Value);
     }
 
     // ── PANELS (familias) ──

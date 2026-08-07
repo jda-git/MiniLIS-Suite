@@ -99,6 +99,10 @@ namespace MiniLIS.Domain.Entities
         [MaxLength(100)]
         public string? QmsNonConformityRef { get; set; }
 
+        /// <summary>Última vez que la muestra se incluyó en una hoja de trabajo exportada
+        /// (F-6). Evita duplicados en la siguiente hoja; reincluir es una acción explícita.</summary>
+        public DateTime? LastWorklistExportedAtUtc { get; set; }
+
         public string Diagnosis { get; set; } = string.Empty;
 
         /// <summary>Tipo de muestra (A-3). Dato preanalítico, fijado en recepción.</summary>

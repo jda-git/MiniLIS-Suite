@@ -1,0 +1,248 @@
+@page "/hoja-trabajo"
+@using Microsoft.AspNetCore.Authorization
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@attribute [Authorize]
+@inject IWorklistExportService ExportService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Hoja de Trabajo del Citómetro - MiniLIS Suite</PageTitle>
+
+<div class="ht-page">
+    <div class="ht-header">
+        <h1 class="ht-title"><i class="bi bi-file-earmark-arrow-down me-2"></i>Hoja de Trabajo del Citómetro</h1>
+        <p class="ht-subtitle">Exporta la lista de trabajo con el número de estudio como nombre de espécimen — el nombre del paciente nunca llega al fichero FCS.</p>
+    </div>
+
+    @if (currentProfile != null && !currentProfile.ValidatedAgainstInstrument)
+    {
+        <div class="alert alert-warning ht-warning">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Perfil "@currentProfile.Name" pendiente de validar contra el equipo real.</strong>
+            Exporta una lista de ejemplo desde el propio instrumento, compara la estructura de columnas y ajusta el perfil en Configuración → Hoja de Trabajo hasta que coincida, antes de usarlo en producción.
+        </div>
+    }
+
+    <div class="ht-card">
+        <div class="ht-filters">
+            <div class="form-field">
+                <label class="field-label">Desde</label>
+                <input type="date" class="field-input" @bind="fromDate" @bind:after="LoadPending" />
+            </div>
+            <div class="form-field">
+                <label class="field-label">Hasta</label>
+                <input type="date" class="field-input" @bind="toDate" @bind:after="LoadPending" />
+            </div>
+            <div class="form-field">
+                <label class="field-label">Perfil de exportación</label>
+                <select class="field-input" @bind="selectedProfileId" @bind:after="OnProfileChanged">
+                    @foreach (var p in profiles)
+                    {
+                        <option value="@p.Id">@p.Name @(p.ValidatedAgainstInstrument ? "" : "(sin validar)")</option>
+                    }
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="field-label">&nbsp;</label>
+                <label class="field-checkbox"><input type="checkbox" @bind="incluirYaExportadas" @bind:after="LoadPending" /> Reincluir ya exportadas</label>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoadingPending)
+    {
+        <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+    }
+    else
+    {
+        <div class="ht-card">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="ht-section-title">Pendientes de adquirir (@pending.Count)</h2>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="SelectAll">Todas</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="SelectNone">Ninguna</button>
+                </div>
+            </div>
+            @if (!pending.Any())
+            {
+                <p class="text-muted">No hay muestras pendientes de adquirir en el rango seleccionado.</p>
+            }
+            else
+            {
+                <table class="ht-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Nº muestra</th>
+                            <th>Tipo</th>
+                            <th>Paneles</th>
+                            <th>Ya exportada</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in pending)
+                        {
+                            <tr>
+                                <td><input type="checkbox" checked="@selectedIds.Contains(item.SampleId)" @onchange="@(e => ToggleSelect(item.SampleId, (bool)e.Value!))" /></td>
+                                <td>@item.SampleNumber</td>
+                                <td>@item.SampleType.ToCode()</td>
+                                <td>@string.Join(", ", item.Panels)</td>
+                                <td>@(item.AlreadyExported ? $"Sí ({item.LastExportedAtUtc:dd/MM HH:mm})" : "No")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="ht-card">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="ht-section-title">Vista previa (primeras 10 filas)</h2>
+                <button class="btn btn-sm btn-primary" @onclick="LoadPreview" disabled="@(selectedIds.Count == 0)">
+                    <i class="bi bi-eye"></i> Generar vista previa
+                </button>
+            </div>
+            @if (previewRows != null)
+            {
+                @if (previewWarnings.Any())
+                {
+                    <div class="alert alert-warning py-2 px-3 small">
+                        Algunos valores se modificaron al sanear caracteres no permitidos (solo A-Z0-9-_): @string.Join(", ", previewWarnings)
+                    </div>
+                }
+                <div class="ht-preview-wrap">
+                    <table class="ht-table">
+                        <thead>
+                            <tr>
+                                @foreach (var col in currentProfileColumns)
+                                {
+                                    <th>@col.ColumnHeader</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in previewRows)
+                            {
+                                <tr>
+                                    @foreach (var v in row.Values)
+                                    {
+                                        <td>@v</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <button class="btn btn-success mt-3" @onclick="Exportar" disabled="@isExporting">
+                    @if (isExporting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    <i class="bi bi-download me-2"></i>Descargar hoja de trabajo
+                </button>
+            }
+            else
+            {
+                <p class="text-muted">Selecciona muestras y genera la vista previa antes de descargar.</p>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .ht-page { padding: 0; }
+    .ht-header { margin-bottom: 16px; }
+    .ht-title { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0; }
+    .ht-subtitle { font-size: 12px; color: #64748b; margin: 4px 0 0; }
+    .ht-warning { font-size: 13px; }
+    .ht-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .ht-section-title { font-size: 15px; font-weight: 700; color: #1e293b; margin: 0; }
+    .ht-filters { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; }
+    .field-label { font-size: 11px; font-weight: 600; color: #64748b; display: block; margin-bottom: 2px; }
+    .field-input { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+    .field-checkbox { font-size: 12px; display: flex; align-items: center; gap: 6px; height: 32px; }
+    .ht-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ht-table th { text-align: left; padding: 6px 8px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .ht-table td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; }
+    .ht-preview-wrap { overflow-x: auto; }
+</style>
+
+@code {
+    private DateTime fromDate = DateTime.Today.AddDays(-2);
+    private DateTime toDate = DateTime.Today;
+    private bool incluirYaExportadas = false;
+    private bool isLoadingPending = true;
+    private bool isExporting = false;
+
+    private List<WorklistExportProfile> profiles = new();
+    private int selectedProfileId;
+    private WorklistExportProfile? currentProfile;
+    private List<WorklistExportColumn> currentProfileColumns = new();
+
+    private List<PendingWorklistItem> pending = new();
+    private HashSet<int> selectedIds = new();
+
+    private List<WorklistPreviewRow>? previewRows;
+    private List<string> previewWarnings = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        profiles = await ExportService.GetProfilesAsync();
+        if (profiles.Any())
+        {
+            selectedProfileId = profiles.First().Id;
+            await OnProfileChanged();
+        }
+        await LoadPending();
+    }
+
+    private async Task OnProfileChanged()
+    {
+        currentProfile = await ExportService.GetProfileWithColumnsAsync(selectedProfileId);
+        currentProfileColumns = currentProfile?.Columns.OrderBy(c => c.DisplayOrder).ToList() ?? new();
+        previewRows = null;
+    }
+
+    private async Task LoadPending()
+    {
+        isLoadingPending = true;
+        pending = await ExportService.GetPendingAsync(fromDate, toDate, incluirYaExportadas);
+        selectedIds = pending.Select(p => p.SampleId).ToHashSet();
+        previewRows = null;
+        isLoadingPending = false;
+    }
+
+    private void ToggleSelect(int sampleId, bool isChecked)
+    {
+        if (isChecked) selectedIds.Add(sampleId);
+        else selectedIds.Remove(sampleId);
+    }
+
+    private void SelectAll() => selectedIds = pending.Select(p => p.SampleId).ToHashSet();
+    private void SelectNone() => selectedIds = new HashSet<int>();
+
+    private async Task LoadPreview()
+    {
+        previewRows = await ExportService.PreviewAsync(selectedIds.ToList(), selectedProfileId, 10);
+        previewWarnings = previewRows.SelectMany(r => r.ModifiedFields).Distinct().ToList();
+    }
+
+    private async Task Exportar()
+    {
+        isExporting = true;
+        try
+        {
+            var ids = string.Join(",", selectedIds);
+            var url = $"/api/downloads/hoja-trabajo?sampleIds={ids}&profileId={selectedProfileId}&t={DateTime.Now.Ticks}";
+            await JS.InvokeVoidAsync("triggerDownload", url);
+            await Task.Delay(500); // deja tiempo a que el iframe de descarga inicie antes de recargar la lista
+            await LoadPending();
+            previewRows = null;
+        }
+        finally
+        {
+            isExporting = false;
+        }
+    }
+}

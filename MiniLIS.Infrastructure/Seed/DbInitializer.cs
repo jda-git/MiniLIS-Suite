@@ -242,6 +242,58 @@ namespace MiniLIS.Infrastructure.Seed
                 indicatorOrder++;
             }
             await context.SaveChangesAsync();
+
+            // 8. Seed Worklist Export Profiles (F-6). Esquema NO validado contra el equipo
+            // real: punto de partida, marcado explícitamente como pendiente de validación.
+            if (!await context.WorklistExportProfiles.AnyAsync(p => p.TargetInstrument == "FACSDiva"))
+            {
+                context.WorklistExportProfiles.Add(new WorklistExportProfile
+                {
+                    Name = "FACSDiva — Canto II",
+                    TargetInstrument = "FACSDiva",
+                    FileExtension = "csv",
+                    Delimiter = ",",
+                    Encoding = "UTF-8",
+                    IncludeHeaderRow = true,
+                    LineEnding = "CRLF",
+                    Granularity = WorklistGranularity.PorTubo,
+                    IsActive = true,
+                    ValidatedAgainstInstrument = false,
+                    Columns = new List<WorklistExportColumn>
+                    {
+                        new() { DisplayOrder = 1, ColumnHeader = "Sample Name", ValueTemplate = "{SampleNumber}_{SampleTypeCode}_T{TubeNumberPadded}" },
+                        new() { DisplayOrder = 2, ColumnHeader = "Tube Name", ValueTemplate = "{PanelDisplayCode}" },
+                        new() { DisplayOrder = 3, ColumnHeader = "Panel", ValueTemplate = "{PanelCode}" },
+                        new() { DisplayOrder = 4, ColumnHeader = "Markers", ValueTemplate = "{MarkerList}" },
+                        new() { DisplayOrder = 5, ColumnHeader = "FCS File", ValueTemplate = "{FcsFileName}" }
+                    }
+                });
+            }
+
+            if (!await context.WorklistExportProfiles.AnyAsync(p => p.TargetInstrument == "FACSuite"))
+            {
+                context.WorklistExportProfiles.Add(new WorklistExportProfile
+                {
+                    Name = "FACSuite — FACSLyric",
+                    TargetInstrument = "FACSuite",
+                    FileExtension = "csv",
+                    Delimiter = ";",
+                    Encoding = "UTF-8",
+                    IncludeHeaderRow = true,
+                    LineEnding = "CRLF",
+                    Granularity = WorklistGranularity.PorTubo,
+                    IsActive = true,
+                    ValidatedAgainstInstrument = false,
+                    Columns = new List<WorklistExportColumn>
+                    {
+                        new() { DisplayOrder = 1, ColumnHeader = "SpecimenID", ValueTemplate = "{SampleNumber}" },
+                        new() { DisplayOrder = 2, ColumnHeader = "TubeID", ValueTemplate = "T{TubeNumberPadded}" },
+                        new() { DisplayOrder = 3, ColumnHeader = "PanelCode", ValueTemplate = "{PanelDisplayCode}" },
+                        new() { DisplayOrder = 4, ColumnHeader = "FCSFileName", ValueTemplate = "{FcsFileName}" }
+                    }
+                });
+            }
+            await context.SaveChangesAsync();
         }
     }
 }
