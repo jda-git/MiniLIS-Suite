@@ -224,6 +224,52 @@
         </div>
     </fieldset>
 
+    <!-- ═══════════════  VALIDACIÓN  ═══════════════ -->
+    @if (report?.Id > 0)
+    {
+        <fieldset class="rpt-fieldset mt-3">
+            <legend>Validación</legend>
+            @if (report.IsFinalized)
+            {
+                <p class="mb-2">
+                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                    Validado por <strong>@(report.ValidatedByUser?.FullName ?? report.ValidatedByUser?.UserName ?? "—")</strong>
+                    el @(report.ValidatedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—")
+                </p>
+                <AuthorizeView Roles="Administrador,Facultativo">
+                    <Authorized>
+                        <form method="post" action="/api/downloads/informe/@report.PublicId/reabrir" class="d-flex gap-2 align-items-start"
+                              onsubmit="return confirm('¿Reabrir este informe validado? El estado de la muestra volverá a reportada parcial.');">
+                            <AntiforgeryToken />
+                            <input type="text" name="motivo" class="form-control" placeholder="Motivo de la reapertura (mínimo 10 caracteres)" style="max-width: 420px;" required minlength="10" />
+                            <button type="submit" class="btn btn-outline-warning">
+                                <i class="bi bi-arrow-counterclockwise me-2"></i>Reabrir informe
+                            </button>
+                        </form>
+                    </Authorized>
+                </AuthorizeView>
+            }
+            else
+            {
+                <p class="mb-2">
+                    <i class="bi bi-hourglass-split text-warning me-2"></i>
+                    Pendiente de validación
+                </p>
+                <AuthorizeView Roles="Administrador,Facultativo">
+                    <Authorized>
+                        <form method="post" action="/api/downloads/informe/@report.PublicId/validar"
+                              onsubmit="return confirm('¿Validar este informe? Esta acción es irreversible sin una reapertura explícita, y quedará registrada a su nombre.');">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-lg me-2"></i>Validar informe
+                            </button>
+                        </form>
+                    </Authorized>
+                </AuthorizeView>
+            }
+        </fieldset>
+    }
+
     <!-- ═══════════════  BOTONES  ═══════════════ -->
     <div class="rpt-actions mt-4 mb-5">
         <button class="btn btn-light border px-4" @onclick='() => Nav.NavigateTo("/muestras")'>

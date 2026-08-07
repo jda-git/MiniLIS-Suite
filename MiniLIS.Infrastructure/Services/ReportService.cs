@@ -32,6 +32,7 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(r => r.Sample)
                     .ThenInclude(s => s.ClinicalRequest)
                         .ThenInclude(cr => cr.Patient)
+                .Include(r => r.ValidatedByUser)
                 .FirstOrDefaultAsync(r => r.SampleId == sampleId);
 
             if (report == null)

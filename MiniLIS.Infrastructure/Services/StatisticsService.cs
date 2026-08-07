@@ -24,6 +24,7 @@ namespace MiniLIS.Infrastructure.Services
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
+                .Include(s => s.Report)
                 .Where(s => s.ReceptionDate >= from.Date && s.ReceptionDate <= to.Date.AddDays(1).AddTicks(-1))
                 .Where(s => s.Status == SampleStatus.Finalizada)
                 .AsQueryable();
@@ -36,7 +37,10 @@ namespace MiniLIS.Infrastructure.Services
             var samples = await query.ToListAsync();
 
             return samples.Select(s => {
-                var finDate = s.FinalizedAt ?? s.UpdatedAtUtc?.ToLocalTime() ?? s.CreatedAtUtc.ToLocalTime();
+                // TAT sobre la validación real del informe (C-4), no sobre su descarga.
+                // Se conservan los fallbacks para muestras finalizadas por otra vía
+                // (p. ej. anteriores a esta migración) que no tengan ValidatedAtUtc.
+                var finDate = s.Report?.ValidatedAtUtc?.ToLocalTime() ?? s.FinalizedAt ?? s.UpdatedAtUtc?.ToLocalTime() ?? s.CreatedAtUtc.ToLocalTime();
                 var diff = finDate - s.ReceptionDate;
                 return new TatStatItem
                 {

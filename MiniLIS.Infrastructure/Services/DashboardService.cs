@@ -54,17 +54,29 @@ namespace MiniLIS.Infrastructure.Services
             double avgPerDay = activeDays > 0 ? (double)last30Samples.Count / activeDays : 0;
 
             // ── TAT (Turnaround Time) ──
-            // For finalized samples in the last 30 days, compute (ReportDate or UpdatedAtUtc) - ReceptionDate
+            // Para muestras finalizadas en los últimos 30 días: fecha de VALIDACIÓN del
+            // informe (C-4) menos recepción. ValidatedAtUtc es la única marca que refleja
+            // cuándo un facultativo validó realmente el informe, a diferencia de ReportDate
+            // (que podía quedar fijada por una simple descarga antes de C-4).
             var tatData = await _db.Samples
                 .Include(s => s.Panels)
+                .Include(s => s.Report)
                 .Where(s => s.Status == SampleStatus.Finalizada && s.ReceptionDate >= last30Days)
-                .Select(s => new { 
-                    s.ReceptionDate, 
-                    FinalDate = _db.SampleReports.Where(r => r.SampleId == s.Id).Select(r => r.ReportDate).FirstOrDefault() ?? s.UpdatedAtUtc ?? DateTime.Now 
+                .Select(s => new {
+                    s.ReceptionDate,
+                    ValidatedAtUtc = s.Report != null ? s.Report.ValidatedAtUtc : null,
+                    ReportDate = s.Report != null ? s.Report.ReportDate : null,
+                    s.UpdatedAtUtc
                 })
                 .ToListAsync();
 
-            var tatDays = tatData.Select(r => (r.FinalDate - r.ReceptionDate).TotalDays).Where(d => d >= 0).OrderBy(d => d).ToList();
+            var tatDataResolved = tatData.Select(r => new
+            {
+                r.ReceptionDate,
+                FinalDate = r.ValidatedAtUtc?.ToLocalTime() ?? r.ReportDate ?? r.UpdatedAtUtc ?? DateTime.Now
+            }).ToList();
+
+            var tatDays = tatDataResolved.Select(r => (r.FinalDate - r.ReceptionDate).TotalDays).Where(d => d >= 0).OrderBy(d => d).ToList();
 
             double tatAvg = tatDays.Any() ? tatDays.Average() : 0;
             double tatMedian = 0;

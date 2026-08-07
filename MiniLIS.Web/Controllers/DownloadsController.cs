@@ -68,17 +68,14 @@ namespace MiniLIS.Web.Controllers
 
                 var bytes = await _documentService.GeneratePdfAsync(report);
 
-                // Finalize report and sample for TAT and status tracking
-                report.IsFinalized = true;
-                if (!report.ReportDate.HasValue) report.ReportDate = DateTime.Now;
-
-                if (report.Sample != null)
+                // Lectura pura (C-4): descargar/previsualizar no finaliza el informe ni la
+                // muestra. Solo se registran estadísticas de uso, nunca usadas para TAT.
+                if (!preview)
                 {
-                    var user = await _userManager.GetUserAsync(User);
-                    await _sampleService.UpdateSampleStatusAsync(report.Sample.Id, SampleStatus.Finalizada, user?.Id);
+                    report.DownloadCount++;
+                    if (report.FirstDownloadedAtUtc == null) report.FirstDownloadedAtUtc = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
                 }
-
-                await _db.SaveChangesAsync();
                 await LogReportDownloadAsync(report, preview ? "Descarga PDF (previsualización)" : "Descarga PDF");
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
@@ -116,13 +113,10 @@ namespace MiniLIS.Web.Controllers
 
                 var bytes = await _documentService.GenerateOdtAsync(report);
 
-                // Actualizar estado a Finalizada
-                if (report.Sample != null)
-                {
-                    var user = await _userManager.GetUserAsync(User);
-                    await _sampleService.UpdateSampleStatusAsync(report.Sample.Id, SampleStatus.Finalizada, user?.Id);
-                }
-
+                // Lectura pura (C-4): ver DownloadPdf.
+                report.DownloadCount++;
+                if (report.FirstDownloadedAtUtc == null) report.FirstDownloadedAtUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
                 await LogReportDownloadAsync(report, "Descarga ODT");
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
@@ -145,6 +139,94 @@ namespace MiniLIS.Web.Controllers
                 return StatusCode(StatusCodes.Status500InternalServerError,
                     "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
             }
+        }
+
+        /// <summary>
+        /// Única vía que finaliza clínicamente un informe (C-4). Sustituye la finalización
+        /// implícita que antes ocurría como efecto secundario de un GET de descarga.
+        /// </summary>
+        [HttpPost("informe/{publicId:guid}/validar")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ValidarInforme(Guid publicId)
+        {
+            var report = await _db.SampleReports
+                .Include(r => r.Sample)
+                .FirstOrDefaultAsync(r => r.PublicId == publicId);
+
+            if (report == null || !CanAccessReports()) return NotFound();
+            if (report.IsFinalized) return Conflict("El informe ya está validado.");
+            if (string.IsNullOrWhiteSpace(report.Conclusions))
+                return Problem(title: "Debe completar la conclusión antes de validar el informe.", statusCode: 400);
+
+            var user = await _userManager.GetUserAsync(User);
+            report.IsFinalized = true;
+            report.ValidatedByUserId = user?.Id;
+            report.ValidatedAtUtc = DateTime.UtcNow;
+            if (!report.ReportDate.HasValue) report.ReportDate = DateTime.Now;
+
+            if (report.Sample != null)
+            {
+                await _sampleService.UpdateSampleStatusAsync(report.Sample.Id, SampleStatus.Finalizada, user?.Id);
+            }
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SampleReport),
+                EntityId = report.Id.ToString(),
+                Action = "Validate",
+                UserId = user?.Id,
+                Username = user?.UserName,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+
+            return LocalRedirect($"/informes/editar/{report.SampleId}");
+        }
+
+        /// <summary>
+        /// Reabre un informe validado para corregirlo. Conserva ValidatedByUserId/ValidatedAtUtc
+        /// como registro de la última validación; el hecho de la reapertura y su motivo quedan
+        /// en AuditLogs (Action = "Reopen").
+        /// </summary>
+        [HttpPost("informe/{publicId:guid}/reabrir")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReabrirInforme(Guid publicId, [FromForm] string motivo)
+        {
+            if (string.IsNullOrWhiteSpace(motivo) || motivo.Trim().Length < 10)
+                return Problem(title: "Debe indicar un motivo de al menos 10 caracteres.", statusCode: 400);
+
+            var report = await _db.SampleReports
+                .Include(r => r.Sample)
+                .FirstOrDefaultAsync(r => r.PublicId == publicId);
+
+            if (report == null || !CanAccessReports()) return NotFound();
+            if (!report.IsFinalized) return Conflict("El informe no está validado.");
+
+            var user = await _userManager.GetUserAsync(User);
+            report.IsFinalized = false;
+            // ValidatedByUserId/ValidatedAtUtc se conservan como constancia de la última
+            // validación (no se borran); la reapertura queda como evento aparte en AuditLogs.
+
+            if (report.Sample != null)
+            {
+                await _sampleService.UpdateSampleStatusAsync(report.Sample.Id, SampleStatus.ReportadaParcial, user?.Id);
+            }
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SampleReport),
+                EntityId = report.Id.ToString(),
+                Action = "Reopen",
+                UserId = user?.Id,
+                Username = user?.UserName,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Changes = motivo,
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+
+            return LocalRedirect($"/informes/editar/{report.SampleId}");
         }
 
         [HttpGet("muestras/csv")]

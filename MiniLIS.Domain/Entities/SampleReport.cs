@@ -35,7 +35,18 @@ namespace MiniLIS.Domain.Entities
 
         public DateTime? ReportDate { get; set; }
         public bool IsFinalized { get; set; } = false;
-        
+
+        /// <summary>Facultativo que validó el informe (C-4). Distinto de quién lo descarga.</summary>
+        public int? ValidatedByUserId { get; set; }
+        public MiniLIS.Domain.Identity.ApplicationUser? ValidatedByUser { get; set; }
+
+        /// <summary>Momento en que se validó el informe. Base real del cálculo de TAT.</summary>
+        public DateTime? ValidatedAtUtc { get; set; }
+
+        /// <summary>Primera descarga, informativa. Nunca debe usarse para TAT.</summary>
+        public DateTime? FirstDownloadedAtUtc { get; set; }
+        public int DownloadCount { get; set; } = 0;
+
         /// <summary>Comma-separated list of selected facultativos for signatures.</summary>
         public string? SelectedSignatures { get; set; }
 
