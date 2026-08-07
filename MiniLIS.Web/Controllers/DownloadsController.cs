@@ -30,19 +30,44 @@ namespace MiniLIS.Web.Controllers
             _configuration = configuration;
         }
 
-        [HttpGet("informe/{id}/pdf/{fileName?}")]
-        public async Task<IActionResult> DownloadPdf(int id, string? fileName, [FromQuery] bool preview = false)
+        /// <summary>
+        /// Solo Administrador/Facultativo pueden acceder a los informes. Devuelve 404 (no 403)
+        /// tanto si el informe no existe como si el rol no corresponde, para no dar pistas
+        /// de enumeración a quien prueba GUIDs al azar (C-3).
+        /// </summary>
+        private bool CanAccessReports() =>
+            User.IsInRole("Administrador") || User.IsInRole("Facultativo");
+
+        private async Task LogReportDownloadAsync(SampleReport report, string actionContext)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SampleReport),
+                EntityId = report.Id.ToString(),
+                Action = "Download",
+                UserId = user?.Id,
+                Username = user?.UserName,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                ActionContext = actionContext,
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        [HttpGet("informe/{publicId:guid}/pdf/{fileName?}")]
+        public async Task<IActionResult> DownloadPdf(Guid publicId, string? fileName, [FromQuery] bool preview = false)
         {
             try
             {
                 var report = await _db.SampleReports
                     .Include(r => r.Sample)
-                    .FirstOrDefaultAsync(r => r.Id == id);
+                    .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
-                if (report == null) return NotFound("Informe no encontrado");
+                if (report == null || !CanAccessReports()) return NotFound();
 
                 var bytes = await _documentService.GeneratePdfAsync(report);
-                
+
                 // Finalize report and sample for TAT and status tracking
                 report.IsFinalized = true;
                 if (!report.ReportDate.HasValue) report.ReportDate = DateTime.Now;
@@ -54,11 +79,12 @@ namespace MiniLIS.Web.Controllers
                 }
 
                 await _db.SaveChangesAsync();
+                await LogReportDownloadAsync(report, preview ? "Descarga PDF (previsualización)" : "Descarga PDF");
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
-                var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? id.ToString();
+                var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? report.Id.ToString();
                 var finalFileName = string.IsNullOrWhiteSpace(fileName) ? $"Informe_{safeSampleName}_{timestamp}.pdf" : fileName;
-                
+
                 var contentDisposition = new System.Net.Mime.ContentDisposition
                 {
                     FileName = finalFileName,
@@ -66,30 +92,30 @@ namespace MiniLIS.Web.Controllers
                 };
                 Response.Headers.Append("Content-Disposition", contentDisposition.ToString());
                 Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-                
+
                 return File(bytes, "application/pdf");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error generando PDF para el informe {Id}", id);
+                _logger.LogError(ex, "Error generando PDF para el informe {PublicId}", publicId);
                 return StatusCode(StatusCodes.Status500InternalServerError,
                     "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
             }
         }
 
-        [HttpGet("informe/{id}/odt/{fileName?}")]
-        public async Task<IActionResult> DownloadOdt(int id, string? fileName)
+        [HttpGet("informe/{publicId:guid}/odt/{fileName?}")]
+        public async Task<IActionResult> DownloadOdt(Guid publicId, string? fileName)
         {
             try
             {
                 var report = await _db.SampleReports
                     .Include(r => r.Sample)
-                    .FirstOrDefaultAsync(r => r.Id == id);
+                    .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
-                if (report == null) return NotFound("Informe no encontrado");
+                if (report == null || !CanAccessReports()) return NotFound();
 
                 var bytes = await _documentService.GenerateOdtAsync(report);
-                
+
                 // Actualizar estado a Finalizada
                 if (report.Sample != null)
                 {
@@ -97,10 +123,12 @@ namespace MiniLIS.Web.Controllers
                     await _sampleService.UpdateSampleStatusAsync(report.Sample.Id, SampleStatus.Finalizada, user?.Id);
                 }
 
+                await LogReportDownloadAsync(report, "Descarga ODT");
+
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
-                var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? id.ToString();
+                var safeSampleName = report.Sample?.SampleNumber?.Replace("/", "_").Replace("\\", "_") ?? report.Id.ToString();
                 var finalFileName = string.IsNullOrWhiteSpace(fileName) ? $"Informe_{safeSampleName}_{timestamp}.odt" : fileName;
-                
+
                 var contentDisposition = new System.Net.Mime.ContentDisposition
                 {
                     FileName = finalFileName,
@@ -113,7 +141,7 @@ namespace MiniLIS.Web.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error generando ODT para el informe {Id}", id);
+                _logger.LogError(ex, "Error generando ODT para el informe {PublicId}", publicId);
                 return StatusCode(StatusCodes.Status500InternalServerError,
                     "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
             }

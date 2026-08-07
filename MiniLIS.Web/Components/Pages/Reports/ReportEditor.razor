@@ -233,18 +233,22 @@
         <div class="d-flex gap-2">
             @if (report?.Id > 0)
             {
-                <a href="/api/downloads/informe/@report.Id/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf?preview=true" 
-                   target="_blank" class="btn btn-outline-success px-3">
-                    <i class="bi bi-eye me-2"></i>Previsualizar PDF
-                </a>
-                <a href="/api/downloads/informe/@report.Id/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf" 
-                   download class="btn btn-outline-danger px-3">
-                    <i class="bi bi-file-pdf me-2"></i>PDF
-                </a>
-                <a href="/api/downloads/informe/@report.Id/odt/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).odt" 
-                   download class="btn btn-outline-info px-3">
-                    <i class="bi bi-file-earmark-word me-2"></i>ODT
-                </a>
+                <AuthorizeView Roles="Administrador,Facultativo">
+                    <Authorized>
+                        <a href="/api/downloads/informe/@report.PublicId/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf?preview=true"
+                           target="_blank" class="btn btn-outline-success px-3">
+                            <i class="bi bi-eye me-2"></i>Previsualizar PDF
+                        </a>
+                        <a href="/api/downloads/informe/@report.PublicId/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf"
+                           download class="btn btn-outline-danger px-3">
+                            <i class="bi bi-file-pdf me-2"></i>PDF
+                        </a>
+                        <a href="/api/downloads/informe/@report.PublicId/odt/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).odt"
+                           download class="btn btn-outline-info px-3">
+                            <i class="bi bi-file-earmark-word me-2"></i>ODT
+                        </a>
+                    </Authorized>
+                </AuthorizeView>
             }
             <button class="btn btn-primary px-5 fw-bold shadow-sm" disabled="@isSaving" @onclick="SaveAndNotify">
                 @if (isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }

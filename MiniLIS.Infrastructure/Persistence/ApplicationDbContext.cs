@@ -67,6 +67,10 @@ namespace MiniLIS.Infrastructure.Persistence
                 .HasOne(r => r.Sample)
                 .WithOne(s => s.Report)
                 .HasForeignKey<SampleReport>(r => r.SampleId);
+
+            modelBuilder.Entity<SampleReport>()
+                .HasIndex(r => r.PublicId)
+                .IsUnique();
         }
 
         public override int SaveChanges()

@@ -8,7 +8,10 @@ namespace MiniLIS.Domain.Entities
     public class SampleReport : AuditableEntity
     {
         public int Id { get; set; }
-        
+
+        /// <summary>Identificador público no adivinable, usado en rutas de descarga (C-3).</summary>
+        public Guid PublicId { get; set; } = Guid.NewGuid();
+
         public int SampleId { get; set; }
         public Sample Sample { get; set; }
         
