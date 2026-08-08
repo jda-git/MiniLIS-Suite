@@ -114,6 +114,13 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// L-4: WebApplication añade estos dos automáticamente al detectar los servicios de
+// Identity registrados, así que funcionaban sin esta llamada -- pero depender de
+// comportamiento implícito en un sistema clínico es innecesario. Explícitos y en el
+// orden que exige ASP.NET Core: autenticación antes que autorización, ambas antes
+// del antiforgery y de los endpoints.
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseAntiforgery();
 

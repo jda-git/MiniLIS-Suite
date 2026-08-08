@@ -25,6 +25,7 @@ namespace MiniLIS.Domain.Entities
         public string? ReportBody { get; set; } // Editable text of "Informe"
         public string? MarkersSummary { get; set; } // Automatically generated text
         public string? Conclusions { get; set; } // Editable conclusion
+        [MaxLength(500)]
         public string? Diagnosis { get; set; } // Independent field
         
         /// <summary>Optional free text that appears below the markers list in the final report.</summary>
@@ -52,6 +53,7 @@ namespace MiniLIS.Domain.Entities
         public int DownloadCount { get; set; } = 0;
 
         /// <summary>Comma-separated list of selected facultativos for signatures.</summary>
+        [MaxLength(500)]
         public string? SelectedSignatures { get; set; }
 
         public ICollection<ReportMarkerValue> MarkerValues { get; set; } = new List<ReportMarkerValue>();

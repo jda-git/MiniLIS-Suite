@@ -113,6 +113,7 @@ namespace MiniLIS.Domain.Entities
         public string? DeferredEntryReason { get; set; }
         public DateTime? DeferredEntryAtUtc { get; set; }
 
+        [MaxLength(500)]
         public string Diagnosis { get; set; } = string.Empty;
 
         /// <summary>Tipo de muestra (A-3). Dato preanalítico, fijado en recepción.</summary>
