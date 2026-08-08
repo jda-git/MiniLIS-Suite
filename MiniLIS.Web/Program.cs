@@ -17,12 +17,17 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString, b => b.MigrationsAssembly("MiniLIS.Infrastructure")));
 
 // Identity Configuration
+// NOTA (M-1): esta autenticación local es transitoria. La unidad debe migrar a su
+// directorio corporativo (LDAP/AD/SSO) cuando exista integración disponible; hasta
+// entonces, política de contraseña y sesión reforzadas según cl. ENS de control de acceso.
 builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options => {
-    options.Password.RequireDigit = false;
-    options.Password.RequiredLength = 6;
-    options.Password.RequireNonAlphanumeric = false;
-    options.Password.RequireUppercase = false;
-    options.Password.RequireLowercase = false;
+    options.Password.RequireDigit = true;
+    options.Password.RequiredLength = 12;
+    options.Password.RequireNonAlphanumeric = true;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequiredUniqueChars = 4;
+    options.User.RequireUniqueEmail = true;
 
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     options.Lockout.MaxFailedAccessAttempts = 5;
@@ -31,10 +36,20 @@ builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options => {
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
+// El prefijo __Host- exige Secure siempre activo; el entorno de desarrollo local
+// (.claude/launch.json) sirve por http sin TLS, así que se relaja solo aquí — nunca
+// en producción, donde SecurePolicy.Always y el nombre __Host- se aplican sin excepción.
+var isDevelopment = builder.Environment.IsDevelopment();
 builder.Services.ConfigureApplicationCookie(options => {
     options.LoginPath = "/login";
     options.LogoutPath = "/account/logout";
-    options.AccessDeniedPath = "/login";
+    options.AccessDeniedPath = "/acceso-denegado";   // no /login: son cosas distintas
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+    options.SlidingExpiration = true;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = isDevelopment ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    options.Cookie.Name = isDevelopment ? "MiniLIS.Auth" : "__Host-MiniLIS";
 });
 
 // Application Services
