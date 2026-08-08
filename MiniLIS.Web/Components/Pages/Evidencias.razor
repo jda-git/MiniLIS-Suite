@@ -1,0 +1,169 @@
+@page "/evidencias"
+@using Microsoft.AspNetCore.Authorization
+@using MiniLIS.Application.Interfaces
+@attribute [Authorize(Roles = "Administrador")]
+@inject IJSRuntime JS
+
+<PageTitle>Paquete de Evidencias - MiniLIS Suite</PageTitle>
+
+<div class="evi-page">
+    <h1 class="evi-title"><i class="bi bi-archive me-2"></i>Paquete de Evidencias para Auditoría</h1>
+    <p class="evi-subtitle">
+        Cl. 7.6: reúne en un único ZIP los registros que suele pedir un evaluador para un periodo. Solo lo que
+        posee MiniLIS — documentos, personal, equipos, reactivos, no conformidades formales y EQA salen del
+        sistema de gestión de calidad de la unidad (QMS Flow Doc); el índice del paquete lo indica explícitamente.
+    </p>
+
+    <div class="evi-card">
+        <h2 class="evi-section-title">Periodo</h2>
+        <div class="d-flex gap-3 flex-wrap">
+            <div>
+                <label class="evi-label">Desde</label>
+                <input type="date" class="form-control form-control-sm" @bind="desde" />
+            </div>
+            <div>
+                <label class="evi-label">Hasta</label>
+                <input type="date" class="form-control form-control-sm" @bind="hasta" />
+            </div>
+        </div>
+    </div>
+
+    <div class="evi-card">
+        <h2 class="evi-section-title">Documentos a incluir</h2>
+        <p class="small text-muted">El índice (00_INDICE) se genera siempre, con el hash SHA-256 de cada documento seleccionado.</p>
+        <div class="evi-doc-grid">
+            @foreach (var doc in availableDocs)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="doc-@doc.Code"
+                           checked="@selectedDocs.Contains(doc.Code)"
+                           @onchange="e => ToggleDoc(doc.Code, (bool)e.Value!)" />
+                    <label class="form-check-label small" for="doc-@doc.Code">@doc.Code — @doc.Label</label>
+                </div>
+            }
+        </div>
+        <div class="mt-2">
+            <button class="btn btn-sm btn-link px-0" @onclick="SelectAll">Seleccionar todos</button>
+            <button class="btn btn-sm btn-link px-0" @onclick="SelectNone">Ninguno</button>
+        </div>
+    </div>
+
+    <div class="evi-card">
+        <h2 class="evi-section-title">Identificadores</h2>
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="incluirId" @bind="incluirIdentificadores" />
+            <label class="form-check-label small" for="incluirId">Incluir identificadores de paciente (NHC)</label>
+        </div>
+        @if (incluirIdentificadores)
+        {
+            <div class="alert alert-warning small mt-2">
+                Contiene datos de salud de categoría especial (RGPD art. 9). Indique el motivo:
+            </div>
+            <input type="text" class="form-control form-control-sm" placeholder="Motivo (obligatorio)" @bind="motivo" />
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger small">@errorMessage</div>
+    }
+
+    <button class="btn btn-primary" disabled="@isGenerating" @onclick="Generar">
+        @if (isGenerating)
+        {
+            <span class="spinner-border spinner-border-sm me-2"></span>
+            <span>Generando…</span>
+        }
+        else
+        {
+            <i class="bi bi-file-earmark-zip me-2"></i>
+            <span>Generar y descargar ZIP</span>
+        }
+    </button>
+</div>
+
+<style>
+    .evi-page { padding: 0; }
+    .evi-title { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0; }
+    .evi-subtitle { font-size: 12px; color: #64748b; margin: 4px 0 16px; max-width: 780px; }
+    .evi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .evi-section-title { font-size: 15px; font-weight: 700; color: #1e293b; }
+    .evi-label { font-size: 11px; font-weight: 600; color: #64748b; display: block; }
+    .evi-doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; margin-top: 8px; }
+</style>
+
+@code {
+    private record DocOption(string Code, string Label);
+
+    private readonly List<DocOption> availableDocs = new()
+    {
+        new(AuditPackageDocuments.Actividad, "Actividad del periodo"),
+        new(AuditPackageDocuments.Indicadores, "Indicadores de calidad"),
+        new(AuditPackageDocuments.Recepcion, "Recepción: rechazos y salvedades"),
+        new(AuditPackageDocuments.Trazabilidad, "Trazabilidad (CSV)"),
+        new(AuditPackageDocuments.Validaciones, "Validaciones de informes"),
+        new(AuditPackageDocuments.Paneles, "Paneles vigentes"),
+        new(AuditPackageDocuments.Accesos, "Accesos (CSV)"),
+        new(AuditPackageDocuments.Copias, "Copias de seguridad"),
+        new(AuditPackageDocuments.Usuarios, "Usuarios"),
+        new(AuditPackageDocuments.Contingencia, "Modo contingencia"),
+    };
+
+    private HashSet<string> selectedDocs = new();
+    private DateTime desde = DateTime.Today.AddMonths(-1);
+    private DateTime hasta = DateTime.Today;
+    private bool incluirIdentificadores = false;
+    private string? motivo;
+    private bool isGenerating = false;
+    private string? errorMessage;
+
+    protected override void OnInitialized()
+    {
+        selectedDocs = AuditPackageDocuments.All.ToHashSet();
+    }
+
+    private void ToggleDoc(string code, bool isChecked)
+    {
+        if (isChecked) selectedDocs.Add(code);
+        else selectedDocs.Remove(code);
+    }
+
+    private void SelectAll() => selectedDocs = AuditPackageDocuments.All.ToHashSet();
+    private void SelectNone() => selectedDocs.Clear();
+
+    private async Task Generar()
+    {
+        errorMessage = null;
+
+        if (hasta < desde)
+        {
+            errorMessage = "La fecha 'hasta' no puede ser anterior a 'desde'.";
+            return;
+        }
+        if (!selectedDocs.Any())
+        {
+            errorMessage = "Debe seleccionar al menos un documento.";
+            return;
+        }
+        if (incluirIdentificadores && string.IsNullOrWhiteSpace(motivo))
+        {
+            errorMessage = "Debe indicar un motivo para incluir identificadores.";
+            return;
+        }
+
+        isGenerating = true;
+        try
+        {
+            var docsParam = Uri.EscapeDataString(string.Join(',', selectedDocs));
+            var url = $"/api/downloads/evidencias/zip?desde={desde:yyyy-MM-dd}&hasta={hasta:yyyy-MM-dd}&documentos={docsParam}&incluirIdentificadores={incluirIdentificadores.ToString().ToLowerInvariant()}";
+            if (incluirIdentificadores)
+                url += $"&motivo={Uri.EscapeDataString(motivo!)}";
+
+            await JS.InvokeVoidAsync("triggerDownload", url);
+        }
+        finally
+        {
+            isGenerating = false;
+        }
+    }
+}

@@ -22,11 +22,12 @@ namespace MiniLIS.Web.Controllers
         private readonly IWorklistExportService _worklistExportService;
         private readonly IWorklistService _worklistService;
         private readonly IContingencyService _contingencyService;
+        private readonly IAuditPackageService _auditPackageService;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
@@ -35,6 +36,7 @@ namespace MiniLIS.Web.Controllers
             _worklistExportService = worklistExportService;
             _worklistService = worklistService;
             _contingencyService = contingencyService;
+            _auditPackageService = auditPackageService;
             _userManager = userManager;
             _logger = logger;
             _configuration = configuration;
@@ -500,6 +502,45 @@ namespace MiniLIS.Web.Controllers
                 _logger.LogError(ex, "Error generando el PDF de hojas de registro manual");
                 return StatusCode(StatusCodes.Status500InternalServerError,
                     "No se ha podido generar el documento. Inténtelo de nuevo o contacte con el administrador.");
+            }
+        }
+
+        [HttpGet("evidencias/zip")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        public async Task<IActionResult> ExportAuditPackage(
+            [FromQuery] DateTime desde,
+            [FromQuery] DateTime hasta,
+            [FromQuery] string documentos,
+            [FromQuery] bool incluirIdentificadores = false,
+            [FromQuery] string? motivo = null)
+        {
+            try
+            {
+                if (hasta.Date < desde.Date)
+                    return Problem(title: "La fecha 'hasta' no puede ser anterior a 'desde'.", statusCode: 400);
+
+                if (incluirIdentificadores && string.IsNullOrWhiteSpace(motivo))
+                    return Problem(title: "Debe indicarse un motivo para incluir identificadores.", statusCode: 400);
+
+                var docs = (documentos ?? string.Empty)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(d => d.Trim())
+                    .Where(d => AuditPackageDocuments.All.Contains(d))
+                    .ToList();
+
+                if (!docs.Any())
+                    return Problem(title: "Debe seleccionar al menos un documento.", statusCode: 400);
+
+                var user = await _userManager.GetUserAsync(User);
+                var bytes = await _auditPackageService.GenerateAsync(desde, hasta, docs, incluirIdentificadores, motivo, user?.Id, user?.UserName);
+
+                return File(bytes, "application/zip", $"Evidencias_Auditoria_{desde:yyyyMMdd}_{hasta:yyyyMMdd}.zip");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando el paquete de evidencias para auditoría");
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "No se ha podido generar el paquete de evidencias. Inténtelo de nuevo o contacte con el administrador.");
             }
         }
     }
