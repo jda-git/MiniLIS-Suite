@@ -4,24 +4,41 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Roles = "Administrador")]
 @inject ISampleService SampleService
+@inject IAuditQueryService AuditQueryService
 @inject ILocalTimeService LocalTimeService
 @inject NavigationManager Nav
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MiniLIS.Domain.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject IJSRuntime JS
 
-<PageTitle>Auditoría de Muestras - MiniLIS Suite</PageTitle>
+<PageTitle>Auditoría - MiniLIS Suite</PageTitle>
 
 <div class="audit-page">
     <div class="audit-header">
         <h1 class="audit-title">
-            <i class="bi bi-shield-lock-fill"></i> Auditoría de Muestras
+            <i class="bi bi-shield-lock-fill"></i> Auditoría
         </h1>
-        <p class="audit-subtitle">Consulta detallada de trazabilidad y estados</p>
+        <p class="audit-subtitle">Trazabilidad de muestras, y accesos/búsquedas de consulta (M-2)</p>
     </div>
+
+    <div class="audit-tabs">
+        <button class="audit-tab @(activeTab == "muestras" ? "active" : "")" @onclick='() => activeTab = "muestras"'>
+            <i class="bi bi-clipboard-data"></i> Muestras
+        </button>
+        <button class="audit-tab @(activeTab == "accesos" ? "active" : "")" @onclick='SwitchToAccesos'>
+            <i class="bi bi-eye"></i> Accesos y Búsquedas
+        </button>
+    </div>
+
+    @if (activeTab != "muestras") { } else {
 
     <!-- Search Section -->
     <div class="audit-search-card">
         <div class="search-box">
             <i class="bi bi-search search-icon"></i>
-            <input type="text" class="search-input" placeholder="Buscar por Nº Muestra, NHC o Nombre..." 
+            <input type="text" class="search-input" placeholder="Buscar por Nº Muestra, NHC o Nombre..."
                    @bind="searchTerm" @onkeyup="HandleKeyUp" />
             <button class="btn-audit-search" @onclick="Search">
                 Buscar
@@ -210,7 +227,129 @@
             }
         </div>
     }
+
+    }
+
+    @if (activeTab == "accesos")
+    {
+        <div class="audit-search-card">
+            <div class="d-flex gap-3 flex-wrap align-items-end">
+                <div>
+                    <label class="acc-label">Desde</label>
+                    <input type="date" class="filter-control" @bind="accDesde" />
+                </div>
+                <div>
+                    <label class="acc-label">Hasta</label>
+                    <input type="date" class="filter-control" @bind="accHasta" />
+                </div>
+                <div>
+                    <label class="acc-label">Acción</label>
+                    <select class="filter-control" @bind="accAction">
+                        <option value="">-- Todas --</option>
+                        @foreach (var a in distinctActions)
+                        {
+                            <option value="@a">@a</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="acc-label">Usuario</label>
+                    <input type="text" class="filter-control" placeholder="usuario@@..." @bind="accUsername" />
+                </div>
+                <button class="btn-audit-search" @onclick="LoadAccesos">Buscar</button>
+            </div>
+        </div>
+
+        <div class="audit-search-card">
+            <h2 class="acc-section-title">Resumen por usuario y acción</h2>
+            <p class="small text-muted">Detecta patrones anómalos: un usuario con muchas más búsquedas que el resto, fuera de su rol habitual.</p>
+            @if (!groupedByUser.Any())
+            {
+                <p class="text-muted small">Sin datos para el periodo seleccionado.</p>
+            }
+            else
+            {
+                <table class="table table-sm">
+                    <thead><tr><th>Usuario</th><th>Acción</th><th>Nº</th></tr></thead>
+                    <tbody>
+                        @foreach (var g in groupedByUser)
+                        {
+                            <tr>
+                                <td>@g.Username</td>
+                                <td><span class="log-action badge @GetActionBadgeClass(g.Action)">@g.Action.ToUpper()</span></td>
+                                <td>@g.Count</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="audit-search-card">
+            <h2 class="acc-section-title">Registro detallado (últimos @accLogs.Count)</h2>
+            @if (!accLogs.Any())
+            {
+                <p class="text-muted small">Sin registros para el filtro actual.</p>
+            }
+            else
+            {
+                <div class="audit-history-list">
+                    @foreach (var log in accLogs)
+                    {
+                        <div class="history-log-row">
+                            <div class="log-meta">
+                                <span class="log-date"><i class="bi bi-clock"></i> @LocalTimeService.ToLocal(log.TimestampUtc).ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                <span class="log-user"><i class="bi bi-person-fill text-primary"></i> @(log.Username ?? "Sistema")</span>
+                                <span class="log-action badge @GetActionBadgeClass(log.Action)">@log.Action.ToUpper()</span>
+                                @if (!string.IsNullOrEmpty(log.EntityName))
+                                {
+                                    <span class="log-context text-muted"><i class="bi bi-hash"></i> @log.EntityName</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(log.ActionContext))
+                            {
+                                <div class="log-changes mt-1">@log.ActionContext</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="audit-search-card">
+            <h2 class="acc-section-title">Retención y purga</h2>
+            <p class="small text-muted">
+                Retención mínima recomendada: dos años (RGPD/ENS). La purga elimina los registros
+                anteriores al corte y queda ella misma auditada (Action = "Purge").
+            </p>
+            <div class="d-flex gap-3 align-items-end">
+                <div>
+                    <label class="acc-label">Años de retención</label>
+                    <input type="number" min="1" class="filter-control" style="width:100px" @bind="retentionYears" />
+                </div>
+                <button class="btn-audit-search" @onclick="SaveRetention">Guardar</button>
+                <button class="btn-audit-search" style="background:#dc2626" @onclick="ConfirmPurge">
+                    <i class="bi bi-trash3"></i> Purgar anteriores a @(DateTime.UtcNow.AddYears(-retentionYears).ToString("yyyy-MM-dd"))
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(purgeMessage))
+            {
+                <div class="alert alert-success mt-2 py-2 px-3 small">@purgeMessage</div>
+            }
+        </div>
+    }
 </div>
+
+<style>
+    .audit-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .audit-tab {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 20px;
+        font-weight: 600; font-size: 13px; color: #64748b; cursor: pointer;
+    }
+    .audit-tab.active { background: #1e293b; color: #fff; border-color: #1e293b; }
+    .acc-label { font-size: 11px; font-weight: 700; color: #64748b; display: block; margin-bottom: 4px; }
+    .acc-section-title { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+</style>
 
 <style>
     .audit-page { padding: 32px; background: #f8fafc; min-height: 100vh; }
@@ -404,11 +543,75 @@
 </style>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
     private string searchTerm = "";
     private List<Sample> samples = new();
     private Dictionary<int, List<AuditLog>> sampleAuditLogs = new();
     private bool isLoading = false;
     private bool hasSearched = false;
+
+    // --- Pestaña "Accesos y Búsquedas" (M-2) ---
+    private string activeTab = "muestras";
+    private DateTime? accDesde;
+    private DateTime? accHasta;
+    private string accAction = "";
+    private string accUsername = "";
+    private List<string> distinctActions = new();
+    private List<UserActionCount> groupedByUser = new();
+    private List<AuditLog> accLogs = new();
+    private int retentionYears = 2;
+    private string? purgeMessage;
+
+    private async Task SwitchToAccesos()
+    {
+        activeTab = "accesos";
+        if (!distinctActions.Any())
+        {
+            distinctActions = await AuditQueryService.GetDistinctActionsAsync();
+            retentionYears = await AuditQueryService.GetRetentionYearsAsync();
+            await LoadAccesos();
+        }
+    }
+
+    private async Task LoadAccesos()
+    {
+        var desdeUtc = accDesde.HasValue ? LocalTimeService.ToUtc(accDesde.Value.Date) : (DateTime?)null;
+        var hastaUtc = accHasta.HasValue ? LocalTimeService.ToUtc(accHasta.Value.Date.AddDays(1)).AddTicks(-1) : (DateTime?)null;
+
+        groupedByUser = await AuditQueryService.GetGroupedByUserAsync(desdeUtc, hastaUtc);
+
+        accLogs = await AuditQueryService.GetLogsAsync(new AuditLogFilter
+        {
+            Desde = desdeUtc,
+            Hasta = hastaUtc,
+            Action = string.IsNullOrWhiteSpace(accAction) ? null : accAction,
+            Username = string.IsNullOrWhiteSpace(accUsername) ? null : accUsername.Trim()
+        });
+    }
+
+    private async Task SaveRetention()
+    {
+        await AuditQueryService.SetRetentionYearsAsync(retentionYears);
+        purgeMessage = $"Retención actualizada a {retentionYears} año(s).";
+    }
+
+    private async Task ConfirmPurge()
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"¿Purgar los registros de auditoría anteriores a {DateTime.UtcNow.AddYears(-retentionYears):yyyy-MM-dd}? Esta acción no se puede deshacer.");
+        if (!confirmed) return;
+
+        var authState = AuthStateTask != null ? await AuthStateTask : null;
+        var user = authState != null ? await UserManager.GetUserAsync(authState.User) : null;
+
+        var purged = await AuditQueryService.PurgeOldLogsAsync(user?.Id, user?.UserName);
+        purgeMessage = purged > 0
+            ? $"Purgados {purged} registros anteriores a {DateTime.UtcNow.AddYears(-retentionYears):yyyy-MM-dd}."
+            : "No había registros anteriores al corte de retención.";
+        await LoadAccesos();
+    }
 
     private async Task HandleKeyUp(KeyboardEventArgs e)
     {

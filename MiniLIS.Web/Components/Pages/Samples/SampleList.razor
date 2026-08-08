@@ -3,6 +3,7 @@
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+@implements IDisposable
 @inject ISampleService SampleService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -41,7 +42,7 @@
         <div class="filter-group">
             <i class="bi bi-search filter-icon"></i>
             <input type="text" class="filter-control" placeholder="Código, NHC, Nombre..."
-                   @bind="searchTerm" @bind:event="oninput" @onkeyup="ApplyFilters" />
+                   value="@searchTerm" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" />
         </div>
 
         <div class="filter-divider"></div>
@@ -907,6 +908,40 @@
     }
 
     private async Task ApplyFilters() => await LoadSamples();
+
+    // M-2: el término de búsqueda toma NHC/nombre/NASI del paciente, y cada consulta
+    // efectiva queda auditada (dentro de GetFilteredSamplesAsync). Sin retardo, cada
+    // pulsación de tecla dispararía una entrada de auditoría — se espera 400 ms de
+    // inactividad antes de ejecutar la búsqueda. Enter salta el retardo (permite que
+    // un lector de códigos de barras, que termina con Enter, busque al instante).
+    private System.Threading.Timer? _searchDebounce;
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+        _searchDebounce?.Dispose();
+        _searchDebounce = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await ApplyFilters();
+                StateHasChanged();
+            });
+        }, null, 400, System.Threading.Timeout.Infinite);
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        _searchDebounce?.Dispose();
+        _searchDebounce = null;
+        await ApplyFilters();
+    }
+
+    public void Dispose()
+    {
+        _searchDebounce?.Dispose();
+    }
 
     private async Task ClearFilters()
     {

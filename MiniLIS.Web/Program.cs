@@ -73,6 +73,7 @@ builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<IFcsLinkService, FcsLinkService>();
 builder.Services.AddScoped<IContingencyService, ContingencyService>();
 builder.Services.AddScoped<IAuditPackageService, AuditPackageService>();
+builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
 builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 

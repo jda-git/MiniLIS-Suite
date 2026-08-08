@@ -297,9 +297,32 @@ namespace MiniLIS.Infrastructure.Services
                 query = query.Where(s => s.ReceptionDate <= end);
             }
 
-            return await query
+            var results = await query
                 .OrderByDescending(s => s.ReceptionDate)
                 .ToListAsync();
+
+            // M-2: toda búsqueda por texto devuelve identificadores de paciente (nombre,
+            // NHC, NASI pueden coincidir). Se audita el término y el nº de resultados, nunca
+            // el contenido devuelto. Los filtros discretos (estado, tipo, fechas) sin término
+            // de texto no se auditan aquí: no toman una identidad de paciente como entrada.
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var userId = await _currentUserService.GetUserIdAsync();
+                var username = await _currentUserService.GetUsernameAsync();
+                _db.AuditLogs.Add(new AuditLog
+                {
+                    EntityName = nameof(Patient),
+                    EntityId = "",
+                    Action = "Search",
+                    UserId = userId,
+                    Username = username,
+                    ActionContext = $"Búsqueda en Bandeja Técnica: \"{searchTerm}\" ({results.Count} resultados)",
+                    TimestampUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+            }
+
+            return results;
         }
 
         public async Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status, int? userId = null)

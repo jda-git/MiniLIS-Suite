@@ -26,8 +26,27 @@ namespace MiniLIS.Infrastructure.Services
         public async Task<Patient?> GetByNHCAsync(string nhc)
         {
             if (string.IsNullOrWhiteSpace(nhc)) return null;
-            return await _db.Patients
+            var result = await _db.Patients
                 .FirstOrDefaultAsync(p => p.NHC == nhc.Trim());
+
+            // M-2: consulta que devuelve (o descarta) un identificador de paciente.
+            var userId = await _currentUserService.GetUserIdAsync();
+            var username = await _currentUserService.GetUsernameAsync();
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(Patient),
+                EntityId = result?.Id.ToString() ?? "",
+                Action = "Search",
+                UserId = userId,
+                Username = username,
+                ActionContext = result != null
+                    ? $"Búsqueda por NHC \"{nhc.Trim()}\" (encontrado)"
+                    : $"Búsqueda por NHC \"{nhc.Trim()}\" (sin resultados)",
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+
+            return result;
         }
 
         public async Task<PatientLookupResult> GetOrCreatePatientAsync(Patient candidate)
