@@ -90,6 +90,36 @@ namespace MiniLIS.Infrastructure.Services
             await _db.SaveChangesAsync();
         }
 
+        // --- TUBE READ INCIDENT REASONS ---
+        public async Task<List<TubeReadIncidentReason>> GetAllTubeReadIncidentReasonsAsync() =>
+            await _db.TubeReadIncidentReasons.OrderBy(r => r.DisplayOrder).ThenBy(r => r.Description).ToListAsync();
+
+        public async Task<TubeReadIncidentReason> UpsertTubeReadIncidentReasonAsync(TubeReadIncidentReason reason)
+        {
+            if (reason.Id == 0) _db.TubeReadIncidentReasons.Add(reason);
+            else _db.TubeReadIncidentReasons.Update(reason);
+            await _db.SaveChangesAsync();
+            return reason;
+        }
+
+        public async Task DeleteTubeReadIncidentReasonAsync(int id)
+        {
+            var reason = await _db.TubeReadIncidentReasons.FindAsync(id);
+            if (reason == null) return;
+
+            bool inUse = await _db.SampleTubes.AnyAsync(t => t.ReadIncidentReasonId == id);
+            if (inUse)
+            {
+                reason.IsActive = false;
+                _db.TubeReadIncidentReasons.Update(reason);
+            }
+            else
+            {
+                _db.TubeReadIncidentReasons.Remove(reason);
+            }
+            await _db.SaveChangesAsync();
+        }
+
         // --- TEMPLATES ---
         public async Task<List<ReportTemplate>> GetAllTemplatesAsync() => await _db.ReportTemplates.ToListAsync();
 

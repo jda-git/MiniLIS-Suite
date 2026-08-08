@@ -72,7 +72,10 @@ else
     .no-print { }
     @@media print {
         .no-print { display: none !important; }
-        .label { page-break-after: always; }
+        /* :not(:last-child) -- con page-break-after en TODAS las etiquetas, la última
+           también fuerza un salto, y ese salto produce una página en blanco de más al
+           final (visible incluso imprimiendo una sola etiqueta). */
+        .label:not(:last-child) { page-break-after: always; }
     }
     @@page {
         size: @(settings.WidthMm)mm @(settings.HeightMm)mm;
@@ -82,6 +85,15 @@ else
     .print-toolbar { display: flex; gap: 10px; padding: 16px; }
     .labels-sheet { display: flex; flex-direction: column; align-items: flex-start; gap: 4mm; padding: 4mm; }
 
+    @@media print {
+        /* La regla @@page de arriba ya define el tamaño exacto de una etiqueta con margen
+           0 -- este padding y gap son solo para que se vea cómodo en pantalla. En
+           impresión, cualquier espacio aquí desplaza el contenido dentro de una página
+           que no tiene hueco de sobra (queda cortado por overflow:hidden en vez de
+           centrado). */
+        .labels-sheet { padding: 0; gap: 0; }
+    }
+
     .label {
         box-sizing: border-box;
         border: 1px solid #cbd5e1;
@@ -90,13 +102,21 @@ else
         justify-content: center;
         font-family: Arial, sans-serif;
         overflow: hidden;
+        line-height: 1;
     }
-    .label-main-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 1mm; }
+    /* Altura de línea fija (1) en vez de "normal": la altura de línea "normal" del
+       navegador no está estandarizada -- Chrome en pantalla y el motor de impresión de
+       Adobe PDF (u otros drivers que no pasan por el renderer del navegador) la calculan
+       de forma distinta. Con la altura por defecto de la etiqueta (25mm) ese margen extra
+       bastaba para que el contenido se saliera del recuadro al imprimir aunque en pantalla
+       cupiera bien. Con line-height:1 la altura real es predecible y cabe con margen.
+       Ver también BuildBarcodeSvg, que ya calcula su alto a partir de settings.BarcodeHeightMm. */
+    .label-main-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.5mm; }
     .label-number { font-weight: 700; color: #0f172a; }
     .label-type { font-weight: 700; color: #0f172a; }
-    .label-id { color: #1e293b; }
-    .label-date { color: #475569; }
-    .label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; }
+    .label-id { color: #1e293b; margin-top: 0.3mm; }
+    .label-date { color: #475569; margin-top: 0.3mm; }
+    .label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; margin-top: 0.3mm; }
 
     @@media print {
         .label { border: none; }

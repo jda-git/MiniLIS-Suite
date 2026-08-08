@@ -197,6 +197,32 @@ namespace MiniLIS.Infrastructure.Seed
                 reasonOrder++;
             }
 
+            // 6.1 Seed Tube Read Incident Reasons (nuevo)
+            var tubeIncidentReasons = new (string Code, string Description, bool RequiresFreeText)[]
+            {
+                ("MUESTRA-INSUF", "Muestra insuficiente", false),
+                ("ATASCO", "Atasco del equipo", false),
+                ("FALLO-EQUIPO", "Fallo del equipo", false),
+                ("COAGULOS", "Coágulos en la muestra", false),
+                ("ERROR-ADQ", "Error de adquisición", false),
+                ("OTRO", "Otro", true),
+            };
+            int tubeIncidentOrder = 0;
+            foreach (var (code, description, requiresFreeText) in tubeIncidentReasons)
+            {
+                if (!await context.TubeReadIncidentReasons.AnyAsync(r => r.Code == code))
+                {
+                    context.TubeReadIncidentReasons.Add(new TubeReadIncidentReason
+                    {
+                        Code = code,
+                        Description = description,
+                        RequiresFreeText = requiresFreeText,
+                        DisplayOrder = tubeIncidentOrder
+                    });
+                }
+                tubeIncidentOrder++;
+            }
+
             await context.SaveChangesAsync();
 
             // 6.5 Da a cada Panel sin PanelVersion una v1/Vigente (migración M-4, idempotente).

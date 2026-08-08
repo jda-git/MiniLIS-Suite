@@ -42,6 +42,7 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<BackupRecord> BackupRecords => Set<BackupRecord>();
         public DbSet<RejectionReason> RejectionReasons => Set<RejectionReason>();
+        public DbSet<TubeReadIncidentReason> TubeReadIncidentReasons => Set<TubeReadIncidentReason>();
         public DbSet<SampleReceptionIssue> SampleReceptionIssues => Set<SampleReceptionIssue>();
         public DbSet<QualityIndicator> QualityIndicators => Set<QualityIndicator>();
         public DbSet<WorklistExportProfile> WorklistExportProfiles => Set<WorklistExportProfile>();
@@ -157,6 +158,17 @@ namespace MiniLIS.Infrastructure.Persistence
                 .HasOne(i => i.RejectionReason)
                 .WithMany()
                 .HasForeignKey(i => i.RejectionReasonId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Incidencias de lectura de tubo (nuevo)
+            modelBuilder.Entity<TubeReadIncidentReason>().HasIndex(r => r.Code).IsUnique();
+
+            // No se borra un motivo en uso (solo se desactiva desde el servicio); igual que
+            // RejectionReason, restringir a nivel de BD protege la trazabilidad histórica.
+            modelBuilder.Entity<SampleTube>()
+                .HasOne(t => t.ReadIncidentReason)
+                .WithMany()
+                .HasForeignKey(t => t.ReadIncidentReasonId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<QualityIndicator>().HasIndex(q => q.Code).IsUnique();

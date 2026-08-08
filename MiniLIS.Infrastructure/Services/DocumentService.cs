@@ -425,7 +425,6 @@ namespace MiniLIS.Infrastructure.Services
             // Header Texts
             sb.Append($@"<text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{EncodeForOdt(header1)}</text:span></text:p>");
             sb.Append($@"<text:p text:style-name=""{alignStyle}""><text:span text:style-name=""GreyText"">{EncodeForOdt(header2)}</text:span></text:p>");
-            sb.Append("<text:p text:style-name=\"Separator\" />");
 
             // Demographics Table
             var p = report.Sample?.ClinicalRequest?.Patient;
@@ -438,6 +437,10 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">⚠ REGISTRO DIFERIDO (modo contingencia) — {EncodeForOdt(s.DeferredEntryReason ?? "")}</text:p>");
             }
 
+            // Marco negro arriba/abajo del bloque, igual que el BorderTop/BorderBottom 1.5f
+            // que envuelve el Column completo en el PDF -- el borde va en las celdas de la
+            // primera y última fila (DemoCellTop/DemoCellBottom), no en la tabla (ver nota en
+            // GenerateOdtStylesXml).
             sb.Append(@"<table:table table:name=""Demographics"">");
             sb.Append(@"<table:table-column table:style-name=""Col50""/>");
             sb.Append(@"<table:table-column table:style-name=""Col30""/>");
@@ -445,16 +448,20 @@ namespace MiniLIS.Infrastructure.Services
             
             // Row 1: Name, NHC, NASI
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">NOMBRE: <text:span text:style-name=""Value"">{EncodeForOdt(p?.FullName ?? "")}</text:span></text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">NHC: <text:span text:style-name=""Value"">{EncodeForOdt(p?.NHC ?? "")}</text:span></text:p></table:table-cell>");
-            sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">NASI: <text:span text:style-name=""Value"">{EncodeForOdt(p?.NASI ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""DemoCellTop""><text:p text:style-name=""Label"">NOMBRE: <text:span text:style-name=""Value"">{EncodeForOdt(p?.FullName ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""DemoCellTop""><text:p text:style-name=""Label"">NHC: <text:span text:style-name=""Value"">{EncodeForOdt(p?.NHC ?? "")}</text:span></text:p></table:table-cell>");
+            sb.Append($@"<table:table-cell table:style-name=""DemoCellTop""><text:p text:style-name=""Label"">NASI: <text:span text:style-name=""Value"">{EncodeForOdt(p?.NASI ?? "")}</text:span></text:p></table:table-cell>");
             sb.Append("</table:table-row>");
 
             // Row 2: Dates
             sb.Append("<table:table-row>");
             sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">FECHA MUESTRA: <text:span text:style-name=""Value"">{(s != null ? _localTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy HH:mm") : "")}</text:span></text:p></table:table-cell>");
             sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">FECHA INFORME: <text:span text:style-name=""Value"">{_localTimeService.ToLocal(report.ReportDate)?.ToString("dd/MM/yyyy")}</text:span></text:p></table:table-cell>");
-            sb.Append("<table:table-cell />"); // Required to fill the row
+            // La columna que cubre un table:number-columns-spanned se representa con
+            // table:covered-table-cell, no con otra table:table-cell -- LibreOffice lo
+            // tolera igual, pero el filtro de importación de Word es más estricto con el
+            // esquema ODF y rechazaba el fichero entero por esto.
+            sb.Append("<table:covered-table-cell/>");
             sb.Append("</table:table-row>");
 
             // Tipo de muestra (A-3): campo propio de la entidad, ya no la cadena cruda de
@@ -476,19 +483,19 @@ namespace MiniLIS.Infrastructure.Services
             sb.Append("<table:table-row>");
             sb.Append($@"<table:table-cell><text:p text:style-name=""Label"">SERVICIO: <text:span text:style-name=""Value"">{EncodeForOdt(r?.OriginService ?? "")}</text:span></text:p></table:table-cell>");
             sb.Append($@"<table:table-cell table:number-columns-spanned=""2""><text:p text:style-name=""Label"">SOLICITANTE: <text:span text:style-name=""Value"">{EncodeForOdt(r?.DoctorName ?? "")}</text:span></text:p></table:table-cell>");
-            sb.Append("<table:table-cell />");
+            sb.Append("<table:covered-table-cell/>");
             sb.Append("</table:table-row>");
 
-            // Row 5: Motivo (antes venía mezclado sin separar dentro de la celda de tipo)
+            // Row 5: Motivo (antes venía mezclado sin separar dentro de la celda de tipo).
+            // La celda ya abarca las 3 columnas de la tabla (Col50+Col30+Col20): no hace
+            // falta ninguna celda más detrás, ni cubierta ni normal -- las dos que había
+            // sobraban del todo y también rompían el esquema para Word.
             sb.Append("<table:table-row>");
-            sb.Append($@"<table:table-cell table:number-columns-spanned=""3""><text:p text:style-name=""Label"">MOTIVO: <text:span text:style-name=""Value"">{EncodeForOdt(s?.Diagnosis ?? "")}</text:span></text:p></table:table-cell>");
-            sb.Append("<table:table-cell />");
-            sb.Append("<table:table-cell />");
+            sb.Append($@"<table:table-cell table:style-name=""DemoCellBottom"" table:number-columns-spanned=""3""><text:p text:style-name=""Label"">MOTIVO: <text:span text:style-name=""Value"">{EncodeForOdt(s?.Diagnosis ?? "")}</text:span></text:p></table:table-cell>");
             sb.Append("</table:table-row>");
 
             sb.Append("</table:table>");
-            sb.Append("<text:p text:style-name=\"Separator\" />");
-            
+
             // --- CONTENIDO ---
             
             // INFORME
@@ -523,7 +530,10 @@ namespace MiniLIS.Infrastructure.Services
                     .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
                 if (!string.IsNullOrWhiteSpace(panelVersionsText))
                 {
-                    sb.Append($@"<text:p text:style-name=""GreyText"">Versión de panel: {EncodeForOdt(panelVersionsText)}</text:p>");
+                    // "GreyText" es un estilo de familia "text" (solo válido en un <text:span>);
+                    // usarlo como text:style-name de un <text:p> no es válido en ODF y el
+                    // párrafo caía al estilo por defecto (12pt), de ahí el tamaño de más.
+                    sb.Append($@"<text:p text:style-name=""GreySmall"">Versión de panel: {EncodeForOdt(panelVersionsText)}</text:p>");
                 }
             }
 
@@ -585,14 +595,14 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append("<table:table-row>");
                 foreach (var fac in facs)
                 {
-                    sb.Append($@"<table:table-cell><text:p text:style-name=""Label""><text:span text:style-name=""SmallValue"">{EncodeForOdt(fac.Trim())}</text:span></text:p></table:table-cell>");
+                    sb.Append($@"<table:table-cell table:style-name=""SigCell""><text:p text:style-name=""Label""><text:span text:style-name=""SmallValue"">{EncodeForOdt(fac.Trim())}</text:span></text:p></table:table-cell>");
                 }
                 sb.Append("</table:table-row>");
-                
+
                 sb.Append("<table:table-row>");
                 foreach (var fac in facs)
                 {
-                    sb.Append($@"<table:table-cell><text:p text:style-name=""SmallValue"">F.E.A. Hematología</text:p></table:table-cell>");
+                    sb.Append($@"<table:table-cell table:style-name=""SigCell""><text:p text:style-name=""SmallValue"">F.E.A. Hematología</text:p></table:table-cell>");
                 }
                 sb.Append("</table:table-row>");
                 sb.Append("</table:table>");
@@ -660,6 +670,14 @@ namespace MiniLIS.Infrastructure.Services
       <style:paragraph-properties fo:margin-top=""0.4cm"" fo:margin-bottom=""0.1cm""/>
       <style:text-properties fo:font-size=""10pt"" fo:font-weight=""bold"" fo:color=""#2563eb"" fo:text-transform=""uppercase""/>
     </style:style>
+    <style:style style:name=""TitleBlue"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0.4cm"" fo:margin-bottom=""0.3cm""/>
+      <style:text-properties fo:font-size=""14pt"" fo:font-weight=""bold"" fo:color=""#6D9EEB""/>
+    </style:style>
+    <style:style style:name=""GreySmall"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0cm"" fo:margin-bottom=""0.4cm""/>
+      <style:text-properties fo:font-size=""8pt"" fo:color=""#64748b""/>
+    </style:style>
     <style:style style:name=""MonoText"" style:family=""paragraph"">
       <style:paragraph-properties fo:margin-left=""0.5cm""/>
       <style:text-properties fo:font-name=""Courier New"" fo:font-size=""9pt"" fo:color=""#334155""/>
@@ -680,6 +698,24 @@ namespace MiniLIS.Infrastructure.Services
     </style:style>
     <style:style style:name=""Col33"" style:family=""table-column"">
       <style:table-column-properties style:column-width=""5.66cm""/>
+    </style:style>
+
+    <!-- Marco negro que enmarca el bloque de datos demográficos, igual que en el PDF
+         (BorderTop/BorderBottom 1.5f sobre el Column completo). fo:border-top y fo:border-bottom
+         no son atributos válidos de style:table-properties según el esquema ODF, solo de
+         table-cell-properties. LibreOffice toleraba tenerlos puestos en la tabla, pero el
+         filtro de Word los ignoraba y no salía ningún borde. El borde debe ir en las celdas
+         de la primera y última fila. -->
+    <style:style style:name=""DemoCellTop"" style:family=""table-cell"">
+      <style:table-cell-properties fo:border-top=""1.5pt solid #000000"" fo:padding-top=""0.2cm""/>
+    </style:style>
+    <style:style style:name=""DemoCellBottom"" style:family=""table-cell"">
+      <style:table-cell-properties fo:border-bottom=""1.5pt solid #000000"" fo:padding-bottom=""0.2cm""/>
+    </style:style>
+    <!-- Separación entre firmantes: sin esto las columnas de la tabla de firmas quedan
+         pegadas unas a otras (el PDF usa Row con RelativeItem, que ya deja hueco entre sí). -->
+    <style:style style:name=""SigCell"" style:family=""table-cell"">
+      <style:table-cell-properties fo:padding-right=""0.6cm""/>
     </style:style>
   </office:styles>
 </office:document-styles>";

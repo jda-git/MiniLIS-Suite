@@ -26,5 +26,13 @@ namespace MiniLIS.Application.Interfaces
 
         /// <summary>Marca un tubo concreto como leído/no leído (M-4). Acción inmediata, auditable por separado del resto de la edición.</summary>
         Task ToggleSampleTubeReadAsync(int sampleTubeId, bool isRead, int? userId = null);
+
+        /// <summary>Registra una incidencia de lectura (motivo del catálogo + resolución +
+        /// nota opcional). Repetir/Anula dejan el tubo pendiente (IsRead=false); ConSalvedad
+        /// lo marca leído. Auditado de forma explícita (Action = "ReadIncident").</summary>
+        Task RecordTubeReadIncidentAsync(int sampleTubeId, int reasonId, TubeReadIncidentResolution resolution, string? notes, int? userId);
+
+        /// <summary>Anula una incidencia registrada por error, sin tocar el estado de lectura del tubo.</summary>
+        Task ClearTubeReadIncidentAsync(int sampleTubeId);
     }
 }

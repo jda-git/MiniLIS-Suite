@@ -458,6 +458,10 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(sp => sp.PanelVersion)
                 .Include(sp => sp.Tubes)
                     .ThenInclude(t => t.ReadByUser)
+                .Include(sp => sp.Tubes)
+                    .ThenInclude(t => t.ReadIncidentReason)
+                .Include(sp => sp.Tubes)
+                    .ThenInclude(t => t.ReadIncidentByUser)
                 .Where(sp => sp.SampleId == sampleId)
                 .OrderBy(sp => sp.DisplayOrder)
                 .ToListAsync();
@@ -559,18 +563,7 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     tube.ReadByUserId = userId;
                     tube.ReadAtUtc = DateTime.UtcNow;
-
-                    // AcquiredAtUtc (M-5): se rellena solo la primera vez que se marca
-                    // cualquier tubo de la muestra como leído.
-                    var samplePanel = await _db.SamplePanels.FindAsync(tube.SamplePanelId);
-                    if (samplePanel != null)
-                    {
-                        var sample = await _db.Samples.FindAsync(samplePanel.SampleId);
-                        if (sample != null && sample.AcquiredAtUtc == null)
-                        {
-                            sample.AcquiredAtUtc = tube.ReadAtUtc;
-                        }
-                    }
+                    await StampFirstAcquisitionAsync(tube);
                 }
                 else
                 {
@@ -579,6 +572,94 @@ namespace MiniLIS.Infrastructure.Services
                 }
                 await _db.SaveChangesAsync();
             }
+        }
+
+        /// <summary>AcquiredAtUtc (M-5): se rellena solo la primera vez que se marca
+        /// cualquier tubo de la muestra como leído, sea por lectura normal o por una
+        /// incidencia resuelta "con salvedad".</summary>
+        private async Task StampFirstAcquisitionAsync(SampleTube tube)
+        {
+            var samplePanel = await _db.SamplePanels.FindAsync(tube.SamplePanelId);
+            if (samplePanel == null) return;
+
+            var sample = await _db.Samples.FindAsync(samplePanel.SampleId);
+            if (sample != null && sample.AcquiredAtUtc == null)
+            {
+                sample.AcquiredAtUtc = tube.ReadAtUtc;
+            }
+        }
+
+        public async Task RecordTubeReadIncidentAsync(int sampleTubeId, int reasonId, TubeReadIncidentResolution resolution, string? notes, int? userId)
+        {
+            var tube = await _db.SampleTubes.FindAsync(sampleTubeId);
+            if (tube == null) return;
+
+            var reason = await _db.TubeReadIncidentReasons.FindAsync(reasonId);
+            if (reason == null) throw new InvalidOperationException("El motivo de incidencia seleccionado no existe.");
+
+            var now = DateTime.UtcNow;
+            tube.HasReadIncident = true;
+            tube.ReadIncidentReasonId = reasonId;
+            tube.ReadIncidentResolution = resolution;
+            tube.ReadIncidentNotes = notes;
+            tube.ReadIncidentAtUtc = now;
+            tube.ReadIncidentByUserId = userId;
+
+            // Repetir/Anula: el tubo queda pendiente -- si ya estaba marcado leído (se
+            // detecta el fallo a posteriori), se revierte para no dejar una lectura viciada
+            // contando como válida. ConSalvedad: se usa la lectura pese al fallo, igual que
+            // una lectura normal, con la incidencia documentada aparte.
+            if (resolution == TubeReadIncidentResolution.ConSalvedad)
+            {
+                tube.IsRead = true;
+                tube.ReadByUserId = userId;
+                tube.ReadAtUtc = now;
+                await StampFirstAcquisitionAsync(tube);
+            }
+            else
+            {
+                tube.IsRead = false;
+                tube.ReadByUserId = null;
+                tube.ReadAtUtc = null;
+            }
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SampleTube),
+                EntityId = tube.Id.ToString(),
+                Action = "ReadIncident",
+                UserId = userId,
+                ActionContext = $"Incidencia de lectura: {reason.Description} — resolución: {resolution}",
+                Changes = notes,
+                TimestampUtc = now
+            });
+
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task ClearTubeReadIncidentAsync(int sampleTubeId)
+        {
+            var tube = await _db.SampleTubes.FindAsync(sampleTubeId);
+            if (tube == null || !tube.HasReadIncident) return;
+
+            var previousReasonId = tube.ReadIncidentReasonId;
+            tube.HasReadIncident = false;
+            tube.ReadIncidentReasonId = null;
+            tube.ReadIncidentResolution = null;
+            tube.ReadIncidentNotes = null;
+            tube.ReadIncidentAtUtc = null;
+            tube.ReadIncidentByUserId = null;
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SampleTube),
+                EntityId = tube.Id.ToString(),
+                Action = "ReadIncidentCleared",
+                ActionContext = $"Incidencia de lectura anulada (motivo anterior Id={previousReasonId})",
+                TimestampUtc = DateTime.UtcNow
+            });
+
+            await _db.SaveChangesAsync();
         }
     }
 }

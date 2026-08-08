@@ -444,12 +444,19 @@
         var readPanels = samplePanels.Where(sp => sp.IsRead).ToList();
         readPanelNames = readPanels.Select(sp => sp.Panel?.Name ?? sp.CustomText ?? "—").ToList();
 
-        // Auto-fill PanelsUsedText if empty
-        if (string.IsNullOrWhiteSpace(report.PanelsUsedText) && readPanels.Any())
+        // Auto-fill PanelsUsedText if empty, con los tubos realmente leídos de ESTE
+        // estudio (SamplePanel.Tubes, congelados en el registro -- M-4) y no con
+        // Panel.TubeListText, que quedó obsoleto desde M-4 y nunca se rellena para
+        // paneles dados de alta después: el resultado era un listado vacío aunque
+        // hubiera tubos leídos. Se listan los tubos leídos de cualquier panel con
+        // lectura parcial, no solo de los paneles completados del todo.
+        if (string.IsNullOrWhiteSpace(report.PanelsUsedText))
         {
-            var tubeLines = readPanels
-                .Where(sp => sp.Panel?.TubeListText != null)
-                .SelectMany(sp => sp.Panel!.TubeListText!.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+            var tubeLines = samplePanels
+                .SelectMany(sp => sp.Tubes
+                    .Where(t => t.IsRead)
+                    .OrderBy(t => t.TubeNumber)
+                    .Select(t => $"{sp.Panel?.Name ?? sp.CustomText ?? "—"} — T{t.TubeNumber}: {t.MarkerList}"));
             report.PanelsUsedText = string.Join("\n", tubeLines);
         }
 

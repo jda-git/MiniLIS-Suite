@@ -174,6 +174,18 @@ namespace MiniLIS.Domain.Entities
         public bool IsRead => Tubes.Any() && Tubes.Where(t => !t.IsOptional).All(t => t.IsRead);
     }
 
+    /// <summary>Cómo queda resuelta una incidencia de lectura de tubo. No hay una cuarta
+    /// opción "sin resolver": el técnico debe decidir una de las tres al registrarla.</summary>
+    public enum TubeReadIncidentResolution
+    {
+        /// <summary>Se repetirá el tubo o la lectura; el tubo queda pendiente (IsRead=false).</summary>
+        Repetir = 1,
+        /// <summary>El fallo anula la lectura; el tubo queda pendiente (IsRead=false), sin previsión automática de repetición.</summary>
+        Anula = 2,
+        /// <summary>Se usa la lectura pese al fallo, con la incidencia documentada; el tubo se marca leído (IsRead=true).</summary>
+        ConSalvedad = 3
+    }
+
     /// <summary>Un tubo real dentro de un SamplePanel: leído o no, con su fichero FCS (M-4).</summary>
     public class SampleTube : AuditableEntity
     {
@@ -194,6 +206,19 @@ namespace MiniLIS.Domain.Entities
         public int? ReadByUserId { get; set; }
         public DateTime? ReadAtUtc { get; set; }
         public virtual MiniLIS.Domain.Identity.ApplicationUser? ReadByUser { get; set; }
+
+        /// <summary>Incidencia de lectura (nueva): motivo del catálogo, resolución elegida y
+        /// nota libre. No sustituye a IsRead/ReadAtUtc -- los complementa; ver
+        /// SampleService.RecordTubeReadIncidentAsync para cómo interactúan.</summary>
+        public bool HasReadIncident { get; set; }
+        public int? ReadIncidentReasonId { get; set; }
+        public virtual TubeReadIncidentReason? ReadIncidentReason { get; set; }
+        public TubeReadIncidentResolution? ReadIncidentResolution { get; set; }
+        [MaxLength(300)]
+        public string? ReadIncidentNotes { get; set; }
+        public DateTime? ReadIncidentAtUtc { get; set; }
+        public int? ReadIncidentByUserId { get; set; }
+        public virtual MiniLIS.Domain.Identity.ApplicationUser? ReadIncidentByUser { get; set; }
 
         /// <summary>Código de equipo del QMS, no maestro propio (F-0 / I.2). Lo rellenará un ticket futuro.</summary>
         [MaxLength(50)]

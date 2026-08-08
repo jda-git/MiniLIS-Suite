@@ -51,6 +51,9 @@
         <button class="config-tab @(activeTab == "rejectionReasons" ? "active" : "")" @onclick='() => SetTab("rejectionReasons")'>
             <i class="bi bi-clipboard-x"></i> Motivos de Rechazo
         </button>
+        <button class="config-tab @(activeTab == "readIncidents" ? "active" : "")" @onclick='() => SetTab("readIncidents")'>
+            <i class="bi bi-exclamation-diamond"></i> Incidencias de Lectura
+        </button>
         <button class="config-tab @(activeTab == "system" ? "active" : "")" @onclick='() => SetTab("system")'>
             <i class="bi bi-sliders"></i> Ajustes
         </button>
@@ -502,6 +505,80 @@
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button class="action-icon action-delete" title="Eliminar (desactiva si está en uso)" @onclick="() => DeleteRejectionReason(reason.Id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        else if (activeTab == "readIncidents")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Motivos de Incidencia de Lectura</h2>
+                    <p class="section-subtitle">@readIncidentReasons.Count motivos configurados — se ofrecen al marcar una incidencia al leer un tubo en el citómetro</p>
+                </div>
+                <button class="btn-config btn-config-primary" @onclick="() => { editingIncidentReason = new TubeReadIncidentReason { IsActive = true }; showIncidentReasonForm = true; }">
+                    <i class="bi bi-plus-lg"></i> Nuevo Motivo
+                </button>
+            </div>
+
+            @if (showIncidentReasonForm)
+            {
+                <div class="inline-form">
+                    <div class="inline-form-grid">
+                        <div class="form-field">
+                            <label class="field-label">Código</label>
+                            <input type="text" class="field-input" placeholder="Ej: ATASCO" maxlength="20" @bind="editingIncidentReason.Code" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Descripción</label>
+                            <input type="text" class="field-input" placeholder="Descripción del motivo" @bind="editingIncidentReason.Description" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Exige texto libre (p. ej. "Otro")</label>
+                            <input type="checkbox" @bind="editingIncidentReason.RequiresFreeText" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Activo</label>
+                            <input type="checkbox" @bind="editingIncidentReason.IsActive" />
+                        </div>
+                        <div class="form-field form-actions-inline">
+                            <button class="btn-config btn-config-success" @onclick="SaveTubeReadIncidentReason"><i class="bi bi-check-lg"></i> Guardar</button>
+                            <button class="btn-config btn-config-ghost" @onclick="() => showIncidentReasonForm = false">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="config-table-wrap">
+                <table class="config-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Texto libre</th>
+                            <th>Activo</th>
+                            <th class="col-actions">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var reason in readIncidentReasons)
+                        {
+                            <tr>
+                                <td><span class="marker-chip">@reason.Code</span></td>
+                                <td class="cell-desc">@reason.Description</td>
+                                <td>@(reason.RequiresFreeText ? "Sí" : "No")</td>
+                                <td>@(reason.IsActive ? "Sí" : "No")</td>
+                                <td class="cell-actions">
+                                    <button class="action-icon action-edit" title="Editar" @onclick="() => { editingIncidentReason = reason; showIncidentReasonForm = true; }">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="action-icon action-delete" title="Eliminar (desactiva si está en uso)" @onclick="() => DeleteTubeReadIncidentReason(reason.Id)">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </td>
@@ -1469,6 +1546,11 @@
     private bool showReasonForm = false;
     private RejectionReason editingReason = new();
 
+    // Tube read incident reasons
+    private List<TubeReadIncidentReason> readIncidentReasons = new();
+    private bool showIncidentReasonForm = false;
+    private TubeReadIncidentReason editingIncidentReason = new();
+
     // Umbrales de indicadores de calidad (F-1)
     private List<QualityIndicator> qualityIndicators = new();
     private int? editingIndicatorId = null;
@@ -1522,6 +1604,7 @@
         templates = await MasterService.GetAllTemplatesAsync();
         panels = await MasterService.GetAllPanelsAsync();
         rejectionReasons = await MasterService.GetAllRejectionReasonsAsync();
+        readIncidentReasons = await MasterService.GetAllTubeReadIncidentReasonsAsync();
         qualityIndicators = await QualityIndicatorService.GetAllIndicatorsAsync();
         labelSettings = await MasterService.GetLabelSettingsAsync();
         worklistProfiles = await WorklistExportService.GetProfilesAsync();
@@ -1580,6 +1663,23 @@
     private async Task DeleteRejectionReason(int id)
     {
         await MasterService.DeleteRejectionReasonAsync(id);
+        await LoadData();
+    }
+
+    private async Task SaveTubeReadIncidentReason()
+    {
+        if (!string.IsNullOrWhiteSpace(editingIncidentReason.Code) && !string.IsNullOrWhiteSpace(editingIncidentReason.Description))
+        {
+            editingIncidentReason.Code = editingIncidentReason.Code.Trim().ToUpperInvariant();
+            await MasterService.UpsertTubeReadIncidentReasonAsync(editingIncidentReason);
+            showIncidentReasonForm = false;
+            await LoadData();
+        }
+    }
+
+    private async Task DeleteTubeReadIncidentReason(int id)
+    {
+        await MasterService.DeleteTubeReadIncidentReasonAsync(id);
         await LoadData();
     }
 

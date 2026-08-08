@@ -22,6 +22,12 @@ namespace MiniLIS.Application.Interfaces
         /// <summary>Si el motivo tiene SampleReceptionIssue asociados, lo desactiva (IsActive=false) en vez de borrarlo.</summary>
         Task DeleteRejectionReasonAsync(int id);
 
+        // TUBE READ INCIDENT REASONS
+        Task<List<TubeReadIncidentReason>> GetAllTubeReadIncidentReasonsAsync();
+        Task<TubeReadIncidentReason> UpsertTubeReadIncidentReasonAsync(TubeReadIncidentReason reason);
+        /// <summary>Si el motivo tiene SampleTube asociados, lo desactiva (IsActive=false) en vez de borrarlo.</summary>
+        Task DeleteTubeReadIncidentReasonAsync(int id);
+
         // TEMPLATES
         Task<List<ReportTemplate>> GetAllTemplatesAsync();
         Task<ReportTemplate?> GetTemplateWithMarkersAsync(int id);

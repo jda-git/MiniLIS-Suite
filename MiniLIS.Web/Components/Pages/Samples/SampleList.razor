@@ -356,10 +356,77 @@
                                                             </span>
                                                         </div>
                                                     }
+                                                    @if (tube.HasReadIncident)
+                                                    {
+                                                        <div class="incident-badge mt-1 shadow-xs animate-fade-in" title="@tube.ReadIncidentNotes">
+                                                            <span><i class="bi bi-exclamation-triangle-fill me-1"></i>@tube.ReadIncidentReason?.Description</span>
+                                                            <span class="incident-resolution">@FormatResolution(tube.ReadIncidentResolution)</span>
+                                                        </div>
+                                                    }
                                                 </div>
                                             </td>
-                                            <td></td>
+                                            <td class="text-end">
+                                                @if (sp.Id != 0)
+                                                {
+                                                    <button type="button" class="btn-incident-toggle" title="@(tube.HasReadIncident ? "Corregir incidencia" : "Marcar incidencia de lectura")"
+                                                            @onclick="@(() => ToggleIncidentForm(tube))">
+                                                        <i class="bi bi-exclamation-diamond"></i>
+                                                    </button>
+                                                }
+                                            </td>
                                         </tr>
+                                        @if (incidentFormTubeId == tube.Id)
+                                        {
+                                            <tr class="incident-form-row">
+                                                <td colspan="4">
+                                                    <div class="incident-form p-3 rounded-3">
+                                                        @if (!string.IsNullOrEmpty(incidentErrorMessage))
+                                                        {
+                                                            <div class="alert alert-danger py-1 px-2 small mb-2">@incidentErrorMessage</div>
+                                                        }
+                                                        <div class="incident-field mb-2">
+                                                            <label class="form-label-small mb-1 d-block">Motivo</label>
+                                                            <select class="form-select form-select-sm" @bind="incidentReasonId">
+                                                                <option value="0">-- Selecciona un motivo --</option>
+                                                                @foreach (var r in incidentReasons.Where(r => r.IsActive))
+                                                                {
+                                                                    <option value="@r.Id">@r.Description</option>
+                                                                }
+                                                            </select>
+                                                        </div>
+                                                        <div class="incident-field mb-2">
+                                                            <label class="form-label-small mb-1 d-block">Resolución</label>
+                                                            <div class="incident-resolution-options small">
+                                                                <label class="form-check-label d-flex align-items-center gap-1">
+                                                                    <input type="radio" class="form-check-input" name="incidentRes" checked="@(incidentResolution == TubeReadIncidentResolution.Repetir)" @onchange="@(() => incidentResolution = TubeReadIncidentResolution.Repetir)" />
+                                                                    Repetir tubo/lectura
+                                                                </label>
+                                                                <label class="form-check-label d-flex align-items-center gap-1">
+                                                                    <input type="radio" class="form-check-input" name="incidentRes" checked="@(incidentResolution == TubeReadIncidentResolution.Anula)" @onchange="@(() => incidentResolution = TubeReadIncidentResolution.Anula)" />
+                                                                    Anula la lectura
+                                                                </label>
+                                                                <label class="form-check-label d-flex align-items-center gap-1">
+                                                                    <input type="radio" class="form-check-input" name="incidentRes" checked="@(incidentResolution == TubeReadIncidentResolution.ConSalvedad)" @onchange="@(() => incidentResolution = TubeReadIncidentResolution.ConSalvedad)" />
+                                                                    Con salvedad (se usa)
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                        <div class="incident-field mb-2">
+                                                            <label class="form-label-small mb-1 d-block">Notas @(SelectedIncidentReasonRequiresFreeText() ? "(obligatorio para este motivo)" : "(opcional)")</label>
+                                                            <input type="text" class="form-control form-control-sm" @bind="incidentNotes" placeholder="Detalle de la incidencia..." />
+                                                        </div>
+                                                        <div class="d-flex gap-2">
+                                                            <button type="button" class="btn btn-sm btn-primary" @onclick="@(() => SaveIncident(tube))">Guardar</button>
+                                                            @if (tube.HasReadIncident)
+                                                            {
+                                                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="@(() => ClearIncident(tube))">Anular</button>
+                                                            }
+                                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelIncidentForm">Cancelar</button>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
                                     }
                                 }
                             </tbody>
@@ -454,6 +521,8 @@
     .filter-strip {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
+        row-gap: 8px;
         background: #fff;
         border: 1px solid #e2e8f0;
         border-radius: 10px;
@@ -465,8 +534,8 @@
         display: flex;
         align-items: center;
         padding: 0 12px;
-        flex: 1;
-        min-width: 0;
+        flex: 1 1 160px;
+        min-width: 160px;
     }
     .filter-icon { color: #94a3b8; margin-right: 8px; flex-shrink: 0; }
     .filter-control {
@@ -481,7 +550,7 @@
     .filter-control::placeholder { color: #94a3b8; }
     select.filter-control { cursor: pointer; }
 
-    .filter-dates { gap: 6px; }
+    .filter-dates { flex: 0 1 auto; min-width: 270px; gap: 6px; }
     .filter-date { width: 120px; text-align: center; flex: none; }
     .date-separator { color: #cbd5e1; font-size: 12px; }
 
@@ -494,6 +563,7 @@
     .filter-actions {
         display: flex;
         align-items: center;
+        flex-shrink: 0;
         gap: 6px;
         padding-left: 8px;
     }
@@ -756,7 +826,82 @@
         color: #166534;
         opacity: 0.8;
     }
-    
+
+    /* Incidencias de lectura de tubo */
+    .incident-badge {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 6px;
+        padding: 4px 8px;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        max-width: 150px;
+    }
+    .incident-badge span:first-child {
+        font-size: 9px;
+        color: #c2410c;
+        font-weight: 700;
+        text-align: center;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        width: 100%;
+        line-height: 1.2;
+    }
+    .incident-badge .incident-resolution {
+        font-size: 8px;
+        font-weight: 600;
+        margin-top: 1px;
+        line-height: 1.1;
+        color: #9a3412;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .btn-incident-toggle {
+        background: transparent;
+        border: none;
+        color: #f59e0b;
+        font-size: 15px;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 6px;
+        transition: all 0.15s;
+    }
+    .btn-incident-toggle:hover {
+        background: #fff7ed;
+        color: #c2410c;
+    }
+    .incident-form-row td {
+        padding: 0 !important;
+        border-top: none !important;
+    }
+    .incident-form {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        margin: 0 8px 8px 8px;
+        box-sizing: border-box;
+    }
+    /* Diseño apilado a propósito: el modal es bastante más estrecho que el viewport, así
+       que las columnas de Bootstrap (col-md-*), que responden al ancho de la ventana y no
+       al del contenedor, se solapaban aquí dentro. */
+    .incident-field { width: 100%; }
+    .incident-field select,
+    .incident-field input[type="text"] {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .incident-resolution-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+    }
+    /* El radio ya queda fuera de la regla de arriba (que solo toma input[type="text"]) --
+       no forzar aquí "width: auto": un <input> con appearance:none (como pone Bootstrap
+       para poder pintar el círculo a mano) no cae al tamaño nativo del control al quitarle
+       el ancho, cae a un tamaño casi nulo. Se deja el 1em de .form-check-input intacto. */
+
     /* Delete button */
     .btn-delete-panel {
         background: transparent;
@@ -966,10 +1111,130 @@
         panelModalSample = sample;
         modalAddPanelId = 0;
         modalErrorMessage = null;
+        incidentFormTubeId = null;
         // Load fresh panels for this sample. Se reutilizan directamente las entidades
         // devueltas (con sus SampleTube ya cargados) en vez de reconstruirlas a mano,
         // para no tener que enumerar cada campo nuevo aquí cada vez que el modelo cambie.
         modalPanels = await SampleService.GetSamplePanelsAsync(sample.Id);
+        if (!incidentReasons.Any())
+        {
+            incidentReasons = await MasterService.GetAllTubeReadIncidentReasonsAsync();
+        }
+    }
+
+    // --- Incidencias de lectura de tubo ---
+    private List<TubeReadIncidentReason> incidentReasons = new();
+    private int? incidentFormTubeId;
+    private int incidentReasonId;
+    private TubeReadIncidentResolution incidentResolution = TubeReadIncidentResolution.ConSalvedad;
+    private string? incidentNotes;
+    private string? incidentErrorMessage;
+
+    private void ToggleIncidentForm(SampleTube tube)
+    {
+        incidentErrorMessage = null;
+        if (incidentFormTubeId == tube.Id)
+        {
+            incidentFormTubeId = null;
+            return;
+        }
+        incidentFormTubeId = tube.Id;
+        incidentReasonId = tube.ReadIncidentReasonId ?? 0;
+        incidentResolution = tube.ReadIncidentResolution ?? TubeReadIncidentResolution.ConSalvedad;
+        incidentNotes = tube.ReadIncidentNotes;
+    }
+
+    private void CancelIncidentForm()
+    {
+        incidentFormTubeId = null;
+        incidentErrorMessage = null;
+    }
+
+    private bool SelectedIncidentReasonRequiresFreeText() =>
+        incidentReasons.FirstOrDefault(r => r.Id == incidentReasonId)?.RequiresFreeText ?? false;
+
+    private static string FormatResolution(TubeReadIncidentResolution? resolution) => resolution switch
+    {
+        TubeReadIncidentResolution.Repetir => "se repetirá",
+        TubeReadIncidentResolution.Anula => "anula la lectura",
+        TubeReadIncidentResolution.ConSalvedad => "con salvedad",
+        _ => ""
+    };
+
+    private async Task SaveIncident(SampleTube tube)
+    {
+        incidentErrorMessage = null;
+        if (incidentReasonId == 0)
+        {
+            incidentErrorMessage = "Selecciona un motivo de incidencia.";
+            return;
+        }
+        if (SelectedIncidentReasonRequiresFreeText() && string.IsNullOrWhiteSpace(incidentNotes))
+        {
+            incidentErrorMessage = "Este motivo exige una nota describiendo la incidencia.";
+            return;
+        }
+
+        if (!currentUserId.HasValue)
+        {
+            var authState = await AuthStateTask;
+            var user = await UserManager.GetUserAsync(authState.User);
+            currentUserId = user?.Id;
+            currentUserName = user?.FullName ?? user?.UserName;
+        }
+
+        try
+        {
+            await SampleService.RecordTubeReadIncidentAsync(tube.Id, incidentReasonId, incidentResolution, incidentNotes, currentUserId);
+
+            // Refleja en memoria el mismo cambio que acaba de aplicar el servicio, para no
+            // recargar todo el modal solo por esto.
+            tube.HasReadIncident = true;
+            tube.ReadIncidentReason = incidentReasons.FirstOrDefault(r => r.Id == incidentReasonId);
+            tube.ReadIncidentReasonId = incidentReasonId;
+            tube.ReadIncidentResolution = incidentResolution;
+            tube.ReadIncidentNotes = incidentNotes;
+            tube.ReadIncidentAtUtc = DateTime.UtcNow;
+            tube.ReadIncidentByUserId = currentUserId;
+            if (incidentResolution == TubeReadIncidentResolution.ConSalvedad)
+            {
+                tube.IsRead = true;
+                tube.ReadByUserId = currentUserId;
+                tube.ReadAtUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                tube.IsRead = false;
+                tube.ReadByUserId = null;
+                tube.ReadAtUtc = null;
+            }
+
+            incidentFormTubeId = null;
+        }
+        catch (Exception ex)
+        {
+            incidentErrorMessage = $"Error al guardar la incidencia: {ex.Message}";
+        }
+    }
+
+    private async Task ClearIncident(SampleTube tube)
+    {
+        try
+        {
+            await SampleService.ClearTubeReadIncidentAsync(tube.Id);
+            tube.HasReadIncident = false;
+            tube.ReadIncidentReason = null;
+            tube.ReadIncidentReasonId = null;
+            tube.ReadIncidentResolution = null;
+            tube.ReadIncidentNotes = null;
+            tube.ReadIncidentAtUtc = null;
+            tube.ReadIncidentByUserId = null;
+            incidentFormTubeId = null;
+        }
+        catch (Exception ex)
+        {
+            incidentErrorMessage = $"Error al anular la incidencia: {ex.Message}";
+        }
     }
 
     private async Task AddPanelToModal()

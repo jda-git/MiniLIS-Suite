@@ -364,13 +364,17 @@
         double min = known.Min(), max = known.Max();
         if (Math.Abs(max - min) < 0.0001) { max = min + 1; }
 
+        // InvariantCulture explícito: el atributo "points" del SVG exige punto decimal.
+        // Sin esto, en un servidor con cultura española (coma decimal) "1.46" sale como
+        // "1,46" y rompe por completo el formato "x,y x,y..." -- el navegador intenta
+        // salvar el atributo malformado y el resultado es el zigzag ilegible.
         var points = new List<string>();
         for (int i = 0; i < values.Count; i++)
         {
             if (!values[i].HasValue) continue;
             double x = pad + (w - 2 * pad) * ((double)i / Math.Max(1, values.Count - 1));
             double y = h - pad - (h - 2 * pad) * ((values[i]!.Value - min) / (max - min));
-            points.Add($"{x:0.#},{y:0.#}");
+            points.Add($"{x.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)},{y.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}");
         }
 
         var polyline = string.Join(" ", points);

@@ -132,4 +132,20 @@
         overflow-y: auto;
         flex-grow: 1;
     }
+
+    /* La barra lateral y la cabecera son navegación de la aplicación, no parte de
+       ningún documento -- no deben aparecer en ninguna impresión (etiquetas, hojas de
+       trabajo, etc.), sea cual sea la página que se imprima. */
+    @@media print {
+        .iso-sidebar, .iso-topbar {
+            display: none !important;
+        }
+        .iso-layout, .iso-main {
+            display: block;
+        }
+        .iso-content {
+            padding: 0;
+            overflow: visible;
+        }
+    }
 </style>
