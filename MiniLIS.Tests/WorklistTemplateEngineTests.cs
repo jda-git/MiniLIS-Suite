@@ -58,6 +58,26 @@ namespace MiniLIS.Tests
 
             result.Should().Be("26-0001-{PlaceholderInexistente}");
         }
+
+        [Fact]
+        public void Render_substitutes_case_number_and_carousel_position_tokens()
+        {
+            // Añadidos para BD FACSDiva/BD FACSuite (CaseNumber, PrimaryRackPosition/
+            // CarouselPosition, Carrier ID): ver WorklistExportService.ComputeSlot.
+            var ctx = new WorklistTemplateContext
+            {
+                SampleNumber = "26-0001",
+                PanelName = "LEUCEMIA AGUDA",
+                CaseNumber = "555426",
+                PositionInGroup = 12,
+                GroupIndex = 2
+            };
+
+            var result = WorklistTemplateEngine.Render(
+                "{SampleNumber}|{PanelName}|{CaseNumber}|Pos{PositionInGroup}|Rack{GroupIndex}", ctx);
+
+            result.Should().Be("26-0001|LEUCEMIA AGUDA|555426|Pos12|Rack2");
+        }
     }
 
     public class FcsFileNamingTests

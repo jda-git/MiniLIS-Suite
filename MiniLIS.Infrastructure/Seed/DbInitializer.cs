@@ -269,57 +269,134 @@ namespace MiniLIS.Infrastructure.Seed
             }
             await context.SaveChangesAsync();
 
-            // 8. Seed Worklist Export Profiles (F-6). Esquema NO validado contra el equipo
-            // real: punto de partida, marcado explícitamente como pendiente de validación.
-            if (!await context.WorklistExportProfiles.AnyAsync(p => p.TargetInstrument == "FACSDiva"))
+            // 8. Seed Worklist Export Profiles (F-6). Esquema de CAMPOS según especificación
+            // documentada del fabricante para BD FACSDiva (XML, Canto II) y BD FACSuite (CSV,
+            // FACSLyric) -- ver comentarios de cada perfil. Los nombres de elemento XML de
+            // FACSDiva (raíz/grupo/fila) y el nombre exacto de PanelName/Task en cada equipo
+            // real siguen sin confirmar contra un fichero de ejemplo: ValidatedAgainstInstrument
+            // permanece en falso hasta que la unidad lo compruebe.
+            //
+            // SeedWorklistProfileAsync (no un simple "insertar si no existe"): esta migración
+            // sustituye por completo el esquema de columnas de ambos perfiles respecto al que
+            // ya estaba sembrado en sesiones anteriores. Un "insertar si no existe" habría
+            // dejado los perfiles YA EXISTENTES con las columnas inventadas antiguas para
+            // siempre. Se actualizan en sitio SOLO si siguen sin validar contra el equipo real
+            // -- si un administrador ya los confirmó, no se tocan.
             {
-                context.WorklistExportProfiles.Add(new WorklistExportProfile
+                await SeedWorklistProfileAsync(context, new WorklistExportProfile
                 {
                     Name = "FACSDiva — Canto II",
                     TargetInstrument = "FACSDiva",
-                    FileExtension = "csv",
-                    Delimiter = ",",
+                    FileFormat = WorklistFileFormat.Xml,
+                    FileExtension = "xml",
                     Encoding = "UTF-8",
-                    IncludeHeaderRow = true,
                     LineEnding = "CRLF",
-                    Granularity = WorklistGranularity.PorTubo,
+                    Granularity = WorklistGranularity.PorPanel,
+                    XmlRootElement = "Worklist",
+                    XmlGroupElement = "Carousel",
+                    XmlRowElement = "Specimen",
+                    MaxRowsPerGroup = 40, // 1 carrusel BD FACSCanto II = 40 posiciones
+                    MaxGroupsPerFile = 5, // tope documentado: 5 carruseles = 200 muestras/fichero
                     IsActive = true,
                     ValidatedAgainstInstrument = false,
                     Columns = new List<WorklistExportColumn>
                     {
-                        new() { DisplayOrder = 1, ColumnHeader = "Sample Name", ValueTemplate = "{SampleNumber}_{SampleTypeCode}_T{TubeNumberPadded}" },
-                        new() { DisplayOrder = 2, ColumnHeader = "Tube Name", ValueTemplate = "{PanelDisplayCode}" },
-                        new() { DisplayOrder = 3, ColumnHeader = "Panel", ValueTemplate = "{PanelCode}" },
-                        new() { DisplayOrder = 4, ColumnHeader = "Markers", ValueTemplate = "{MarkerList}" },
-                        new() { DisplayOrder = 5, ColumnHeader = "FCS File", ValueTemplate = "{FcsFileName}" }
+                        new() { DisplayOrder = 1, ColumnHeader = "SampleID", ValueTemplate = "{SampleNumber}" },
+                        // PanelName debe coincidir EXACTAMENTE (mayúsculas/espacios incluidos) con
+                        // el nombre del Panel Template guardado en BD FACSDiva -- confirmar en
+                        // recepción del equipo real y ajustar la plantilla si no coincide.
+                        new() { DisplayOrder = 2, ColumnHeader = "PanelName", ValueTemplate = "{PanelName}" },
+                        // Anonimizado: se duplica el identificador de muestra en vez del nombre
+                        // real del paciente, tal como el propio fabricante contempla para
+                        // "sistemas anonimizados" -- coherente con C-2/F-9 del resto de MiniLIS.
+                        new() { DisplayOrder = 3, ColumnHeader = "SampleName", ValueTemplate = "{SampleNumber}" },
+                        new() { DisplayOrder = 4, ColumnHeader = "CaseNumber", ValueTemplate = "{CaseNumber}" },
+                        // MiniLIS no registra el tipo de tubo primario físico (Vacutainer, etc.):
+                        // se deja vacío -- el campo lo admite (Requerido, permite nulo).
+                        new() { DisplayOrder = 5, ColumnHeader = "PrimaryTubeType", ValueTemplate = "" },
+                        // Se asume que la gradilla de preparación y el carrusel del equipo se
+                        // cargan en el mismo orden impreso en la hoja de trabajo -- MiniLIS no
+                        // rastrea la posición física real en dos pasos distintos.
+                        new() { DisplayOrder = 6, ColumnHeader = "PrimaryRackPosition", ValueTemplate = "{PositionInGroup}" },
+                        new() { DisplayOrder = 7, ColumnHeader = "CarouselPosition", ValueTemplate = "{PositionInGroup}" }
                     }
                 });
             }
 
-            if (!await context.WorklistExportProfiles.AnyAsync(p => p.TargetInstrument == "FACSuite"))
             {
-                context.WorklistExportProfiles.Add(new WorklistExportProfile
+                await SeedWorklistProfileAsync(context, new WorklistExportProfile
                 {
                     Name = "FACSuite — FACSLyric",
                     TargetInstrument = "FACSuite",
+                    FileFormat = WorklistFileFormat.Csv,
                     FileExtension = "csv",
-                    Delimiter = ";",
+                    Delimiter = ",", // BD FACSuite importa CSV separado por comas, no por punto y coma
                     Encoding = "UTF-8",
                     IncludeHeaderRow = true,
                     LineEnding = "CRLF",
-                    Granularity = WorklistGranularity.PorTubo,
+                    Granularity = WorklistGranularity.PorPanel,
+                    MaxRowsPerGroup = 40, // "40 Tube Rack" por defecto (ver columna Carrier Type)
+                    MaxGroupsPerFile = null, // el CSV no tiene tope de fichero, solo de gradilla física
                     IsActive = true,
                     ValidatedAgainstInstrument = false,
                     Columns = new List<WorklistExportColumn>
                     {
-                        new() { DisplayOrder = 1, ColumnHeader = "SpecimenID", ValueTemplate = "{SampleNumber}" },
-                        new() { DisplayOrder = 2, ColumnHeader = "TubeID", ValueTemplate = "T{TubeNumberPadded}" },
-                        new() { DisplayOrder = 3, ColumnHeader = "PanelCode", ValueTemplate = "{PanelDisplayCode}" },
-                        new() { DisplayOrder = 4, ColumnHeader = "FCSFileName", ValueTemplate = "{FcsFileName}" }
+                        new() { DisplayOrder = 1, ColumnHeader = "Sample ID", ValueTemplate = "{SampleNumber}" },
+                        // Task debe coincidir EXACTAMENTE con el nombre del ensayo publicado en
+                        // Biblioteca > Ensayos de BD FACSuite -- confirmar contra el equipo real.
+                        new() { DisplayOrder = 2, ColumnHeader = "Task", ValueTemplate = "{PanelName}" },
+                        new() { DisplayOrder = 3, ColumnHeader = "Loading Option", ValueTemplate = "Universal Loader" },
+                        new() { DisplayOrder = 4, ColumnHeader = "Carrier Type", ValueTemplate = "40 Tube Rack" },
+                        new() { DisplayOrder = 5, ColumnHeader = "Carrier ID", ValueTemplate = "{WorklistDate}-R{GroupIndex}" },
+                        new() { DisplayOrder = 6, ColumnHeader = "Position", ValueTemplate = "{PositionInGroup}" },
+                        // Solo obligatorios para ensayos IVD (p. ej. BD OneFlow): MiniLIS no
+                        // rastrea lotes de reactivo hoy, se dejan vacíos.
+                        new() { DisplayOrder = 7, ColumnHeader = "Reagent Lot ID", ValueTemplate = "" },
+                        new() { DisplayOrder = 8, ColumnHeader = "Expiration Date", ValueTemplate = "" }
                     }
                 });
             }
             await context.SaveChangesAsync();
+        }
+
+        /// <summary>Inserta el perfil si no existe; si ya existe, lo actualiza en sitio (perfil
+        /// y columnas) SOLO mientras siga sin validar contra el equipo real. Un perfil ya
+        /// validado (ValidatedAgainstInstrument = true) representa la confirmación de un
+        /// administrador contra su equipo concreto -- sobrescribirlo automáticamente en cada
+        /// arranque, aunque el esquema de referencia de MiniLIS mejore, destruiría esa
+        /// confirmación sin avisar. Se identifica por TargetInstrument (único por diseño: solo
+        /// se siembra un perfil "FACSDiva" y uno "FACSuite").</summary>
+        private static async Task SeedWorklistProfileAsync(ApplicationDbContext context, WorklistExportProfile desired)
+        {
+            var existing = await context.WorklistExportProfiles
+                .Include(p => p.Columns)
+                .FirstOrDefaultAsync(p => p.TargetInstrument == desired.TargetInstrument);
+
+            if (existing == null)
+            {
+                context.WorklistExportProfiles.Add(desired);
+                return;
+            }
+
+            if (existing.ValidatedAgainstInstrument) return;
+
+            existing.Name = desired.Name;
+            existing.FileFormat = desired.FileFormat;
+            existing.FileExtension = desired.FileExtension;
+            existing.Delimiter = desired.Delimiter;
+            existing.Encoding = desired.Encoding;
+            existing.IncludeHeaderRow = desired.IncludeHeaderRow;
+            existing.LineEnding = desired.LineEnding;
+            existing.Granularity = desired.Granularity;
+            existing.XmlRootElement = desired.XmlRootElement;
+            existing.XmlGroupElement = desired.XmlGroupElement;
+            existing.XmlRowElement = desired.XmlRowElement;
+            existing.MaxRowsPerGroup = desired.MaxRowsPerGroup;
+            existing.MaxGroupsPerFile = desired.MaxGroupsPerFile;
+            existing.IsActive = desired.IsActive;
+
+            context.WorklistExportColumns.RemoveRange(existing.Columns);
+            existing.Columns = desired.Columns;
         }
     }
 }

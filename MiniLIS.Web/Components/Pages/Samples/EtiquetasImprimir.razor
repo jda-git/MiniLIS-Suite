@@ -3,6 +3,8 @@
 @using MiniLIS.Domain.Entities
 @using MiniLIS.Infrastructure.Services
 @using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using System.Net
 @attribute [Authorize]
 @inject ISampleService SampleService
 @inject IMasterDataService MasterService
@@ -23,46 +25,47 @@ else if (!samples.Any())
 else
 {
     <div class="print-toolbar no-print">
-        <button class="btn btn-primary btn-sm" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir (@totalLabels etiqueta@(totalLabels == 1 ? "" : "s"))</button>
+        <button class="btn btn-primary btn-sm" disabled="@(totalLabels == 0)" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir (@totalLabels etiqueta@(totalLabels == 1 ? "" : "s"))</button>
         <button class="btn btn-outline-secondary btn-sm" @onclick="Volver">Volver</button>
     </div>
 
-    <div class="labels-sheet">
-        @foreach (var s in samples)
+    <div class="label-selector no-print">
+        <div class="label-selector-col">
+            <h6>ETIQUETA MUESTRA</h6>
+            @foreach (var item in sampleItems)
+            {
+                <div class="label-selector-row">
+                    <input type="checkbox" @bind="item.Selected" />
+                    @BuildLabelMarkup(item)
+                </div>
+            }
+        </div>
+
+        @if (tubeItems.Any())
+        {
+            <div class="label-selector-col">
+                <h6>ETIQUETAS TUBOS</h6>
+                @foreach (var item in tubeItems)
+                {
+                    <div class="label-selector-row">
+                        <input type="checkbox" @bind="item.Selected" />
+                        @BuildLabelMarkup(item)
+                    </div>
+                }
+                <div class="label-selector-row label-selector-all">
+                    <input type="checkbox" checked="@allTubesSelected" @onchange="@(e => SetAllTubesSelected((bool)(e.Value ?? false)))" />
+                    <span>TODAS</span>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="labels-sheet print-only">
+        @foreach (var item in sampleItems.Where(i => i.Selected).Concat(tubeItems.Where(i => i.Selected)))
         {
             for (var copy = 0; copy < settings.CopiesPerSample; copy++)
             {
-                <div class="label" style="width:@(settings.WidthMm)mm; height:@(settings.HeightMm)mm; padding:@(settings.MarginMm)mm;">
-                    @((MarkupString)BuildBarcodeSvg(s.SampleNumber))
-                    <div class="label-main-row">
-                        <span class="label-number" style="font-size:@(settings.MainFontPt)pt;">@s.SampleNumber</span>
-                        @if (settings.ShowSampleType)
-                        {
-                            <span class="label-type" style="font-size:@(settings.MainFontPt)pt;">@s.SampleType.ToCode()</span>
-                        }
-                    </div>
-                    @{
-                        var patient = s.ClinicalRequest?.Patient;
-                        var hasNhc = !string.IsNullOrWhiteSpace(patient?.NHC);
-                        var hasNasi = !string.IsNullOrWhiteSpace(patient?.NASI);
-                    }
-                    @if (hasNhc)
-                    {
-                        <div class="label-id" style="font-size:@(settings.SecondaryFontPt)pt;">NHC: @patient!.NHC</div>
-                    }
-                    else if (hasNasi)
-                    {
-                        <div class="label-id" style="font-size:@(settings.SecondaryFontPt)pt;">NASI: @patient!.NASI</div>
-                    }
-                    else
-                    {
-                        <div class="label-noid" style="font-size:@(settings.SecondaryFontPt)pt;">SIN IDENTIFICADOR</div>
-                    }
-                    @if (settings.ShowReceptionDate)
-                    {
-                        <div class="label-date" style="font-size:@(settings.SecondaryFontPt)pt;">@LocalTimeService.ToLocal(s.ReceivedAtUtc ?? s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")</div>
-                    }
-                </div>
+                @BuildLabelMarkup(item)
             }
         }
     </div>
@@ -78,12 +81,32 @@ else
         .label:not(:last-child) { page-break-after: always; }
     }
     @@page {
-        size: @(settings.WidthMm)mm @(settings.HeightMm)mm;
+        size: @(settings.WidthMm.ToString(CultureInfo.InvariantCulture))mm @(settings.HeightMm.ToString(CultureInfo.InvariantCulture))mm;
         margin: 0;
     }
 
     .print-toolbar { display: flex; gap: 10px; padding: 16px; }
-    .labels-sheet { display: flex; flex-direction: column; align-items: flex-start; gap: 4mm; padding: 4mm; }
+
+    .label-selector { display: flex; gap: 32px; flex-wrap: wrap; padding: 0 16px 16px; }
+    .label-selector-col { display: flex; flex-direction: column; gap: 10px; }
+    .label-selector-col h6 { margin: 0 0 4px; font-weight: 700; color: #334155; font-size: 0.85rem; letter-spacing: 0.03em; }
+    .label-selector-row { display: flex; align-items: center; gap: 8px; }
+    .label-selector-row input[type="checkbox"] { width: 1em; height: 1em; flex-shrink: 0; }
+    .label-selector-all { margin-top: 4px; font-weight: 600; color: #334155; }
+
+    /* .labels-sheet.print-only (selector compuesto, no ".print-only" suelto): así su
+       especificidad no depende de qué regla aparezca después en la hoja -- con dos
+       selectores de una sola clase para el mismo elemento (".print-only{display:none}" y
+       ".labels-sheet{display:flex}"), gana la que esté escrita más abajo en el CSS
+       independientemente de cuál "debería" ganar, y aquí ".labels-sheet" iba después:
+       el bloque quedaba visible en pantalla con display:flex en vez de oculto. */
+    .labels-sheet.print-only {
+        display: none;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4mm;
+        padding: 4mm;
+    }
 
     @@media print {
         /* La regla @@page de arriba ya define el tamaño exacto de una etiqueta con margen
@@ -91,7 +114,7 @@ else
            impresión, cualquier espacio aquí desplaza el contenido dentro de una página
            que no tiene hueco de sobra (queda cortado por overflow:hidden en vez de
            centrado). */
-        .labels-sheet { padding: 0; gap: 0; }
+        .labels-sheet.print-only { display: flex; padding: 0; gap: 0; }
     }
 
     .label {
@@ -117,6 +140,10 @@ else
     .label-id { color: #1e293b; margin-top: 0.3mm; }
     .label-date { color: #475569; margin-top: 0.3mm; }
     .label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; margin-top: 0.3mm; }
+    /* Lista de monoclonales del tubo (en vez de NHC/NASI en las etiquetas de tubo): una
+       sola línea, cortada con puntos suspensivos si no cabe en el ancho de la etiqueta,
+       en vez de desbordar o pasar a una segunda línea (la etiqueta no tiene alto de sobra). */
+    .label-tube { color: #1e293b; margin-top: 0.3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
     @@media print {
         .label { border: none; }
@@ -130,7 +157,22 @@ else
     private List<Sample> samples = new();
     private LabelSettings settings = new();
     private bool isLoading = true;
-    private int totalLabels => samples.Count * settings.CopiesPerSample;
+
+    private List<LabelItem> sampleItems = new();
+    private List<LabelItem> tubeItems = new();
+
+    private int totalLabels => (sampleItems.Count(i => i.Selected) + tubeItems.Count(i => i.Selected)) * settings.CopiesPerSample;
+    private bool allTubesSelected => tubeItems.Count > 0 && tubeItems.All(i => i.Selected);
+
+    private class LabelItem
+    {
+        public bool Selected;
+        public string SampleNumber = "";
+        public string TypeCode = "";
+        public string? IdLine;
+        public string? DateLine;
+        public string? TubeLine;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -145,7 +187,50 @@ else
             .ToList();
 
         samples = ids.Any() ? await SampleService.GetSamplesByIdsAsync(ids) : new List<Sample>();
+        BuildLabelItems();
         isLoading = false;
+    }
+
+    private void BuildLabelItems()
+    {
+        sampleItems = new List<LabelItem>();
+        tubeItems = new List<LabelItem>();
+
+        foreach (var s in samples)
+        {
+            var patient = s.ClinicalRequest?.Patient;
+            var hasNhc = !string.IsNullOrWhiteSpace(patient?.NHC);
+            var hasNasi = !string.IsNullOrWhiteSpace(patient?.NASI);
+            var idLine = hasNhc ? $"NHC: {patient!.NHC}" : (hasNasi ? $"NASI: {patient!.NASI}" : null);
+
+            sampleItems.Add(new LabelItem
+            {
+                Selected = true,
+                SampleNumber = s.SampleNumber,
+                TypeCode = s.SampleType.ToCode(),
+                IdLine = idLine,
+                DateLine = LocalTimeService.ToLocal(s.ReceivedAtUtc ?? s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")
+            });
+
+            foreach (var panel in s.Panels)
+            {
+                foreach (var tube in panel.Tubes)
+                {
+                    tubeItems.Add(new LabelItem
+                    {
+                        Selected = false,
+                        SampleNumber = s.SampleNumber,
+                        TypeCode = s.SampleType.ToCode(),
+                        TubeLine = $"T{tube.TubeNumber}: {tube.MarkerList}"
+                    });
+                }
+            }
+        }
+    }
+
+    private void SetAllTubesSelected(bool value)
+    {
+        foreach (var item in tubeItems) item.Selected = value;
     }
 
     private async Task Imprimir()
@@ -156,6 +241,45 @@ else
     private void Volver()
     {
         Nav.NavigateTo("/muestras");
+    }
+
+    // Construye el mismo marcado para el selector en pantalla y para la hoja de impresión
+    // (.labels-sheet): así lo que se selecciona es exactamente lo que se imprime, en vez de
+    // mantener dos plantillas separadas que puedan divergir (ver el historial de bugs de
+    // impresión de esta misma página).
+    private MarkupString BuildLabelMarkup(LabelItem item)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append($@"<div class=""label"" style=""width:{settings.WidthMm.ToString(CultureInfo.InvariantCulture)}mm; height:{settings.HeightMm.ToString(CultureInfo.InvariantCulture)}mm; padding:{settings.MarginMm.ToString(CultureInfo.InvariantCulture)}mm;"">");
+        sb.Append(BuildBarcodeSvg(item.SampleNumber));
+        sb.Append(@"<div class=""label-main-row"">");
+        sb.Append($@"<span class=""label-number"" style=""font-size:{settings.MainFontPt}pt;"">{WebUtility.HtmlEncode(item.SampleNumber)}</span>");
+        if (settings.ShowSampleType)
+        {
+            sb.Append($@"<span class=""label-type"" style=""font-size:{settings.MainFontPt}pt;"">{WebUtility.HtmlEncode(item.TypeCode)}</span>");
+        }
+        sb.Append("</div>");
+
+        if (item.TubeLine != null)
+        {
+            sb.Append($@"<div class=""label-tube"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.TubeLine)}</div>");
+        }
+        else if (item.IdLine != null)
+        {
+            sb.Append($@"<div class=""label-id"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.IdLine)}</div>");
+        }
+        else
+        {
+            sb.Append($@"<div class=""label-noid"" style=""font-size:{settings.SecondaryFontPt}pt;"">SIN IDENTIFICADOR</div>");
+        }
+
+        if (item.TubeLine == null && settings.ShowReceptionDate && item.DateLine != null)
+        {
+            sb.Append($@"<div class=""label-date"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.DateLine)}</div>");
+        }
+
+        sb.Append("</div>");
+        return (MarkupString)sb.ToString();
     }
 
     // Code 128B renderizado directamente a SVG (F-5): sin dependencia de generación de

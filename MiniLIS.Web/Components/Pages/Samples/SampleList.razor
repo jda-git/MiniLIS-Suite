@@ -202,9 +202,13 @@
                                 }
                             </td>
                             <td class="cell-incident">
-                                @if(s.HasIncident)
+                                @if (s.ReceptionStatus == ReceptionStatus.Rechazada)
                                 {
-                                    <span class="incident-badge" title="@s.IncidentsNotes"><i class="bi bi-exclamation-triangle-fill"></i> SÍ</span>
+                                    <span class="incident-badge" title="@BuildReceptionIssuesTitle(s)"><i class="bi bi-x-octagon-fill"></i> RECHAZADA</span>
+                                }
+                                else if (s.ReceptionStatus == ReceptionStatus.ConSalvedad)
+                                {
+                                    <span class="incident-badge incident-badge-warning" title="@BuildReceptionIssuesTitle(s)"><i class="bi bi-exclamation-triangle-fill"></i> SALVEDAD</span>
                                 }
                             </td>
                             <td class="cell-actions">
@@ -358,7 +362,7 @@
                                                     }
                                                     @if (tube.HasReadIncident)
                                                     {
-                                                        <div class="incident-badge mt-1 shadow-xs animate-fade-in" title="@tube.ReadIncidentNotes">
+                                                        <div class="tube-incident-badge mt-1 shadow-xs animate-fade-in" title="@tube.ReadIncidentNotes">
                                                             <span><i class="bi bi-exclamation-triangle-fill me-1"></i>@tube.ReadIncidentReason?.Description</span>
                                                             <span class="incident-resolution">@FormatResolution(tube.ReadIncidentResolution)</span>
                                                         </div>
@@ -665,6 +669,7 @@
         border-radius: 20px;
     }
     .incident-badge i { font-size: 10px; }
+    .incident-badge-warning { background: #fef3c7; color: #b45309; }
 
     /* Status Pills */
     .status-pill {
@@ -827,8 +832,12 @@
         opacity: 0.8;
     }
 
-    /* Incidencias de lectura de tubo */
-    .incident-badge {
+    /* Incidencias de lectura de tubo -- nombre distinto de ".incident-badge" (columna
+       "Incidencia" de la tabla, más abajo): mismo nombre de clase para dos componentes no
+       relacionados hacía que esta regla (más abajo en la hoja) ganara sobre la otra para
+       las propiedades compartidas, deformando el badge de la columna en cuanto dejara de
+       estar vacío. */
+    .tube-incident-badge {
         background: #fff7ed;
         border: 1px solid #fed7aa;
         border-radius: 6px;
@@ -839,7 +848,7 @@
         justify-content: center;
         max-width: 150px;
     }
-    .incident-badge span:first-child {
+    .tube-incident-badge span:first-child {
         font-size: 9px;
         color: #c2410c;
         font-weight: 700;
@@ -850,7 +859,7 @@
         width: 100%;
         line-height: 1.2;
     }
-    .incident-badge .incident-resolution {
+    .tube-incident-badge .incident-resolution {
         font-size: 8px;
         font-weight: 600;
         margin-top: 1px;
@@ -1152,6 +1161,20 @@
 
     private bool SelectedIncidentReasonRequiresFreeText() =>
         incidentReasons.FirstOrDefault(r => r.Id == incidentReasonId)?.RequiresFreeText ?? false;
+
+    // Motivos de recepción (F-4) para el tooltip del badge de la columna "Incidencia":
+    // prioriza el texto ya redactado para el informe (ReceptionCaveatForReport) y, si no
+    // hay, cae a los motivos del catálogo elegidos en recepción (ReceptionIssues).
+    private static string BuildReceptionIssuesTitle(Sample s)
+    {
+        if (!string.IsNullOrWhiteSpace(s.ReceptionCaveatForReport))
+            return s.ReceptionCaveatForReport!;
+
+        var reasons = s.ReceptionIssues
+            .Select(i => i.RejectionReason?.Description)
+            .Where(d => !string.IsNullOrWhiteSpace(d));
+        return string.Join(", ", reasons);
+    }
 
     private static string FormatResolution(TubeReadIncidentResolution? resolution) => resolution switch
     {

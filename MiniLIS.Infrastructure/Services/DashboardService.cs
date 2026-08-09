@@ -104,9 +104,11 @@ namespace MiniLIS.Infrastructure.Services
             double tatMax = tatDays.Any() ? tatDays.Last() : 0;
 
             // ── Quality ──
+            // HasIncident está [Obsoleto desde F-4] -- las altas nuevas ya no lo rellenan (ver
+            // Sample.cs); el dato real de incidencia preanalítica es ReceptionStatus != Correcta.
             int totalLast30 = last30Samples.Count;
-            int incidentsLast30 = await _db.Samples.CountAsync(s => s.HasIncident && s.ReceptionDate >= last30Days);
-            int totalIncidents = await _db.Samples.CountAsync(s => s.HasIncident);
+            int incidentsLast30 = await _db.Samples.CountAsync(s => s.ReceptionStatus != ReceptionStatus.Correcta && s.ReceptionDate >= last30Days);
+            int totalIncidents = await _db.Samples.CountAsync(s => s.ReceptionStatus != ReceptionStatus.Correcta);
             double incidentRate = totalLast30 > 0 ? (double)incidentsLast30 / totalLast30 * 100 : 0;
 
             // ── Panel distribution (last 30 days) ──

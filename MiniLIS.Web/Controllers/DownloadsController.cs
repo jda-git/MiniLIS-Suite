@@ -426,7 +426,14 @@ namespace MiniLIS.Web.Controllers
                     return Problem(title: "Debe seleccionar al menos una muestra.", statusCode: 400);
 
                 var result = await _worklistExportService.ExportAsync(ids, profileId);
-                return File(result.FileBytes, "text/csv", result.FileName);
+                var contentType = result.FileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ? "application/xml" : "text/csv";
+                return File(result.FileBytes, contentType, result.FileName);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Errores de validación de negocio (p. ej. superar el límite de filas por
+                // fichero de BD FACSDiva): el mensaje ya es seguro para mostrar al usuario.
+                return Problem(title: ex.Message, statusCode: 400);
             }
             catch (Exception ex)
             {

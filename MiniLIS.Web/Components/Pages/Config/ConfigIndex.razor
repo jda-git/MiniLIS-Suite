@@ -765,43 +765,93 @@
                         <input type="text" class="field-input" @bind="editingWorklistProfile.TargetInstrument" />
                     </div>
                     <div class="form-field">
-                        <label class="field-label">Extensión</label>
-                        <input type="text" class="field-input" @bind="editingWorklistProfile.FileExtension" />
+                        <label class="field-label">Formato de fichero</label>
+                        <select class="field-input" @bind="editingWorklistProfile.FileFormat">
+                            <option value="Csv">CSV (BD FACSuite / FACSLyric)</option>
+                            <option value="Xml">XML (BD FACSDiva / Canto II)</option>
+                        </select>
                     </div>
                     <div class="form-field">
-                        <label class="field-label">Delimitador</label>
-                        <input type="text" class="field-input" @bind="editingWorklistProfile.Delimiter" />
+                        <label class="field-label">Extensión</label>
+                        <input type="text" class="field-input" @bind="editingWorklistProfile.FileExtension" />
                     </div>
                 </div>
                 <div class="inline-form-grid">
                     <div class="form-field">
-                        <label class="field-label">Codificación</label>
-                        <select class="field-input" @bind="editingWorklistProfile.Encoding">
-                            <option value="UTF-8">UTF-8</option>
-                            <option value="ANSI">ANSI</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label class="field-label">Fin de línea</label>
-                        <select class="field-input" @bind="editingWorklistProfile.LineEnding">
-                            <option value="CRLF">CRLF (Windows)</option>
-                            <option value="LF">LF (Unix)</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
                         <label class="field-label">Granularidad</label>
                         <select class="field-input" @bind="editingWorklistProfile.Granularity">
+                            <option value="PorPanel">Por panel (recomendado: 1 fila = 1 ensayo/Panel Template)</option>
                             <option value="PorTubo">Por tubo</option>
                             <option value="PorMuestra">Por muestra</option>
                         </select>
                     </div>
                     <div class="form-field">
-                        <label class="field-label">Fila de cabecera</label>
-                        <input type="checkbox" @bind="editingWorklistProfile.IncludeHeaderRow" />
+                        <label class="field-label">Capacidad carrusel/gradilla</label>
+                        <input type="number" class="field-input" min="1" @bind="editingWorklistProfile.MaxRowsPerGroup" />
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Máx. grupos por fichero</label>
+                        <input type="number" class="field-input" min="1" placeholder="Sin límite" @bind="editingWorklistProfile.MaxGroupsPerFile" />
                     </div>
                 </div>
 
-                <h3 class="section-title mt-3" style="font-size:15px;">Columnas</h3>
+                @if (editingWorklistProfile.FileFormat == WorklistFileFormat.Csv)
+                {
+                    <div class="inline-form-grid">
+                        <div class="form-field">
+                            <label class="field-label">Delimitador</label>
+                            <input type="text" class="field-input" @bind="editingWorklistProfile.Delimiter" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Codificación</label>
+                            <select class="field-input" @bind="editingWorklistProfile.Encoding">
+                                <option value="UTF-8">UTF-8</option>
+                                <option value="ANSI">ANSI</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Fin de línea</label>
+                            <select class="field-input" @bind="editingWorklistProfile.LineEnding">
+                                <option value="CRLF">CRLF (Windows)</option>
+                                <option value="LF">LF (Unix)</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Fila de cabecera</label>
+                            <input type="checkbox" @bind="editingWorklistProfile.IncludeHeaderRow" />
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle-fill me-1"></i>
+                        Los nombres de elemento raíz/grupo/fila no están confirmados contra ningún fichero real de
+                        BD FACSDiva — solo el nombre de los campos hoja (columnas de abajo). Ajústelos aquí si al
+                        validar contra el equipo real no coinciden.
+                    </div>
+                    <div class="inline-form-grid">
+                        <div class="form-field">
+                            <label class="field-label">Elemento raíz</label>
+                            <input type="text" class="field-input" @bind="editingWorklistProfile.XmlRootElement" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Elemento de grupo (carrusel)</label>
+                            <input type="text" class="field-input" @bind="editingWorklistProfile.XmlGroupElement" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Elemento de fila (espécimen)</label>
+                            <input type="text" class="field-input" @bind="editingWorklistProfile.XmlRowElement" />
+                        </div>
+                    </div>
+                }
+
+                <h3 class="section-title mt-3" style="font-size:15px;">Columnas / Campos</h3>
+                <p class="section-subtitle">
+                    @(editingWorklistProfile.FileFormat == WorklistFileFormat.Xml
+                        ? "\"Cabecera\" es aquí el nombre del elemento XML hoja (p. ej. SampleID, PanelName, CaseNumber)."
+                        : "\"Cabecera\" es el nombre exacto de columna del CSV que espera el software del citómetro.")
+                </p>
                 <table class="config-table mb-2">
                     <thead>
                         <tr><th>Orden</th><th>Cabecera</th><th>Plantilla</th><th></th></tr>
@@ -832,16 +882,20 @@
                         <tr><td><code>{SampleNumber}</code></td><td>26-00042</td></tr>
                         <tr><td><code>{SampleTypeCode}</code></td><td>MO</td></tr>
                         <tr><td><code>{SampleTypeName}</code></td><td>Médula ósea</td></tr>
-                        <tr><td><code>{TubeNumber}</code></td><td>2</td></tr>
-                        <tr><td><code>{TubeNumberPadded}</code></td><td>02</td></tr>
+                        <tr><td><code>{TubeNumber}</code></td><td>2 (0 en granularidad Por panel)</td></tr>
+                        <tr><td><code>{TubeNumberPadded}</code></td><td>02 (vacío en Por panel)</td></tr>
                         <tr><td><code>{PanelCode}</code></td><td>SLPC</td></tr>
+                        <tr><td><code>{PanelName}</code></td><td>Leucemia Aguda (nombre completo — el más probable para casar con el Panel Template/Assay del equipo)</td></tr>
                         <tr><td><code>{PanelVersion}</code></td><td>03</td></tr>
                         <tr><td><code>{PanelDisplayCode}</code></td><td>SLPC-v03</td></tr>
                         <tr><td><code>{MarkerList}</code></td><td>8+lambda/56+kappa/5/3/19/20+4/45/38</td></tr>
-                        <tr><td><code>{FcsFileName}</code></td><td>26-00042_MO_T02_SLPC-v03.fcs</td></tr>
+                        <tr><td><code>{FcsFileName}</code></td><td>26-00042_MO_T02_SLPC-v03.fcs (vacío en Por panel)</td></tr>
+                        <tr><td><code>{CaseNumber}</code></td><td>555426 (Nº de petición)</td></tr>
                         <tr><td><code>{ReceptionDate}</code></td><td>2026-08-05</td></tr>
                         <tr><td><code>{WorklistDate}</code></td><td>2026-08-06</td></tr>
                         <tr><td><code>{SequenceInWorklist}</code></td><td>7</td></tr>
+                        <tr><td><code>{PositionInGroup}</code></td><td>12 (posición en el carrusel/gradilla actual, 1..capacidad)</td></tr>
+                        <tr><td><code>{GroupIndex}</code></td><td>1 (nº de carrusel/gradilla, 1-based)</td></tr>
                     </tbody>
                 </table>
             }

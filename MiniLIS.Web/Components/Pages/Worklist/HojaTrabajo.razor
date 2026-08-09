@@ -103,6 +103,10 @@
                     <i class="bi bi-eye"></i> Generar vista previa
                 </button>
             </div>
+            @if (!string.IsNullOrEmpty(previewError))
+            {
+                <div class="alert alert-danger py-2 px-3 small">@previewError</div>
+            }
             @if (previewRows != null)
             {
                 @if (previewWarnings.Any())
@@ -185,6 +189,7 @@
 
     private List<WorklistPreviewRow>? previewRows;
     private List<string> previewWarnings = new();
+    private string? previewError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -224,8 +229,19 @@
 
     private async Task LoadPreview()
     {
-        previewRows = await ExportService.PreviewAsync(selectedIds.ToList(), selectedProfileId, 10);
-        previewWarnings = previewRows.SelectMany(r => r.ModifiedFields).Distinct().ToList();
+        previewError = null;
+        previewRows = null;
+        try
+        {
+            previewRows = await ExportService.PreviewAsync(selectedIds.ToList(), selectedProfileId, 10);
+            previewWarnings = previewRows.SelectMany(r => r.ModifiedFields).Distinct().ToList();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // P. ej. la selección supera el máximo de filas por fichero de BD FACSDiva
+            // (carruseles × capacidad): se detecta aquí, antes de intentar la descarga.
+            previewError = ex.Message;
+        }
     }
 
     private async Task Exportar()

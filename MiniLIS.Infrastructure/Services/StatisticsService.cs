@@ -67,11 +67,17 @@ namespace MiniLIS.Infrastructure.Services
         public async Task<List<IncidentStatItem>> GetIncidentDetailsAsync(DateTime from, DateTime to)
         {
             var (start, end) = ToUtcRange(from, to);
+            // HasIncident/IncidentsNotes están [Obsoletos desde F-4] -- las altas nuevas ya
+            // no los rellenan (ver Sample.cs). El dato real de incidencia preanalítica hoy
+            // es ReceptionStatus != Correcta (ConSalvedad o Rechazada), igual que
+            // QualityIndicatorService.GetPctIncidenciaAsync.
             var query = _db.Samples
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
+                .Include(s => s.ReceptionIssues)
+                    .ThenInclude(ri => ri.RejectionReason)
                 .Where(s => s.ReceptionDate >= start && s.ReceptionDate <= end)
-                .Where(s => s.HasIncident)
+                .Where(s => s.ReceptionStatus != ReceptionStatus.Correcta)
                 .AsQueryable();
 
             var samples = await query.ToListAsync();
@@ -81,9 +87,21 @@ namespace MiniLIS.Infrastructure.Services
                 SampleNumber = s.SampleNumber,
                 ReceptionDate = _localTimeService.ToLocal(s.ReceptionDate),
                 Patient = s.ClinicalRequest?.Patient?.FullName ?? "Unknown",
-                IncidentNotes = s.IncidentsNotes,
+                IncidentNotes = BuildIncidentNotes(s),
                 StudyPanel = s.StudyPanel
             }).OrderBy(x => x.ReceptionDate).ToList();
+        }
+
+        private static string BuildIncidentNotes(Sample s)
+        {
+            var prefix = s.ReceptionStatus == ReceptionStatus.Rechazada ? "Rechazada: " : "Con salvedad: ";
+            if (!string.IsNullOrWhiteSpace(s.ReceptionCaveatForReport))
+                return prefix + s.ReceptionCaveatForReport;
+
+            var reasons = s.ReceptionIssues
+                .Select(i => i.RejectionReason?.Description)
+                .Where(d => !string.IsNullOrWhiteSpace(d));
+            return prefix + string.Join(", ", reasons);
         }
 
         public async Task<StatisticsSummary> GetSummaryAsync(DateTime from, DateTime to, string? panelName)
@@ -99,7 +117,7 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             int totalSamples = await totalQuery.CountAsync();
-            int totalIncidents = await totalQuery.CountAsync(s => s.HasIncident);
+            int totalIncidents = await totalQuery.CountAsync(s => s.ReceptionStatus != ReceptionStatus.Correcta);
 
             var tatItems = await GetTatDetailsAsync(from, to, panelName);
             double avgTat = tatItems.Any() ? tatItems.Average(x => x.Hours) : 0;

@@ -179,6 +179,21 @@ namespace MiniLIS.Infrastructure.Persistence
                 .HasForeignKey(c => c.WorklistExportProfileId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Los inicializadores de propiedad de WorklistExportProfile (MaxRowsPerGroup = 40,
+            // XmlRootElement = "Worklist"...) solo aplican a objetos creados con "new" en
+            // memoria -- EF Core NO los traduce en el valor por defecto de la columna SQL. Sin
+            // esto, la migración que añade estas columnas les pondría 0/"" a las FILAS YA
+            // EXISTENTES (los dos perfiles sembrados), y un XElement con nombre vacío lanza
+            // excepción al exportar. HasDefaultValue asegura que el ALTER TABLE reelene también
+            // las filas existentes con el valor correcto, no solo las nuevas.
+            modelBuilder.Entity<WorklistExportProfile>(e =>
+            {
+                e.Property(p => p.MaxRowsPerGroup).HasDefaultValue(40);
+                e.Property(p => p.XmlRootElement).HasDefaultValue("Worklist");
+                e.Property(p => p.XmlGroupElement).HasDefaultValue("Carousel");
+                e.Property(p => p.XmlRowElement).HasDefaultValue("Specimen");
+            });
+
             modelBuilder.Entity<StoredSpecimen>()
                 .HasOne(s => s.Sample)
                 .WithMany()

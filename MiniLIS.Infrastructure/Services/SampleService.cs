@@ -250,6 +250,8 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(s => s.Report)
                     .ThenInclude(r => r.Signatories)
                         .ThenInclude(rs => rs.User)
+                .Include(s => s.ReceptionIssues)
+                    .ThenInclude(ri => ri.RejectionReason)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -407,6 +409,8 @@ namespace MiniLIS.Infrastructure.Services
             return await _db.Samples
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
+                .Include(s => s.Panels.Where(p => p.IsRequested))
+                    .ThenInclude(p => p.Tubes.OrderBy(t => t.TubeNumber))
                 .Where(s => sampleIds.Contains(s.Id))
                 .ToListAsync();
         }

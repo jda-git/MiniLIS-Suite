@@ -136,10 +136,15 @@
                             <!-- 6: Incidencias -->
                             <div class="audit-item">
                                 <label><i class="bi bi-exclamation-triangle"></i> Incidencias</label>
-                                @if (s.HasIncident)
+                                @if (s.ReceptionStatus == ReceptionStatus.Rechazada)
                                 {
-                                    <div class="val text-danger fw-bold">SÍ</div>
-                                    <div class="val-notes">@s.IncidentsNotes</div>
+                                    <div class="val text-danger fw-bold">RECHAZADA EN RECEPCIÓN</div>
+                                    <div class="val-notes">@BuildReceptionIssuesNotes(s)</div>
+                                }
+                                else if (s.ReceptionStatus == ReceptionStatus.ConSalvedad)
+                                {
+                                    <div class="val text-warning fw-bold">CON SALVEDAD EN RECEPCIÓN</div>
+                                    <div class="val-notes">@BuildReceptionIssuesNotes(s)</div>
                                 }
                                 else
                                 {
@@ -546,6 +551,19 @@
     [CascadingParameter]
     private Task<AuthenticationState>? AuthStateTask { get; set; }
 
+    // HasIncident/IncidentsNotes están [Obsoletos desde F-4] -- las altas nuevas ya no los
+    // rellenan (ver Sample.cs); el dato real es ReceptionStatus + ReceptionIssues.
+    private static string BuildReceptionIssuesNotes(Sample s)
+    {
+        if (!string.IsNullOrWhiteSpace(s.ReceptionCaveatForReport))
+            return s.ReceptionCaveatForReport!;
+
+        var reasons = s.ReceptionIssues
+            .Select(i => i.RejectionReason?.Description)
+            .Where(d => !string.IsNullOrWhiteSpace(d));
+        return string.Join(", ", reasons);
+    }
+
     private string searchTerm = "";
     private List<Sample> samples = new();
     private Dictionary<int, List<AuditLog>> sampleAuditLogs = new();
@@ -693,8 +711,10 @@
                        .Replace("Status: ", "Estado: ")
                        .Replace("Diagnosis: ", "Diagnóstico/Sospecha: ")
                        .Replace("StudyPanel: ", "Panel de Estudio: ")
-                       .Replace("HasIncident: ", "Tiene Incidencia: ")
-                       .Replace("IncidentsNotes: ", "Notas de Incidencia: ")
+                       .Replace("HasIncident: ", "Tiene Incidencia [obsoleto]: ")
+                       .Replace("IncidentsNotes: ", "Notas de Incidencia [obsoleto]: ")
+                       .Replace("ReceptionStatus: ", "Estado de Recepción: ")
+                       .Replace("ReceptionCaveatForReport: ", "Salvedad para el Informe: ")
                        .Replace("FinalizedAt: ", "Fecha de Validación: ")
                        .Replace("FinalizedByUserId: ", "ID Usuario de Validación: ")
                        .Replace("IsDeleted: ", "Eliminado: ");
