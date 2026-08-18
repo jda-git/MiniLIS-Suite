@@ -38,7 +38,7 @@ namespace MiniLIS.Tests
             var report = await SeedReportAsync(db, sampleType);
 
             using var ctx = db.CreateContext();
-            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService());
+            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService(), new PatientService(ctx, new FakeCurrentUserService()));
 
             var bytes = await service.GeneratePdfAsync(report);
 
@@ -53,14 +53,14 @@ namespace MiniLIS.Tests
             using var dbWithout = new TestDb();
             var reportWithout = await SeedReportAsync(dbWithout, SampleType.SangrePeriferica, caveat: null);
             using var ctxWithout = dbWithout.CreateContext();
-            var serviceWithout = new DocumentService(ctxWithout, new MasterDataService(ctxWithout), new LocalTimeService());
+            var serviceWithout = new DocumentService(ctxWithout, new MasterDataService(ctxWithout), new LocalTimeService(), new PatientService(ctxWithout, new FakeCurrentUserService()));
             var bytesWithout = await serviceWithout.GeneratePdfAsync(reportWithout);
 
             using var dbWith = new TestDb();
             var reportWith = await SeedReportAsync(dbWith, SampleType.SangrePeriferica,
                 caveat: "Volumen insuficiente para completar todos los tubos solicitados.");
             using var ctxWith = dbWith.CreateContext();
-            var serviceWith = new DocumentService(ctxWith, new MasterDataService(ctxWith), new LocalTimeService());
+            var serviceWith = new DocumentService(ctxWith, new MasterDataService(ctxWith), new LocalTimeService(), new PatientService(ctxWith, new FakeCurrentUserService()));
             var bytesWith = await serviceWith.GeneratePdfAsync(reportWith);
 
             bytesWith.Length.Should().BeGreaterThan(bytesWithout.Length,

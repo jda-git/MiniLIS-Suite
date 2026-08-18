@@ -199,6 +199,52 @@
         </div>
     </fieldset>
 
+    <!-- ═══════════════  SECCIÓN ESTUDIOS PREVIOS  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Estudios Previos</legend>
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <input type="checkbox" id="chkShowPrevStudies" @bind="report.ShowPreviousStudies" />
+            <label for="chkShowPrevStudies" class="rpt-label mb-0">Mostrar resultados previos</label>
+        </div>
+
+        @if (report.ShowPreviousStudies)
+        {
+            <div class="d-flex gap-4 flex-wrap mb-3 ps-4">
+                <label class="d-flex align-items-center gap-2 mb-0">
+                    <input type="checkbox" @bind="report.ShowPreviousMotivo" /> Motivo de solicitud
+                </label>
+                <label class="d-flex align-items-center gap-2 mb-0">
+                    <input type="checkbox" @bind="report.ShowPreviousReportBody" /> Texto del informe
+                </label>
+                <label class="d-flex align-items-center gap-2 mb-0">
+                    <input type="checkbox" @bind="report.ShowPreviousMarkers" /> Marcadores
+                </label>
+                <label class="d-flex align-items-center gap-2 mb-0">
+                    <input type="checkbox" @bind="report.ShowPreviousConclusions" /> Conclusión
+                </label>
+            </div>
+
+            @if (previousReportableStudies.Any())
+            {
+                <div class="prev-study-list ps-4">
+                    @foreach (var h in previousReportableStudies)
+                    {
+                        <label class="prev-study-row d-flex align-items-center gap-2 mb-1">
+                            <input type="checkbox" checked="@selectedPreviousStudyIds.Contains(h.SampleId)"
+                                   @onchange="@(e => TogglePreviousStudy(h.SampleId, e.Value))" />
+                            <span class="prev-study-date text-muted">@(h.ReceivedAtUtc.HasValue ? LocalTimeService.ToLocal(h.ReceivedAtUtc.Value).ToString("dd/MM/yyyy") : "—")</span>
+                            <span class="fw-bold">@h.SampleNumber @h.SampleType.ToCode()</span>
+                        </label>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="text-muted small ps-4">No hay estudios previos con informe generado.</p>
+            }
+        }
+    </fieldset>
+
     <!-- ═══════════════  SECCIÓN MUESTRA EXCEDENTE  ═══════════════ -->
     <fieldset class="rpt-fieldset mt-3">
         <legend>Muestra excedente</legend>
@@ -280,18 +326,19 @@
             {
                 <AuthorizeView Roles="Administrador,Facultativo">
                     <Authorized>
-                        <a href="/api/downloads/informe/@report.PublicId/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf?preview=true"
-                           target="_blank" class="btn btn-outline-success px-3">
+                        <!-- Guardan antes de generar (PreviewPdf/DownloadPdf/DownloadOdt): eran
+                             enlaces <a href> directos, así que cualquier cambio sin guardar
+                             (esta sección de Estudios Previos incluida) no se reflejaba en el
+                             PDF/ODT -- el servidor siempre genera desde lo último persistido. -->
+                        <button type="button" class="btn btn-outline-success px-3" disabled="@isSaving" @onclick="PreviewPdf">
                             <i class="bi bi-eye me-2"></i>Previsualizar PDF
-                        </a>
-                        <a href="/api/downloads/informe/@report.PublicId/pdf/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).pdf"
-                           download class="btn btn-outline-danger px-3">
+                        </button>
+                        <button type="button" class="btn btn-outline-danger px-3" disabled="@isSaving" @onclick="DownloadPdf">
                             <i class="bi bi-file-pdf me-2"></i>PDF
-                        </a>
-                        <a href="/api/downloads/informe/@report.PublicId/odt/Informe_@(report.Sample?.SampleNumber?.Replace("/","_")).odt"
-                           download class="btn btn-outline-info px-3">
+                        </button>
+                        <button type="button" class="btn btn-outline-info px-3" disabled="@isSaving" @onclick="DownloadOdt">
                             <i class="bi bi-file-earmark-word me-2"></i>ODT
-                        </a>
+                        </button>
                     </Authorized>
                 </AuthorizeView>
             }
@@ -369,6 +416,11 @@
 
     /* ── Actions ── */
     .rpt-actions { display: flex; justify-content: space-between; align-items: center; }
+
+    /* ── Estudios Previos ── */
+    .prev-study-list { display: flex; flex-direction: column; }
+    .prev-study-row { font-size: 13px; cursor: pointer; }
+    .prev-study-date { min-width: 90px; }
 </style>
 
 @code {
@@ -389,6 +441,12 @@
 
     // Histórico de estudios previos del paciente (F-2)
     private List<PatientStudyHistoryItem>? patientHistory;
+
+    // Estudios previos incrustados en el informe: subconjunto de patientHistory con
+    // informe ya generado, ordenado ascendente por fecha (al contrario que patientHistory,
+    // que se mantiene descendente para el panel de solo lectura de arriba).
+    private List<PatientStudyHistoryItem> previousReportableStudies = new();
+    private HashSet<int> selectedPreviousStudyIds = new();
 
     // Identification fields (editable)
     private string patientName = "";
@@ -421,6 +479,10 @@
         if (patient != null)
         {
             patientHistory = await PatientService.GetPatientHistoryAsync(patient.Id, SampleId);
+            previousReportableStudies = patientHistory
+                .Where(h => h.HasReport)
+                .OrderBy(h => h.ReceivedAtUtc)
+                .ToList();
         }
         peticionElectronica = report.Sample?.ClinicalRequest?.RequestNumber ?? "";
         servicioSolicitante = report.Sample?.ClinicalRequest?.OriginService ?? "";
@@ -467,6 +529,16 @@
                 selectedFacultativos = report.SelectedSignatures.Split('|', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
             else
                 selectedFacultativos = report.SelectedSignatures.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(report.PreviousStudiesSelectedSampleIds))
+        {
+            selectedPreviousStudyIds = report.PreviousStudiesSelectedSampleIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => int.TryParse(x.Trim(), out var id) ? id : (int?)null)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToHashSet();
         }
 
         // Load conclusions if template already selected
@@ -531,6 +603,18 @@
         }
     }
 
+    private void TogglePreviousStudy(int sampleId, object? isChecked)
+    {
+        if (isChecked is bool checkedValue && checkedValue)
+        {
+            selectedPreviousStudyIds.Add(sampleId);
+        }
+        else
+        {
+            selectedPreviousStudyIds.Remove(sampleId);
+        }
+    }
+
     private void RecalculateSummary()
     {
         if (report != null)
@@ -542,19 +626,57 @@
 
     private async Task SaveAndNotify()
     {
+        if (await TrySaveSilently())
+        {
+            await JS.InvokeVoidAsync("alert", "Informe guardado correctamente.");
+        }
+    }
+
+    /// <summary>Guarda sin el aviso de "Informe guardado" -- para los botones de
+    /// previsualizar/descargar, donde el guardado es un paso previo silencioso, no la
+    /// acción que el usuario pidió. Devuelve false (y ya ha avisado del error) si falla.</summary>
+    private async Task<bool> TrySaveSilently()
+    {
         try
         {
             await Save();
-            await JS.InvokeVoidAsync("alert", "Informe guardado correctamente.");
+            return true;
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {
             await JS.InvokeVoidAsync("alert", "Error de concurrencia: La muestra ha sido modificada por otro usuario. Por favor, recargue la página para ver los cambios.");
+            return false;
         }
         catch (Exception ex)
         {
             await JS.InvokeVoidAsync("alert", "Error al guardar el informe: " + ex.Message);
+            return false;
         }
+    }
+
+    // Antes eran <a href download>/<a href target=_blank> directos: cualquier cambio sin
+    // guardar en pantalla (incluida la selección de Estudios Previos) no se reflejaba en el
+    // PDF/ODT, porque el servidor siempre genera a partir de lo último guardado en la base
+    // de datos, nunca del estado en memoria del navegador.
+    private async Task PreviewPdf()
+    {
+        if (!await TrySaveSilently()) return;
+        var fileName = $"Informe_{report?.Sample?.SampleNumber?.Replace("/", "_")}.pdf";
+        await JS.InvokeVoidAsync("open", $"/api/downloads/informe/{report!.PublicId}/pdf/{fileName}?preview=true", "_blank");
+    }
+
+    private async Task DownloadPdf()
+    {
+        if (!await TrySaveSilently()) return;
+        var fileName = $"Informe_{report?.Sample?.SampleNumber?.Replace("/", "_")}.pdf";
+        await JS.InvokeVoidAsync("triggerDownload", $"/api/downloads/informe/{report!.PublicId}/pdf/{fileName}");
+    }
+
+    private async Task DownloadOdt()
+    {
+        if (!await TrySaveSilently()) return;
+        var fileName = $"Informe_{report?.Sample?.SampleNumber?.Replace("/", "_")}.odt";
+        await JS.InvokeVoidAsync("triggerDownload", $"/api/downloads/informe/{report!.PublicId}/odt/{fileName}");
     }
 
     private async Task Save()
@@ -583,6 +705,7 @@
             }
 
             report.SelectedSignatures = selectedFacultativos.Any() ? string.Join("|", selectedFacultativos) : null;
+            report.PreviousStudiesSelectedSampleIds = selectedPreviousStudyIds.Any() ? string.Join(",", selectedPreviousStudyIds) : null;
             await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), new List<int>());
         }
         finally

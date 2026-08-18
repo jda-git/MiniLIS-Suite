@@ -79,6 +79,21 @@ namespace MiniLIS.Domain.Entities
 
         public bool HasNgs { get; set; } = false;
         public string? NgsText { get; set; }
+
+        /// <summary>Estudios previos en el informe: si está marcado, el PDF/ODT añade una
+        /// página nueva tras conclusión y firmas con los datos seleccionados de estudios
+        /// previos del mismo paciente que ya tengan informe (ver DocumentService).</summary>
+        public bool ShowPreviousStudies { get; set; } = false;
+
+        /// <summary>Sample.Id separados por coma de los estudios previos seleccionados,
+        /// mismo patrón que SelectedSignatures (cadena delimitada, sin tabla de unión).</summary>
+        [MaxLength(1000)]
+        public string? PreviousStudiesSelectedSampleIds { get; set; }
+
+        public bool ShowPreviousMotivo { get; set; } = false;
+        public bool ShowPreviousReportBody { get; set; } = false;
+        public bool ShowPreviousMarkers { get; set; } = false;
+        public bool ShowPreviousConclusions { get; set; } = false;
     }
 
     public class ReportSignatory

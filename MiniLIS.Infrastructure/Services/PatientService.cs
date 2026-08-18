@@ -144,7 +144,10 @@ namespace MiniLIS.Infrastructure.Services
                 Status = s.Status,
                 ReportPublicId = s.Report?.PublicId,
                 HasReport = s.Report != null,
-                Diagnosis = s.Diagnosis
+                Diagnosis = s.Diagnosis,
+                ReportBody = s.Report?.ReportBody,
+                MarkersSummary = s.Report?.MarkersSummary,
+                Conclusions = s.Report?.Conclusions
             }).ToList();
 
             // M-2 Regla 3: no hay interceptor de lectura (ApplyAuditing solo dispara en

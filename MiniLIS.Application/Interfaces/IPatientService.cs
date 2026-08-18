@@ -42,6 +42,12 @@ namespace MiniLIS.Application.Interfaces
         public Guid? ReportPublicId { get; init; }
         public bool HasReport { get; init; }
         public string? Diagnosis { get; init; }
+
+        /// <summary>Contenido del informe previo (F-9, "estudios previos en el informe").
+        /// Solo tiene valor si HasReport es true.</summary>
+        public string? ReportBody { get; init; }
+        public string? MarkersSummary { get; init; }
+        public string? Conclusions { get; init; }
     }
 
     public class PatientLookupResult

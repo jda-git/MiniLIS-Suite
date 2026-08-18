@@ -23,13 +23,39 @@ namespace MiniLIS.Infrastructure.Services
         private readonly ApplicationDbContext _db;
         private readonly IMasterDataService _masterService;
         private readonly ILocalTimeService _localTimeService;
+        private readonly IPatientService _patientService;
 
-        public DocumentService(ApplicationDbContext db, IMasterDataService masterService, ILocalTimeService localTimeService)
+        public DocumentService(ApplicationDbContext db, IMasterDataService masterService, ILocalTimeService localTimeService, IPatientService patientService)
         {
             _db = db;
             _masterService = masterService;
             _localTimeService = localTimeService;
+            _patientService = patientService;
             QuestPDF.Settings.License = LicenseType.Community;
+        }
+
+        /// <summary>Estudios previos seleccionados para incrustar en el informe (F-9), con
+        /// datos frescos del servidor -- nunca se confía en nada que venga del cliente más
+        /// allá del propio SampleReport ya cargado. Compartido por GeneratePdfAsync y
+        /// GenerateOdtAsync para no duplicar el filtrado/orden.</summary>
+        private async Task<List<PatientStudyHistoryItem>> GetSelectedPreviousStudiesAsync(SampleReport report)
+        {
+            if (!report.ShowPreviousStudies || string.IsNullOrWhiteSpace(report.PreviousStudiesSelectedSampleIds))
+                return new List<PatientStudyHistoryItem>();
+
+            var selectedIds = report.PreviousStudiesSelectedSampleIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => int.TryParse(x.Trim(), out var id) ? id : (int?)null)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToHashSet();
+            if (selectedIds.Count == 0) return new List<PatientStudyHistoryItem>();
+
+            var patientId = report.Sample?.ClinicalRequest?.Patient?.Id;
+            if (patientId is null) return new List<PatientStudyHistoryItem>();
+
+            var history = await _patientService.GetPatientHistoryAsync(patientId.Value);
+            return history.Where(h => selectedIds.Contains(h.SampleId)).OrderBy(h => h.ReceivedAtUtc).ToList();
         }
 
         public async Task<byte[]> GeneratePdfAsync(SampleReport report)
@@ -56,6 +82,10 @@ namespace MiniLIS.Infrastructure.Services
 
             var headerLine1 = await _masterService.GetSettingAsync("Header:Line1") ?? "LABORATORIO DE HEMATOLOGÍA";
             var headerLine2 = await _masterService.GetSettingAsync("Header:Line2") ?? "CITOMETRÍA DE FLUJO";
+
+            // F-9: se calcula fuera de Document.Create porque el constructor de QuestPDF es
+            // síncrono -- no se puede await dentro del lambda de page.Content().
+            var previousStudies = await GetSelectedPreviousStudiesAsync(fullReport);
 
             var doc = Document.Create(container =>
             {
@@ -278,6 +308,49 @@ namespace MiniLIS.Infrastructure.Services
                                 }
                             });
                         }
+
+                        // ESTUDIOS PREVIOS (F-9): página nueva tras conclusión y firmas. El
+                        // pie de página ("Validado por:") se repite también aquí porque
+                        // page.Footer() se repite en toda página de este page.Content() --
+                        // efecto colateral aceptado (cada página queda autovalidada).
+                        if (previousStudies.Any())
+                        {
+                            col.Item().PageBreak();
+                            col.Item().PaddingBottom(10).Text("ESTUDIOS PREVIOS").FontSize(14).Bold().FontColor(titleColor);
+
+                            foreach (var h in previousStudies)
+                            {
+                                var dateStr = h.ReceivedAtUtc.HasValue ? _localTimeService.ToLocal(h.ReceivedAtUtc.Value).ToString("dd/MM/yyyy") : "—";
+                                col.Item().PaddingBottom(2).Text($"{dateStr}   {h.SampleNumber} {h.SampleType.ToCode()}").FontSize(10).Bold();
+
+                                if (fullReport.ShowPreviousMotivo && !string.IsNullOrWhiteSpace(h.Diagnosis))
+                                {
+                                    col.Item().Text(t =>
+                                    {
+                                        t.Span("Motivo de solicitud: ").Bold().FontSize(9);
+                                        t.Span(h.Diagnosis).FontSize(9);
+                                    });
+                                }
+                                if (fullReport.ShowPreviousReportBody && !string.IsNullOrWhiteSpace(h.ReportBody))
+                                {
+                                    col.Item().Text(h.ReportBody).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                                }
+                                if (fullReport.ShowPreviousMarkers && !string.IsNullOrWhiteSpace(h.MarkersSummary))
+                                {
+                                    col.Item().Text(h.MarkersSummary).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                                }
+                                if (fullReport.ShowPreviousConclusions && !string.IsNullOrWhiteSpace(h.Conclusions))
+                                {
+                                    col.Item().Text(t =>
+                                    {
+                                        t.Span("Conclusión: ").Bold().FontSize(9);
+                                        t.Span(h.Conclusions).FontSize(9);
+                                    });
+                                }
+
+                                col.Item().PaddingBottom(12);
+                            }
+                        }
                     });
 
                     // --- PIE DE PÁGINA ---
@@ -336,6 +409,7 @@ namespace MiniLIS.Infrastructure.Services
             var logoAlignment = await _masterService.GetSettingAsync("Header:LogoAlignment") ?? "Left";
             var headerLine1 = await _masterService.GetSettingAsync("Header:Line1") ?? "LABORATORIO DE HEMATOLOGÍA";
             var headerLine2 = await _masterService.GetSettingAsync("Header:Line2") ?? "CITOMETRÍA DE FLUJO";
+            var previousStudies = await GetSelectedPreviousStudiesAsync(fullReport);
 
             using var ms = new MemoryStream();
             using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, true))
@@ -399,14 +473,14 @@ namespace MiniLIS.Infrastructure.Services
                 var contentEntry = archive.CreateEntry("content.xml");
                 using (var writer = new StreamWriter(contentEntry.Open()))
                 {
-                    writer.Write(GenerateOdtContentXml(fullReport, hasLogo, headerLine1, headerLine2, logoAlignment));
+                    writer.Write(GenerateOdtContentXml(fullReport, hasLogo, headerLine1, headerLine2, logoAlignment, previousStudies));
                 }
             }
 
             return ms.ToArray();
         }
 
-        private string GenerateOdtContentXml(SampleReport report, bool hasLogo, string header1, string header2, string logoAlignment)
+        private string GenerateOdtContentXml(SampleReport report, bool hasLogo, string header1, string header2, string logoAlignment, List<PatientStudyHistoryItem> previousStudies)
         {
             var sb = new StringBuilder();
             sb.Append(@"<?xml version=""1.0"" encoding=""UTF-8""?>");
@@ -610,7 +684,35 @@ namespace MiniLIS.Infrastructure.Services
                 var saveDate = _localTimeService.ToLocal(report.UpdatedAtUtc ?? report.CreatedAtUtc);
                 sb.Append($@"<text:p text:style-name=""SmallValue"">Fecha de informe: {saveDate:dd-MM-yyyy, HH:mm}</text:p>");
             }
-            
+
+            // ESTUDIOS PREVIOS (F-9): tras conclusión y firmas -- en ODT (sin concepto de
+            // página/pie repetido) eso significa ser lo último del documento, con un salto
+            // de página delante para que empiece en hoja nueva.
+            if (previousStudies.Any())
+            {
+                sb.Append(@"<text:p text:style-name=""PageBreakBefore"">ESTUDIOS PREVIOS</text:p>");
+
+                foreach (var h in previousStudies)
+                {
+                    var dateStr = h.ReceivedAtUtc.HasValue ? _localTimeService.ToLocal(h.ReceivedAtUtc.Value).ToString("dd/MM/yyyy") : "—";
+                    sb.Append($@"<text:p text:style-name=""PrevStudyHeader"">{EncodeForOdt($"{dateStr}   {h.SampleNumber} {h.SampleType.ToCode()}")}</text:p>");
+
+                    if (report.ShowPreviousMotivo && !string.IsNullOrWhiteSpace(h.Diagnosis))
+                        sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""BoldInline"">Motivo de solicitud: </text:span>{EncodeForOdt(h.Diagnosis)}</text:p>");
+
+                    if (report.ShowPreviousReportBody && !string.IsNullOrWhiteSpace(h.ReportBody))
+                        sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(h.ReportBody)}</text:p>");
+
+                    if (report.ShowPreviousMarkers && !string.IsNullOrWhiteSpace(h.MarkersSummary))
+                        sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(h.MarkersSummary)}</text:p>");
+
+                    if (report.ShowPreviousConclusions && !string.IsNullOrWhiteSpace(h.Conclusions))
+                        sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""BoldInline"">Conclusión: </text:span>{EncodeForOdt(h.Conclusions)}</text:p>");
+
+                    sb.Append(@"<text:p text:style-name=""MonoText"" />");
+                }
+            }
+
             sb.Append("</office:text></office:body></office:document-content>");
             return sb.ToString();
         }
@@ -681,6 +783,21 @@ namespace MiniLIS.Infrastructure.Services
     <style:style style:name=""MonoText"" style:family=""paragraph"">
       <style:paragraph-properties fo:margin-left=""0.5cm""/>
       <style:text-properties fo:font-name=""Courier New"" fo:font-size=""9pt"" fo:color=""#334155""/>
+    </style:style>
+    <!-- Estudios previos (F-9). PageBreakBefore y PrevStudyHeader son de familia paragraph
+         (van en text:p); BoldInline es de familia text (solo va en text:span dentro de un
+         text:p). No mezclar: es la misma regla que rompió el ODT en un bug ya corregido
+         antes en este fichero (GreyText/GreySmall). -->
+    <style:style style:name=""PageBreakBefore"" style:family=""paragraph"">
+      <style:paragraph-properties fo:break-before=""page"" fo:margin-top=""0.4cm"" fo:margin-bottom=""0.3cm""/>
+      <style:text-properties fo:font-size=""14pt"" fo:font-weight=""bold"" fo:color=""#6D9EEB""/>
+    </style:style>
+    <style:style style:name=""PrevStudyHeader"" style:family=""paragraph"">
+      <style:paragraph-properties fo:margin-top=""0.3cm"" fo:margin-bottom=""0.1cm""/>
+      <style:text-properties fo:font-size=""10pt"" fo:font-weight=""bold"" fo:color=""#1e293b""/>
+    </style:style>
+    <style:style style:name=""BoldInline"" style:family=""text"">
+      <style:text-properties fo:font-weight=""bold""/>
     </style:style>
     <style:style style:name=""AlignCenter"" style:family=""paragraph""><style:paragraph-properties fo:text-align=""center""/></style:style>
     <style:style style:name=""AlignRight"" style:family=""paragraph""><style:paragraph-properties fo:text-align=""end""/></style:style>
