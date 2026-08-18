@@ -16,11 +16,13 @@ namespace MiniLIS.Infrastructure.Services
     {
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ICurrentUserService _currentUserService;
 
-        public ReportService(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+        public ReportService(ApplicationDbContext db, UserManager<ApplicationUser> userManager, ICurrentUserService currentUserService)
         {
             _db = db;
             _userManager = userManager;
+            _currentUserService = currentUserService;
         }
 
         public async Task<SampleReport> GetOrCreateReportAsync(int sampleId)
@@ -123,6 +125,23 @@ namespace MiniLIS.Infrastructure.Services
         {
             var facultativos = await _userManager.GetUsersInRoleAsync("Facultativo");
             return facultativos.ToList();
+        }
+
+        public async Task LogInfinicytImportAsync(int sampleReportId, string fileName, int populationsFound, int populationsInserted)
+        {
+            var userId = await _currentUserService.GetUserIdAsync();
+            var username = await _currentUserService.GetUsernameAsync();
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SampleReport),
+                EntityId = sampleReportId.ToString(),
+                Action = "ImportInfinicyt",
+                UserId = userId,
+                Username = username,
+                ActionContext = $"Importación Infinicyt \"{fileName}\": {populationsInserted}/{populationsFound} población(es) insertadas",
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
         }
     }
 }

@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using MiniLIS.Domain.Identity
 @using MiniLIS.Web.Components.Shared
+@using MiniLIS.Infrastructure.Services
 @attribute [Authorize]
 @inject NavigationManager Nav
 @inject IReportService ReportService
@@ -113,6 +114,64 @@
             <label class="rpt-label">Texto adicional (opcional):</label>
             <textarea class="rpt-textarea" rows="2" @bind="report.AdditionalText" placeholder="Texto libre que aparecerá debajo de los marcadores en el informe..."></textarea>
         </div>
+    </fieldset>
+
+    <!-- ═══════════════  SECCIÓN · IMPORTAR INFINICYT  ═══════════════ -->
+    <fieldset class="rpt-fieldset mt-3">
+        <legend>Importar resultados Infinicyt</legend>
+        <div class="d-flex align-items-center gap-3 mb-2">
+            <InputFile OnChange="HandleInfinicytUpload" accept=".xml,text/xml,application/xml" />
+            @if (infinicytIsParsing)
+            {
+                <span class="spinner-border spinner-border-sm"></span>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(infinicytError))
+        {
+            <div class="alert alert-danger py-2 px-3 rounded small mb-3 border-0 shadow-sm">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i> @infinicytError
+            </div>
+        }
+
+        @if (infinicytResult != null && infinicytResult.Populations.Any())
+        {
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted small">@infinicytResult.Populations.Count población(es) en "@infinicytFileName"</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-link p-0" @onclick="SelectAllInfinicyt">Seleccionar todo</button>
+                    <button type="button" class="btn btn-sm btn-link p-0" @onclick="SelectNoneInfinicyt">Ninguno</button>
+                </div>
+            </div>
+            <div class="infinicyt-pop-list ps-2">
+                @foreach (var grp in infinicytResult.Populations.GroupBy(p => p.FileName))
+                {
+                    <div class="fw-bold small text-muted mt-2">@grp.Key</div>
+                    @foreach (var row in grp)
+                    {
+                        <label class="d-flex align-items-center gap-2 mb-1" style="padding-left:@(ParseLevel(row.Level) * 14)px">
+                            <input type="checkbox" checked="@selectedInfinicytRowIds.Contains(row.RowId)"
+                                   @onchange="@(e => ToggleInfinicytRow(row.RowId, e.Value))" />
+                            <span class="fw-bold">@row.PopulationName</span>
+                            <span class="text-muted small">@string.Join(", ", row.Stats.Select(s => $"{s.Label}: {s.Value}"))</span>
+                        </label>
+                    }
+                }
+            </div>
+
+            <div class="d-flex align-items-center gap-3 mt-3 flex-wrap">
+                <label class="d-flex align-items-center gap-1 mb-0"><input type="radio" name="infTarget" checked="@(infinicytTarget == InfinicytTargetField.ReportBody)" @onchange="@(() => infinicytTarget = InfinicytTargetField.ReportBody)" /> Texto del informe</label>
+                <label class="d-flex align-items-center gap-1 mb-0"><input type="radio" name="infTarget" checked="@(infinicytTarget == InfinicytTargetField.MarkersSummary)" @onchange="@(() => infinicytTarget = InfinicytTargetField.MarkersSummary)" /> Marcadores</label>
+                <label class="d-flex align-items-center gap-1 mb-0"><input type="radio" name="infTarget" checked="@(infinicytTarget == InfinicytTargetField.AdditionalText)" @onchange="@(() => infinicytTarget = InfinicytTargetField.AdditionalText)" /> Texto adicional</label>
+                <button type="button" class="btn btn-primary btn-sm px-3" disabled="@(!selectedInfinicytRowIds.Any())" @onclick="InsertInfinicytSelection">
+                    <i class="bi bi-box-arrow-in-down me-1"></i>Insertar
+                </button>
+            </div>
+        }
+        else if (infinicytResult != null)
+        {
+            <p class="text-muted small mb-0">No se han encontrado poblaciones en este archivo.</p>
+        }
     </fieldset>
 
     <!-- ═══════════════  SECCIÓN 3 · CONCLUSIÓN  ═══════════════ -->
@@ -448,6 +507,15 @@
     private List<PatientStudyHistoryItem> previousReportableStudies = new();
     private HashSet<int> selectedPreviousStudyIds = new();
 
+    // Importar resultados Infinicyt (versión ligera: produce texto, no toca el modelo de datos)
+    private enum InfinicytTargetField { ReportBody, MarkersSummary, AdditionalText }
+    private InfinicytImportResult? infinicytResult;
+    private string? infinicytFileName;
+    private string? infinicytError;
+    private bool infinicytIsParsing;
+    private HashSet<int> selectedInfinicytRowIds = new();
+    private InfinicytTargetField infinicytTarget = InfinicytTargetField.AdditionalText;
+
     // Identification fields (editable)
     private string patientName = "";
     private DateTime reportDate = DateTime.Today;
@@ -614,6 +682,105 @@
             selectedPreviousStudyIds.Remove(sampleId);
         }
     }
+
+    private async Task HandleInfinicytUpload(InputFileChangeEventArgs e)
+    {
+        infinicytError = null;
+        infinicytResult = null;
+        selectedInfinicytRowIds.Clear();
+        infinicytIsParsing = true;
+        try
+        {
+            var file = e.File;
+            infinicytFileName = file.Name;
+            const long maxAllowedSize = 8 * 1024 * 1024; // ver Program.cs: el circuito SignalR
+                                                            // completo tiene un tope de 10 MB.
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize).CopyToAsync(ms);
+            ms.Position = 0;
+
+            var result = InfinicytXmlParser.Parse(ms);
+            infinicytResult = result.Status is InfinicytImportStatus.Success or InfinicytImportStatus.NoPopulationsFound
+                ? result
+                : null;
+
+            infinicytError = result.Status switch
+            {
+                InfinicytImportStatus.MalformedXml =>
+                    "El archivo no es un XML válido o no pudo procesarse.",
+                InfinicytImportStatus.WrongRootElement =>
+                    "El archivo no parece ser una exportación de Infinicyt (se esperaba un elemento raíz <report>).",
+                _ => null
+            };
+        }
+        catch (IOException)
+        {
+            infinicytError = "El archivo supera el tamaño máximo permitido (8 MB).";
+        }
+        catch (Exception ex)
+        {
+            infinicytError = "Error inesperado al procesar el archivo: " + ex.Message;
+        }
+        finally
+        {
+            infinicytIsParsing = false;
+        }
+    }
+
+    private void ToggleInfinicytRow(int rowId, object? isChecked)
+    {
+        if (isChecked is bool checkedValue && checkedValue)
+        {
+            selectedInfinicytRowIds.Add(rowId);
+        }
+        else
+        {
+            selectedInfinicytRowIds.Remove(rowId);
+        }
+    }
+
+    private void SelectAllInfinicyt()
+    {
+        if (infinicytResult == null) return;
+        selectedInfinicytRowIds = infinicytResult.Populations.Select(p => p.RowId).ToHashSet();
+    }
+
+    private void SelectNoneInfinicyt() => selectedInfinicytRowIds.Clear();
+
+    private static int ParseLevel(string? level) => int.TryParse(level, out var v) && v > 0 ? v : 0;
+
+    private async Task InsertInfinicytSelection()
+    {
+        if (infinicytResult == null || !selectedInfinicytRowIds.Any() || report == null) return;
+
+        var block = string.Join("\n", infinicytResult.Populations
+            .Where(p => selectedInfinicytRowIds.Contains(p.RowId))
+            .OrderBy(p => p.RowId)
+            .Select(p => p.FormattedLine));
+
+        switch (infinicytTarget)
+        {
+            case InfinicytTargetField.ReportBody:
+                report.ReportBody = AppendBlock(report.ReportBody, block);
+                break;
+            case InfinicytTargetField.MarkersSummary:
+                report.MarkersSummary = AppendBlock(report.MarkersSummary, block);
+                break;
+            case InfinicytTargetField.AdditionalText:
+                report.AdditionalText = AppendBlock(report.AdditionalText, block);
+                break;
+        }
+
+        await ReportService.LogInfinicytImportAsync(report.Id, infinicytFileName ?? "", infinicytResult.Populations.Count, selectedInfinicytRowIds.Count);
+
+        infinicytResult = null;
+        infinicytFileName = null;
+        selectedInfinicytRowIds.Clear();
+        infinicytError = null;
+    }
+
+    private static string AppendBlock(string? existing, string addition)
+        => string.IsNullOrWhiteSpace(existing) ? addition : existing.TrimEnd() + "\n" + addition;
 
     private void RecalculateSummary()
     {
