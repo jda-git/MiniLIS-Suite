@@ -747,16 +747,21 @@
 
     private void SelectNoneInfinicyt() => selectedInfinicytRowIds.Clear();
 
-    private static int ParseLevel(string? level) => int.TryParse(level, out var v) && v > 0 ? v : 0;
+    private static int ParseLevel(string? level) => InfinicytXmlParser.ParseLevelDepth(level);
 
     private async Task InsertInfinicytSelection()
     {
         if (infinicytResult == null || !selectedInfinicytRowIds.Any() || report == null) return;
 
-        var block = string.Join("\n", infinicytResult.Populations
+        var selected = infinicytResult.Populations
             .Where(p => selectedInfinicytRowIds.Contains(p.RowId))
             .OrderBy(p => p.RowId)
-            .Select(p => p.FormattedLine));
+            .ToList();
+
+        // La construcción del bloque (tabla con cabecera, alineación con espacios porque el
+        // textarea y el PDF/ODT generado usan fuente monoespaciada) vive en el parser para
+        // poder testearse sin navegador -- ver InfinicytXmlParser.BuildInsertBlock.
+        var block = InfinicytXmlParser.BuildInsertBlock(selected);
 
         switch (infinicytTarget)
         {

@@ -127,6 +127,181 @@ namespace MiniLIS.Tests
         }
 
         [Fact]
+        public void Parse_GenericRowTable_UsesFirstRowAsHeaderAndMapsPositionally()
+        {
+            // Estructura real observada en una exportación de laboratorio: <table><row><column>
+            // <text>, sin <header>/<data>/<file>/<population> -- fila 1 son las etiquetas
+            // ("Población", "% Visibilidad"), el resto son poblaciones. Una celda envuelve el
+            // CDATA en un <keyword id="..."> intermedio en vez de ponerlo directo en <text>.
+            var xml = @"
+                <report version=""1"" exportID=""abc"">
+                  <sheet>
+                    <table id=""tabla_poblaciones"">
+                      <row row-id=""1"">
+                        <column column-id=""1""><text><![CDATA[Población]]></text></column>
+                        <column column-id=""2""><text><keyword id=""Poblaciones""><![CDATA[% Visibilidad]]></keyword></text></column>
+                      </row>
+                      <row row-id=""2"">
+                        <column column-id=""1""><text><![CDATA[DEBRIS]]></text></column>
+                        <column column-id=""2""><text><![CDATA[0,0124]]></text></column>
+                      </row>
+                      <row row-id=""3"">
+                        <column column-id=""1""><text><![CDATA[Eosinófilos]]></text></column>
+                        <column column-id=""2""><text><![CDATA[1,52]]></text></column>
+                      </row>
+                    </table>
+                  </sheet>
+                </report>";
+
+            var result = InfinicytXmlParser.Parse(ToStream(xml));
+
+            result.Status.Should().Be(InfinicytImportStatus.Success);
+            result.Populations.Should().HaveCount(2);
+            result.Populations[0].PopulationName.Should().Be("DEBRIS");
+            result.Populations[0].Stats.Single().Label.Should().Be("% Visibilidad");
+            result.Populations[0].Stats.Single().Value.Should().Be("0,0124");
+            result.Populations[1].PopulationName.Should().Be("Eosinófilos");
+            result.Populations[1].FormattedLine.Should().Be("Eosinófilos: % Visibilidad: 1,52");
+        }
+
+        [Fact]
+        public void Parse_GenericRowTable_TooFewRowsOrColumns_IsSkippedWithoutException()
+        {
+            var xml = @"
+                <report version=""1"" exportID=""abc"">
+                  <sheet>
+                    <table id=""solo_cabecera""><row><column value=""x"" /><column value=""y"" /></row></table>
+                    <table id=""una_columna""><row><column value=""x"" /></row><row><column value=""z"" /></row></table>
+                    <table>
+                      <data><file name=""T1.fcs"">
+                        <population name=""Real""><column value=""1"" /></population>
+                      </file></data>
+                    </table>
+                  </sheet>
+                </report>";
+
+            var result = InfinicytXmlParser.Parse(ToStream(xml));
+
+            result.Status.Should().Be(InfinicytImportStatus.Success);
+            result.Populations.Should().ContainSingle(p => p.PopulationName == "Real");
+        }
+
+        [Fact]
+        public void Parse_DottedLevelPath_UsesDotCountAsIndentDepth()
+        {
+            // Exportaciones reales de Infinicyt usan level="1.4.4.1.1" (ruta jerárquica en el
+            // árbol de puertas), no un entero plano "0"/"1"/"2" -- el número de puntos debe
+            // interpretarse como la profundidad de sangría.
+            var xml = @"
+                <report version=""1"" exportID=""abc"">
+                  <sheet><table>
+                    <data><file name=""Todos los archivos"">
+                      <population name=""Kappa"" level=""1.4.4.1.1"">
+                        <column value=""31,0378"" />
+                      </population>
+                    </file></data>
+                  </table></sheet>
+                </report>";
+
+            var result = InfinicytXmlParser.Parse(ToStream(xml));
+
+            result.Status.Should().Be(InfinicytImportStatus.Success);
+            result.Populations.Single().FormattedLine.Should().StartWith("        Kappa"); // 4 puntos -> 8 espacios
+        }
+
+        [Theory]
+        [InlineData(null, 0)]
+        [InlineData("", 0)]
+        [InlineData("0", 0)]
+        [InlineData("2", 2)]
+        [InlineData("1.2", 1)]
+        [InlineData("1.4.4.1.1", 4)]
+        public void ParseLevelDepth_HandlesFlatIntegersAndDottedPaths(string? level, int expectedDepth)
+        {
+            InfinicytXmlParser.ParseLevelDepth(level).Should().Be(expectedDepth);
+        }
+
+        [Fact]
+        public void Parse_PopulationWithFunctions_AddsThemAsExtraStats()
+        {
+            // <functions><function name="Ratio k/l" value="13,2771"/></functions> es un
+            // estadístico derivado que Infinicyt calcula solo para poblaciones concretas
+            // (p. ej. el ratio Kappa/Lambda en "Células B") -- debe salir como un estadístico
+            // más de esa misma fila, no perderse ni generar una fila aparte.
+            var xml = @"
+                <report version=""1"" exportID=""abc"">
+                  <sheet><table>
+                    <header><column column-id=""Visibility"" name=""% Visibilidad"" /></header>
+                    <data><file name=""Todos los archivos"">
+                      <population name=""Células B"" level=""1.4.4.1"">
+                        <column column-id=""Visibility"" value=""100,0000"" />
+                        <functions>
+                          <function name=""Ratio k/l"" value=""13,2771"" />
+                        </functions>
+                      </population>
+                    </file></data>
+                  </table></sheet>
+                </report>";
+
+            var result = InfinicytXmlParser.Parse(ToStream(xml));
+
+            result.Status.Should().Be(InfinicytImportStatus.Success);
+            var stats = result.Populations.Single().Stats;
+            stats.Should().Contain(s => s.Label == "% Visibilidad" && s.Value == "100,0000");
+            stats.Should().Contain(s => s.Label == "Ratio k/l" && s.Value == "13,2771");
+        }
+
+        [Fact]
+        public void BuildInsertBlock_PopulationWithFunctions_IncludesRatioAsExtraColumn()
+        {
+            // Reproduce el flujo completo que hace el botón "Insertar": parsear el fichero real
+            // (2 columnas + <functions> en Células B) y construir el bloque a partir de una
+            // selección que SÍ incluye la fila con el ratio -- confirma que no se pierde entre
+            // el parseo (donde ya se veía en el listado de la UI) y el texto final insertado.
+            var xml = @"
+                <report programVersion=""2.0.2.a"" version=""0"">
+                 <header/>
+                 <sheet>
+                  <table>
+                   <header>
+                    <column column-id=""Visibility"" name=""% Visibilidad""/>
+                    <column column-id=""Reference"" name=""Eventos / µl""/>
+                   </header>
+                   <data>
+                    <file name=""Todos los archivos"">
+                     <population level=""1.4.4.1"" name=""Células B"">
+                      <column column-id=""Visibility"" value=""100,0000""/>
+                      <column column-id=""Reference"" value=""93,7543""/>
+                      <functions>
+                       <function name=""Ratio k/l"" value=""13,2771""/>
+                      </functions>
+                     </population>
+                     <population level=""1.4.4.1"" name=""Otros Células B"">
+                      <column column-id=""Visibility"" value=""0,0667""/>
+                      <column column-id=""Reference"" value=""0,0626""/>
+                     </population>
+                    </file>
+                   </data>
+                  </table>
+                 </sheet>
+                </report>";
+
+            var result = InfinicytXmlParser.Parse(ToStream(xml));
+            result.Status.Should().Be(InfinicytImportStatus.Success);
+
+            // Selección: las dos filas, en el mismo orden en que las marcaría el usuario en la UI.
+            var selected = result.Populations.OrderBy(p => p.RowId).ToList();
+            var block = InfinicytXmlParser.BuildInsertBlock(selected);
+
+            var lines = block.Split('\n');
+            lines[0].Should().Contain("Ratio k/l"); // cabecera de columna
+            var celulasBLine = lines.Single(l => l.TrimStart().StartsWith("Células B"));
+            celulasBLine.Should().Contain("13,2771");
+            var otrasLine = lines.Single(l => l.TrimStart().StartsWith("Otros Células B"));
+            otrasLine.Should().NotContain("13,2771"); // no tiene ratio propio, celda vacía
+        }
+
+        [Fact]
         public void Parse_MultipleFiles_PrefixesPopulationLineWithFileName()
         {
             var xml = @"

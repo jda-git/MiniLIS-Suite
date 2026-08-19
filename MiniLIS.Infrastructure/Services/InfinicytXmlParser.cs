@@ -84,13 +84,26 @@ namespace MiniLIS.Infrastructure.Services
 
             var rows = new List<InfinicytPopulationRow>();
             var rowId = 0;
+            var tableIndex = 0;
 
             foreach (var table in root.Elements("sheet").Elements("table"))
             {
+                tableIndex++;
                 var headerMap = BuildHeaderMap(table.Element("header"));
 
                 var files = table.Element("data")?.Elements("file").ToList();
-                if (files == null || files.Count == 0) continue; // no es una tabla de poblaciones
+                if (files == null || files.Count == 0)
+                {
+                    // No toda tabla de poblaciones usa el esquema "rico" (header/data/file/
+                    // population con atributos value/column-id/level): Infinicyt también
+                    // exporta listados simples como una tabla genérica de <row>/<column>, con
+                    // la fila 1 haciendo de cabecera (en texto, no un <header> real) y el resto
+                    // de filas como datos -- exactamente el formato que produce la exportación
+                    // rápida de "Población" + "% Visibilidad" sin configurar componente alguno.
+                    var tableLabel = Clean((string?)table.Attribute("id"), 100) ?? $"Tabla {tableIndex}";
+                    rows.AddRange(ParseGenericRowTable(table, tableLabel, ref rowId));
+                    continue;
+                }
 
                 var multiFile = files.Count > 1;
 
@@ -120,6 +133,19 @@ namespace MiniLIS.Infrastructure.Services
                             colPos++;
                         }
 
+                        // <functions><function name="Ratio k/l" value="13,2771"/></functions>:
+                        // estadísticos derivados que Infinicyt calcula para poblaciones
+                        // concretas (p. ej. el ratio Kappa/Lambda solo tiene sentido en
+                        // "Células B") -- se añaden como estadísticos más de la misma fila,
+                        // no como filas propias, para que salgan como columna adicional en la
+                        // tabla junto al resto.
+                        foreach (var fn in pop.Elements("functions").Elements("function"))
+                        {
+                            var fnName = Clean((string?)fn.Attribute("name"), 100);
+                            var fnValue = Clean((string?)fn.Attribute("value"), MaxValueLength);
+                            if (fnName != null && fnValue != null) stats.Add((fnName, fnValue));
+                        }
+
                         if (stats.Count == 0) continue; // población sin ningún dato útil
 
                         rows.Add(new InfinicytPopulationRow
@@ -141,6 +167,75 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             return new InfinicytImportResult { Status = InfinicytImportStatus.Success, Populations = rows };
+        }
+
+        /// <summary>Variante "genérica" de tabla: filas/columnas planas sin &lt;header&gt; real
+        /// ni &lt;data&gt;/&lt;file&gt;/&lt;population&gt; -- la fila 1 son las etiquetas de
+        /// columna en texto (p. ej. "Población", "% Visibilidad") y cada fila siguiente es una
+        /// población, con la primera columna como nombre y el resto como estadísticos
+        /// posicionales (aquí no hay column-id fiable con el que mapear contra la cabecera).</summary>
+        private static List<InfinicytPopulationRow> ParseGenericRowTable(XElement table, string tableLabel, ref int rowId)
+        {
+            var result = new List<InfinicytPopulationRow>();
+            var rows = table.Elements("row").ToList();
+            if (rows.Count < 2) return result; // hace falta cabecera + al menos una fila de datos
+
+            var headerCols = rows[0].Elements("column").ToList();
+            if (headerCols.Count < 2) return result; // hace falta nombre + al menos un estadístico
+
+            var headerLabels = headerCols.Select(c => Clean(ReadGenericColumnText(c), 100) ?? "").ToList();
+
+            foreach (var dataRow in rows.Skip(1))
+            {
+                var cols = dataRow.Elements("column").ToList();
+                if (cols.Count == 0) continue;
+
+                var popName = Clean(ReadGenericColumnText(cols[0]), 200);
+                if (popName == null) continue; // sin nombre no hay forma de identificar la fila
+
+                var stats = new List<(string, string)>();
+                for (var i = 1; i < cols.Count; i++)
+                {
+                    var value = ReadGenericColumnText(cols[i]);
+                    if (string.IsNullOrEmpty(value)) continue;
+
+                    var label = i < headerLabels.Count && !string.IsNullOrEmpty(headerLabels[i])
+                        ? headerLabels[i]
+                        : $"Columna {i + 1}";
+
+                    stats.Add((label, Clean(value, MaxValueLength) ?? ""));
+                }
+
+                if (stats.Count == 0) continue; // fila sin ningún dato útil
+
+                result.Add(new InfinicytPopulationRow
+                {
+                    RowId = rowId++,
+                    FileName = tableLabel,
+                    PopulationName = popName,
+                    Level = null,
+                    Stats = stats,
+                    FormattedLine = FormatLine(popName, null, null, stats)
+                });
+            }
+
+            return result;
+        }
+
+        /// <summary>Lee el texto de una &lt;column&gt; de tabla genérica: atributo value si
+        /// existe, si no el &lt;text&gt; hijo -- usando .Value (recursivo) porque en la
+        /// práctica Infinicyt a veces envuelve el CDATA en un &lt;keyword id="..."&gt;
+        /// intermedio en vez de ponerlo directo dentro de &lt;text&gt;, y aquí (a diferencia de
+        /// ReadColumnValue) no hay riesgo de contaminación por &lt;warnings&gt; anidados.</summary>
+        private static string? ReadGenericColumnText(XElement col)
+        {
+            var attr = (string?)col.Attribute("value");
+            if (!string.IsNullOrEmpty(attr)) return attr.Trim();
+
+            var textEl = col.Element("text");
+            var raw = textEl != null ? textEl.Value : col.Value;
+            var trimmed = raw.Trim();
+            return string.IsNullOrEmpty(trimmed) ? null : trimmed;
         }
 
         private static Dictionary<string, string> BuildHeaderMap(XElement? header)
@@ -176,11 +271,68 @@ namespace MiniLIS.Infrastructure.Services
 
         private static string FormatLine(string popName, string? level, string? fileLabel, List<(string Label, string Value)> stats)
         {
-            var depth = int.TryParse(level, out var lv) && lv > 0 ? lv : 0;
-            var indent = new string(' ', depth * 2);
+            var indent = new string(' ', ParseLevelDepth(level) * 2);
             var prefix = fileLabel != null ? $"{fileLabel} – {popName}" : popName;
             var statsText = string.Join(", ", stats.Select(s => $"{s.Label}: {s.Value}"));
             return $"{indent}{prefix}: {statsText}";
+        }
+
+        /// <summary>Construye el bloque de texto que se inserta en el informe a partir de las
+        /// filas marcadas por el usuario -- tabla con cabecera de columna (una por estadístico
+        /// distinto entre las filas seleccionadas, en orden de primera aparición) en vez de
+        /// repetir la etiqueta en cada línea. Vive aquí (no en el .razor) para poder testearse
+        /// sin necesidad de un navegador.</summary>
+        public static string BuildInsertBlock(IReadOnlyList<InfinicytPopulationRow> selected)
+        {
+            if (selected.Count == 0) return "";
+
+            var multiFile = selected.Select(p => p.FileName).Distinct().Count() > 1;
+            var names = selected.Select(p =>
+            {
+                var indent = new string(' ', ParseLevelDepth(p.Level) * 2);
+                var name = multiFile ? $"{p.FileName} – {p.PopulationName}" : p.PopulationName;
+                return $"{indent}{name}";
+            }).ToList();
+
+            var statLabels = selected.SelectMany(p => p.Stats.Select(s => s.Label)).Distinct().ToList();
+
+            string CellValue(InfinicytPopulationRow p, string label)
+            {
+                var match = p.Stats.FirstOrDefault(s => s.Label == label);
+                if (match.Label == null) return "";
+                // Columna de porcentaje: el símbolo va pegado al número ("0,0000%") -- la
+                // cabecera ya dice de qué estadístico se trata, no hace falta repetir la
+                // etiqueta ("% Visibilidad: ") en cada línea.
+                return label.TrimStart().StartsWith("%") ? $"{match.Value}%" : match.Value;
+            }
+
+            const string nameHeader = "Población";
+            var nameWidth = new[] { nameHeader.Length }.Concat(names.Select(n => n.Length)).Max() + 2;
+            var columnWidths = statLabels
+                .Select(label => new[] { label.Length }.Concat(selected.Select(p => CellValue(p, label).Length)).Max() + 2)
+                .ToList();
+
+            var lines = new List<string>
+            {
+                nameHeader.PadRight(nameWidth) + string.Concat(statLabels.Select((l, i) => l.PadLeft(columnWidths[i])))
+            };
+            lines.AddRange(names.Select((name, i) =>
+                name.PadRight(nameWidth) + string.Concat(statLabels.Select((l, j) => CellValue(selected[i], l).PadLeft(columnWidths[j])))));
+
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>Profundidad de indentación a partir de "level" -- Infinicyt lo rellena de
+        /// dos formas distintas según el fichero: un entero plano ("0","1","2"...) que ya ES
+        /// la profundidad, o una ruta jerárquica con puntos ("1.4.4.1.1", observada en
+        /// exportaciones reales) donde el número de puntos indica la profundidad en el árbol
+        /// de puertas/gates. Un "level" puramente numérico nunca lleva puntos, así que ambos
+        /// casos son distinguibles sin ambigüedad.</summary>
+        public static int ParseLevelDepth(string? level)
+        {
+            if (string.IsNullOrWhiteSpace(level)) return 0;
+            if (int.TryParse(level, out var flat) && flat > 0) return flat;
+            return level.Count(c => c == '.');
         }
 
         /// <summary>Saneado de calidad de dato (no de inyección: el destino final es siempre
