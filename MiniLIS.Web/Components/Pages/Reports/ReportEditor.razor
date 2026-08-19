@@ -333,6 +333,12 @@
     {
         <fieldset class="rpt-fieldset mt-3">
             <legend>Validación</legend>
+            @if (!string.IsNullOrEmpty(ValidarErrorMessage))
+            {
+                <div class="alert alert-danger py-2 px-3 rounded small mb-2 border-0 shadow-sm">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i> @ValidarErrorMessage
+                </div>
+            }
             @if (report.IsFinalized)
             {
                 <p class="mb-2">
@@ -361,13 +367,20 @@
                 </p>
                 <AuthorizeView Roles="Administrador,Facultativo">
                     <Authorized>
-                        <form method="post" action="/api/downloads/informe/@report.PublicId/validar"
-                              onsubmit="return confirm('¿Validar este informe? Esta acción es irreversible sin una reapertura explícita, y quedará registrada a su nombre.');">
+                        @* Formulario oculto: se envía por JS solo tras guardar (ValidateReport), no
+                           directamente al pulsar -- así el servidor valida siempre sobre lo que hay
+                           en pantalla (conclusión, firma) y no sobre lo último guardado, que puede
+                           estar desactualizado. *@
+                        <form id="validarForm" method="post" action="/api/downloads/informe/@report.PublicId/validar" hidden>
                             <AntiforgeryToken />
-                            <button type="submit" class="btn btn-success">
-                                <i class="bi bi-check-lg me-2"></i>Validar informe
-                            </button>
                         </form>
+                        <button type="button" class="btn btn-success" @onclick="ValidateReport" disabled="@(!selectedFacultativos.Any())">
+                            <i class="bi bi-check-lg me-2"></i>Validar informe
+                        </button>
+                        @if (!selectedFacultativos.Any())
+                        {
+                            <p class="text-muted small mt-1 mb-0">Selecciona al menos un facultativo firmante en "Firmas" para poder validar.</p>
+                        }
                     </Authorized>
                 </AuthorizeView>
             }
@@ -484,6 +497,23 @@
 
 @code {
     [Parameter] public int SampleId { get; set; }
+
+    // El botón "Validar informe"/"Reabrir informe" es un <form> HTML normal (ver el
+    // fieldset "Validación" más abajo); al fallar, el controlador redirige aquí con este
+    // código en vez de devolver el JSON crudo de Problem()/Conflict() como si fuera la
+    // página (mismo patrón que Login.razor con su parámetro "Error").
+    [SupplyParameterFromQuery(Name = "validarError")] public string? ValidarErrorCode { get; set; }
+
+    private string? ValidarErrorMessage => ValidarErrorCode switch
+    {
+        "sin-conclusion" => "Debe completar la conclusión antes de validar el informe.",
+        "sin-firma" => "Debe seleccionar al menos un facultativo firmante antes de validar el informe.",
+        "ya-validado" => "El informe ya está validado.",
+        "no-validado" => "El informe no está validado, no se puede reabrir.",
+        "motivo-corto" => "Debe indicar un motivo de al menos 10 caracteres para reabrir el informe.",
+        null => null,
+        _ => ValidarErrorCode
+    };
 
     private SampleReport? report;
     private List<ReportTemplate> availableTemplates = new();
@@ -849,6 +879,16 @@
         if (!await TrySaveSilently()) return;
         var fileName = $"Informe_{report?.Sample?.SampleNumber?.Replace("/", "_")}.odt";
         await JS.InvokeVoidAsync("triggerDownload", $"/api/downloads/informe/{report!.PublicId}/odt/{fileName}");
+    }
+
+    private async Task ValidateReport()
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            "¿Validar este informe? Esta acción es irreversible sin una reapertura explícita, y quedará registrada a su nombre.");
+        if (!confirmed) return;
+
+        if (!await TrySaveSilently()) return;
+        await JS.InvokeVoidAsync("submitFormById", "validarForm");
     }
 
     private async Task Save()

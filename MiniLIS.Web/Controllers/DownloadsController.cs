@@ -166,15 +166,29 @@ namespace MiniLIS.Web.Controllers
                 .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
             if (report == null || !CanAccessReports()) return NotFound();
-            if (report.IsFinalized) return Conflict("El informe ya está validado.");
+            // El botón que llama aquí es un <form> HTML normal (navegación completa, no fetch):
+            // devolver Problem()/Conflict() dejaría al usuario viendo el JSON crudo de la
+            // respuesta en vez del editor. Se redirige de vuelta con un código de error que la
+            // página traduce a un aviso legible (mismo patrón que Login.razor).
+            if (report.IsFinalized) return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=ya-validado");
             if (string.IsNullOrWhiteSpace(report.Conclusions))
-                return Problem(title: "Debe completar la conclusión antes de validar el informe.", statusCode: 400);
+                return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-conclusion");
+            if (string.IsNullOrWhiteSpace(report.SelectedSignatures))
+                return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-firma");
 
             var user = await _userManager.GetUserAsync(User);
             report.IsFinalized = true;
             report.ValidatedByUserId = user?.Id;
             report.ValidatedAtUtc = DateTime.UtcNow;
             if (!report.ReportDate.HasValue) report.ReportDate = DateTime.UtcNow;
+
+            // Si el informe ya se había previsualizado/descargado como borrador antes de
+            // validar, esa descarga no cuenta como el envío del informe final -- se resetea
+            // para que WorklistService (M-5) solo lo dé por "emitido" cuando se descargue DESPUÉS
+            // de validado, y mientras tanto aparezca en "Pendiente de envío" como corresponde.
+            // DownloadCount no se toca: ese sí es un contador de uso acumulado de toda la vida
+            // del informe, no una marca de estado.
+            report.FirstDownloadedAtUtc = null;
 
             if (report.Sample != null)
             {
@@ -205,15 +219,17 @@ namespace MiniLIS.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ReabrirInforme(Guid publicId, [FromForm] string motivo)
         {
-            if (string.IsNullOrWhiteSpace(motivo) || motivo.Trim().Length < 10)
-                return Problem(title: "Debe indicar un motivo de al menos 10 caracteres.", statusCode: 400);
-
             var report = await _db.SampleReports
                 .Include(r => r.Sample)
                 .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
             if (report == null || !CanAccessReports()) return NotFound();
-            if (!report.IsFinalized) return Conflict("El informe no está validado.");
+            // Mismo motivo que en ValidarInforme: el <form> HTML navega de verdad, así que los
+            // errores se redirigen de vuelta al editor con un código en vez de devolver el
+            // JSON/texto crudo de Problem()/Conflict() como si fuera la página.
+            if (!report.IsFinalized) return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=no-validado");
+            if (string.IsNullOrWhiteSpace(motivo) || motivo.Trim().Length < 10)
+                return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=motivo-corto");
 
             var user = await _userManager.GetUserAsync(User);
             report.IsFinalized = false;

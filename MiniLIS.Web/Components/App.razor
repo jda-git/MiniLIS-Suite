@@ -18,6 +18,11 @@
     <iframe id="downloadFrame" style="display:none;"></iframe>
     <script src="_framework/blazor.web.js"></script>
     <script>
+        window.submitFormById = (id) => {
+            const form = document.getElementById(id);
+            if (form) form.submit();
+        }
+
         window.triggerDownload = (url, fileName) => {
             const anchorElement = document.createElement('a');
             anchorElement.href = url;
