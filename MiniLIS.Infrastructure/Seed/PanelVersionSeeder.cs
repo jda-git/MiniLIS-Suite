@@ -92,9 +92,11 @@ namespace MiniLIS.Infrastructure.Seed
                     EffectiveFromUtc = panel.CreatedAtUtc
                 };
 
+#pragma warning disable CS0618 // única lectura legítima de TubeListText: migración histórica única (N-3)
                 var tubeTexts = (panel.TubeListText ?? string.Empty)
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .ToList();
+#pragma warning restore CS0618
 
                 if (tubeTexts.Count == 0)
                 {

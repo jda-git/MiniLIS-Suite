@@ -16,6 +16,14 @@ namespace MiniLIS.Application.Interfaces
         Task<Panel> UpsertPanelAsync(Panel panel);
         Task DeletePanelAsync(int id);
 
+        /// <summary>
+        /// Paneles activos con su versión vigente y los tubos de esa versión, para la
+        /// selección en alta y edición de muestra. Sustituye a la lectura de
+        /// Panel.TubeListText, obsoleto desde M-4 y nunca rellenado para paneles dados de
+        /// alta después de esa migración (N-3).
+        /// </summary>
+        Task<List<PanelWithVigenteVersion>> GetPanelsForSelectionAsync();
+
         // REJECTION REASONS (F-4)
         Task<List<RejectionReason>> GetAllRejectionReasonsAsync();
         Task<RejectionReason> UpsertRejectionReasonAsync(RejectionReason reason);
@@ -50,6 +58,20 @@ namespace MiniLIS.Application.Interfaces
         // LABEL SETTINGS (F-5)
         Task<LabelSettings> GetLabelSettingsAsync();
         Task UpsertLabelSettingsAsync(LabelSettings settings);
+    }
+
+    /// <summary>Panel activo junto con su versión vigente (si tiene) y los tubos de esa
+    /// versión, para la pantalla de selección de alta/edición de muestra (N-3). Un panel sin
+    /// VigenteVersion no debe poder seleccionarse: registrar una muestra con él fallaría en
+    /// el servidor (SampleService.RegisterSampleAsync ya lo rechaza), así que la interfaz debe
+    /// impedirlo antes, no solo reaccionar al error.</summary>
+    public class PanelWithVigenteVersion
+    {
+        public Panel Panel { get; init; } = null!;
+        public PanelVersion? VigenteVersion { get; init; }
+        public IReadOnlyList<PanelTube> Tubes { get; init; } = System.Array.Empty<PanelTube>();
+
+        public string DisplayCode => VigenteVersion is null ? Panel.Name : $"{Panel.Code}-v{VigenteVersion.VersionNumber:D2}";
     }
 
     /// <summary>Configuración de impresión de etiquetas (F-5). Persistida como un único

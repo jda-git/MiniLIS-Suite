@@ -35,7 +35,10 @@ namespace MiniLIS.Domain.Entities
         public int? PanelId { get; set; }
         public Panel? Panel { get; set; }
 
-        /// <summary>Editable text showing tubes used — loaded from Panel.TubeListText but editable per-report.</summary>
+        /// <summary>Texto editable con los tubos empleados -- se carga desde los
+        /// SamplePanel/SampleTube reales de la muestra (PanelVersion.Tubes vigente en el
+        /// momento del registro), no desde Panel.TubeListText (obsoleto desde M-4, ver
+        /// Panel.cs), pero queda editable por informe.</summary>
         public string? PanelsUsedText { get; set; }
 
         public DateTime? ReportDate { get; set; }

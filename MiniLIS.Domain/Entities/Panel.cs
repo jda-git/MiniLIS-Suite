@@ -22,8 +22,13 @@ namespace MiniLIS.Domain.Entities
 
         /// <summary>
         /// Obsoleto desde M-4: la composición de tubos vive ahora en PanelVersion/PanelTube.
-        /// Se conserva temporalmente tras la migración, sin uso en tiempo de ejecución.
+        /// Se conserva solo para la migración histórica de PanelVersionSeeder (N-3) -- no leer
+        /// desde la interfaz ni desde servicios nuevos, usar
+        /// IMasterDataService.GetPanelsForSelectionAsync o PanelVersion.Tubes directamente.
         /// </summary>
+        [System.Obsolete("Obsoleto desde M-4: los tubos viven en PanelVersion.Tubes (PanelTube). " +
+            "Se conserva solo para la migración histórica de PanelVersionSeeder. " +
+            "No leer desde la interfaz ni desde servicios nuevos.")]
         public string? TubeListText { get; set; }
 
         /// <summary>Display order in the panel selection UI.</summary>

@@ -60,6 +60,30 @@ namespace MiniLIS.Infrastructure.Services
             }
         }
 
+        public async Task<List<PanelWithVigenteVersion>> GetPanelsForSelectionAsync()
+        {
+            var panels = await _db.Panels
+                .Where(p => p.IsActive)
+                .Include(p => p.Versions.Where(v => v.Status == PanelVersionStatus.Vigente))
+                    .ThenInclude(v => v.Tubes)
+                .OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name)
+                .ToListAsync();
+
+            // Solo puede haber una versión Vigente por panel a la vez (PublishVersionAsync
+            // retira la anterior al publicar una nueva), así que FirstOrDefault sobre el
+            // Include ya filtrado a Vigente es seguro.
+            return panels.Select(p =>
+            {
+                var vigente = p.Versions.FirstOrDefault();
+                return new PanelWithVigenteVersion
+                {
+                    Panel = p,
+                    VigenteVersion = vigente,
+                    Tubes = vigente?.Tubes.OrderBy(t => t.TubeNumber).ToList() ?? new List<PanelTube>()
+                };
+            }).ToList();
+        }
+
         // --- REJECTION REASONS (F-4) ---
         public async Task<List<RejectionReason>> GetAllRejectionReasonsAsync() =>
             await _db.RejectionReasons.OrderBy(r => r.DisplayOrder).ThenBy(r => r.Description).ToListAsync();
