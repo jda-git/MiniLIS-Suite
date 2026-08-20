@@ -76,6 +76,7 @@ builder.Services.AddScoped<IAuditPackageService, AuditPackageService>();
 builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
 builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IPatientDataExportPolicy, PatientDataExportPolicy>(); // N-2
 
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.BackupWorker>();
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.FcsVerificationWorker>();

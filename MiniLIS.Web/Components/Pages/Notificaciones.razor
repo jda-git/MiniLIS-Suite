@@ -5,10 +5,10 @@
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using MiniLIS.Domain.Identity
-@attribute [Authorize]
+@* N-2: página restringida a Administrador/Facultativo -- misma razón que Excedente.razor. *@
+@attribute [Authorize(Roles = "Administrador,Facultativo")]
 @inject INotificationService NotificationService
 @inject IJSRuntime JS
-@inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>Notificaciones - MiniLIS Suite</PageTitle>
 
@@ -21,14 +21,18 @@
                 <i class="bi bi-bell"></i> Notificaciones
             </h1>
         </div>
-        <div class="d-flex gap-2">
-            <AuthorizeView Roles="Administrador,Facultativo">
+        <div class="d-flex align-items-center gap-3">
+            <AuthorizeView Roles="Administrador">
                 <Authorized>
-                    <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportToCsv" disabled="@(!filteredReports.Any())">
-                        <i class="bi bi-file-earmark-excel"></i> Exportar CSV
-                    </button>
+                    <label class="d-flex align-items-center gap-2 mb-0" style="font-size:12px; color:#64748b;" title="Solo Administrador puede exportar con identidad completa del paciente">
+                        <input type="checkbox" @bind="IncludeIdentifiers" /> Incluir identificadores del paciente
+                    </label>
                 </Authorized>
             </AuthorizeView>
+            <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportToCsv" disabled="@(!StartDate.HasValue || !EndDate.HasValue)"
+                    title="@(!StartDate.HasValue || !EndDate.HasValue ? "Seleccione un rango de fechas (Desde/Hasta) para poder exportar" : null)">
+                <i class="bi bi-file-earmark-excel"></i> Exportar CSV
+            </button>
         </div>
     </div>
 
@@ -334,13 +338,11 @@
 </style>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
-
     private DateTime? StartDate;
     private DateTime? EndDate;
     private string AlertType = "Todos";
     private string SearchText = "";
+    private bool IncludeIdentifiers = false; // N-2: seudonimizado por defecto
 
     private bool isLoading = false;
     private List<SampleReport> filteredReports = new();
@@ -374,20 +376,17 @@
         }
     }
 
+    // N-2: la exportación ya no llama al servicio directamente desde el componente -- pasa
+    // por /api/downloads/notificaciones/csv, que reevalúa IPatientDataExportPolicy en
+    // servidor (rango obligatorio, identificadores solo Administrador) y registra la IP en
+    // la auditoría, algo que un servicio invocado desde Blazor no puede hacer por sí solo.
     private async Task ExportToCsv()
     {
-        if (!filteredReports.Any()) return;
+        if (!StartDate.HasValue || !EndDate.HasValue) return;
 
-        var authState = await AuthStateTask;
-        if (!authState.User.IsInRole("Administrador") && !authState.User.IsInRole("Facultativo"))
-        {
-            return;
-        }
-
-        var currentUser = await UserManager.GetUserAsync(authState.User);
-        var bytes = await NotificationService.ExportToCsvAsync(filteredReports, currentUser?.Id, currentUser?.UserName);
-        var base64 = Convert.ToBase64String(bytes);
-
-        await JS.InvokeVoidAsync("downloadFileFromBase64", $"Notificaciones_{DateTime.Now:yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
+        var url = $"/api/downloads/notificaciones/csv?desde={StartDate.Value:yyyy-MM-dd}&hasta={EndDate.Value:yyyy-MM-dd}" +
+                  $"&incluirIdentificadores={IncludeIdentifiers}&alertType={Uri.EscapeDataString(AlertType)}" +
+                  $"&searchTerm={Uri.EscapeDataString(SearchText ?? "")}";
+        await JS.InvokeVoidAsync("triggerDownload", url);
     }
 }

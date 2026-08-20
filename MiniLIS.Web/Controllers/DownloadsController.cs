@@ -23,11 +23,14 @@ namespace MiniLIS.Web.Controllers
         private readonly IWorklistService _worklistService;
         private readonly IContingencyService _contingencyService;
         private readonly IAuditPackageService _auditPackageService;
+        private readonly IExcedenteService _excedenteService;
+        private readonly INotificationService _notificationService;
+        private readonly IPatientDataExportPolicy _exportPolicy;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, IExcedenteService excedenteService, INotificationService notificationService, IPatientDataExportPolicy exportPolicy, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
@@ -37,6 +40,9 @@ namespace MiniLIS.Web.Controllers
             _worklistService = worklistService;
             _contingencyService = contingencyService;
             _auditPackageService = auditPackageService;
+            _excedenteService = excedenteService;
+            _notificationService = notificationService;
+            _exportPolicy = exportPolicy;
             _userManager = userManager;
             _logger = logger;
             _configuration = configuration;
@@ -264,21 +270,16 @@ namespace MiniLIS.Web.Controllers
             [FromQuery] DateTime? hasta,
             [FromQuery] bool incluirIdentificadores = false)
         {
-            if (desde is null || hasta is null)
-                return Problem(title: "Debe indicarse un rango de fechas (desde y hasta).", statusCode: 400);
+            // N-2: las comprobaciones vivían aquí incrustadas -- ahora pasan por
+            // IPatientDataExportPolicy, el mismo punto que usan también /excedente/csv y
+            // /notificaciones/csv, para que esta implementación de referencia no vuelva a
+            // divergir de las otras dos exportaciones de datos de paciente.
+            var decision = _exportPolicy.Evaluate(User, desde, hasta, incluirIdentificadores);
+            if (!decision.Allowed)
+                return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
 
-            if (hasta.Value < desde.Value)
-                return Problem(title: "La fecha 'hasta' no puede ser anterior a 'desde'.", statusCode: 400);
-
-            var maxDias = _configuration.GetValue<int?>("Export:MaxRangoDias") ?? 366;
-            if ((hasta.Value.Date - desde.Value.Date).TotalDays > maxDias)
-                return Problem(title: $"El rango no puede superar {maxDias} días.", statusCode: 400);
-
-            if (incluirIdentificadores && !User.IsInRole("Administrador"))
-                return Forbid();
-
-            var start = desde.Value.Date;
-            var end = hasta.Value.Date.AddDays(1).AddTicks(-1);
+            var start = desde!.Value.Date;
+            var end = hasta!.Value.Date.AddDays(1).AddTicks(-1);
 
             var samples = await _db.Samples
                 .Include(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
@@ -286,7 +287,7 @@ namespace MiniLIS.Web.Controllers
                 .OrderByDescending(s => s.ReceptionDate)
                 .ToListAsync();
 
-            var bytes = await _sampleService.ExportSamplesToCsvAsync(samples, incluirIdentificadores);
+            var bytes = await _sampleService.ExportSamplesToCsvAsync(samples, decision.IncludeIdentifiers);
             var fileName = $"Muestras_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv";
 
             var user = await _userManager.GetUserAsync(User);
@@ -298,11 +299,63 @@ namespace MiniLIS.Web.Controllers
                 UserId = user?.Id,
                 Username = user?.UserName,
                 IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
-                ActionContext = incluirIdentificadores ? "Exportación CSV con identificadores" : "Exportación CSV seudonimizada",
+                ActionContext = $"Exportación CSV de muestras {(decision.IncludeIdentifiers ? "con identificadores" : "seudonimizada")}: " +
+                    $"{start:yyyy-MM-dd} a {hasta.Value.Date:yyyy-MM-dd}, {samples.Count} fila(s)",
                 TimestampUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();
 
+            return File(bytes, "text/csv", fileName);
+        }
+
+        /// <summary>Excedente disponible (biobanco/genómica/NGS), con identidad completa u
+        /// opcionalmente seudonimizada (N-2). Reemplaza la exportación que antes calculaba
+        /// ExcedenteService.ExportToCsvAsync directamente desde el componente Blazor sin pasar
+        /// por ningún control de rango, rol para identificadores ni registro de IP.</summary>
+        [HttpGet("excedente/csv")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador,Facultativo")]
+        public async Task<IActionResult> ExportExcedente(
+            [FromQuery] DateTime? desde,
+            [FromQuery] DateTime? hasta,
+            [FromQuery] bool incluirIdentificadores = false,
+            [FromQuery] string destinationType = "Todos",
+            [FromQuery] string? searchTerm = null)
+        {
+            var decision = _exportPolicy.Evaluate(User, desde, hasta, incluirIdentificadores);
+            if (!decision.Allowed)
+                return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
+
+            var reports = await _excedenteService.GetFilteredReportsAsync(searchTerm, destinationType, desde, hasta);
+            var user = await _userManager.GetUserAsync(User);
+            var bytes = await _excedenteService.ExportToCsvAsync(reports, decision, desde!.Value, hasta!.Value,
+                user?.Id, user?.UserName, HttpContext.Connection.RemoteIpAddress?.ToString());
+
+            var fileName = $"Excedente_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv";
+            return File(bytes, "text/csv", fileName);
+        }
+
+        /// <summary>Avisos de valor crítico / nuevo diagnóstico pendientes de notificar al
+        /// peticionario, con identidad completa u opcionalmente seudonimizada (N-2). Mismo
+        /// reemplazo que ExportExcedente.</summary>
+        [HttpGet("notificaciones/csv")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador,Facultativo")]
+        public async Task<IActionResult> ExportNotificaciones(
+            [FromQuery] DateTime? desde,
+            [FromQuery] DateTime? hasta,
+            [FromQuery] bool incluirIdentificadores = false,
+            [FromQuery] string alertType = "Todos",
+            [FromQuery] string? searchTerm = null)
+        {
+            var decision = _exportPolicy.Evaluate(User, desde, hasta, incluirIdentificadores);
+            if (!decision.Allowed)
+                return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
+
+            var reports = await _notificationService.GetFilteredReportsAsync(searchTerm, alertType, desde, hasta);
+            var user = await _userManager.GetUserAsync(User);
+            var bytes = await _notificationService.ExportToCsvAsync(reports, decision, desde!.Value, hasta!.Value,
+                user?.Id, user?.UserName, HttpContext.Connection.RemoteIpAddress?.ToString());
+
+            var fileName = $"Notificaciones_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv";
             return File(bytes, "text/csv", fileName);
         }
 

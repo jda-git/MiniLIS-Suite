@@ -65,31 +65,51 @@ namespace MiniLIS.Infrastructure.Services
             return await query.OrderByDescending(r => r.ReportDate).ToListAsync();
         }
 
-        public async Task<byte[]> ExportToCsvAsync(List<SampleReport> reports, int? userId, string? username)
+        public async Task<byte[]> ExportToCsvAsync(List<SampleReport> reports, ExportDecision decision, DateTime desde, DateTime hasta,
+            int? userId, string? username, string? ipAddress)
         {
             var sb = new StringBuilder();
             sb.Append('﻿');
-            sb.AppendLine("Fecha Informe;NHC;Nombre Paciente;Diagnóstico;Aviso Valor Crítico;Aviso Nuevo Diagnóstico");
 
-            foreach (var report in reports)
+            if (decision.IncludeIdentifiers)
             {
-                sb.AppendLine(string.Join(';',
-                    CsvUtils.EscapeField(_localTimeService.ToLocal(report.ReportDate)?.ToString("dd/MM/yyyy")),
-                    CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.NHC),
-                    CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.FullName),
-                    CsvUtils.EscapeField(report.Conclusions),
-                    CsvUtils.EscapeField(report.CriticalValueText),
-                    CsvUtils.EscapeField(report.NewDiagnosisText)));
+                sb.AppendLine("Fecha Informe;NHC;Nombre Paciente;Diagnóstico;Aviso Valor Crítico;Aviso Nuevo Diagnóstico");
+                foreach (var report in reports)
+                {
+                    sb.AppendLine(string.Join(';',
+                        CsvUtils.EscapeField(_localTimeService.ToLocal(report.ReportDate)?.ToString("dd/MM/yyyy")),
+                        CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.NHC),
+                        CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.FullName),
+                        CsvUtils.EscapeField(report.Conclusions),
+                        CsvUtils.EscapeField(report.CriticalValueText),
+                        CsvUtils.EscapeField(report.NewDiagnosisText)));
+                }
+            }
+            else
+            {
+                // Seudonimizado (N-2): sin NHC, nombre NI diagnóstico -- ver el mismo
+                // razonamiento en ExcedenteService.ExportToCsvAsync.
+                sb.AppendLine("Código Muestra;Fecha Informe;Aviso Valor Crítico;Aviso Nuevo Diagnóstico");
+                foreach (var report in reports)
+                {
+                    sb.AppendLine(string.Join(';',
+                        CsvUtils.EscapeField(report.Sample?.SampleNumber),
+                        CsvUtils.EscapeField(_localTimeService.ToLocal(report.ReportDate)?.ToString("dd/MM/yyyy")),
+                        CsvUtils.EscapeField(report.CriticalValueText),
+                        CsvUtils.EscapeField(report.NewDiagnosisText)));
+                }
             }
 
             _db.AuditLogs.Add(new AuditLog
             {
                 EntityName = "NotificacionesCsvExport",
-                EntityId = reports.Count.ToString(),
+                EntityId = $"{desde:yyyyMMdd}-{hasta:yyyyMMdd}",
                 Action = "Export",
                 UserId = userId,
                 Username = username,
-                ActionContext = "Exportación CSV de notificaciones",
+                IpAddress = ipAddress,
+                ActionContext = $"Exportación CSV de notificaciones {(decision.IncludeIdentifiers ? "con identificadores" : "seudonimizada")}: " +
+                    $"{desde:yyyy-MM-dd} a {hasta:yyyy-MM-dd}, {reports.Count} fila(s)",
                 TimestampUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();

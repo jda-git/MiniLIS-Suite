@@ -71,33 +71,56 @@ namespace MiniLIS.Infrastructure.Services
             return await query.OrderByDescending(r => r.ReportDate).ToListAsync();
         }
 
-        public async Task<byte[]> ExportToCsvAsync(List<SampleReport> reports, int? userId, string? username)
+        public async Task<byte[]> ExportToCsvAsync(List<SampleReport> reports, ExportDecision decision, DateTime desde, DateTime hasta,
+            int? userId, string? username, string? ipAddress)
         {
             var sb = new StringBuilder();
             sb.Append('﻿'); // BOM para que Excel lo abra bien en la configuración regional española
-            sb.AppendLine("NHC;Nombre Paciente;Fecha Muestra;Diagnóstico;Código Muestra;Biobanco;Genómica;NGS");
 
-            foreach (var report in reports)
+            if (decision.IncludeIdentifiers)
             {
-                sb.AppendLine(string.Join(';',
-                    CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.NHC),
-                    CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.FullName),
-                    CsvUtils.EscapeField(report.Sample != null ? _localTimeService.ToLocal(report.Sample.ReceptionDate).ToString("dd/MM/yyyy") : ""),
-                    CsvUtils.EscapeField(report.Conclusions),
-                    CsvUtils.EscapeField(report.Sample?.SampleNumber),
-                    CsvUtils.EscapeField(report.HasBiobank ? (report.BiobankText ?? "Sí") : ""),
-                    CsvUtils.EscapeField(report.HasGenomics ? (report.GenomicsText ?? "Sí") : ""),
-                    CsvUtils.EscapeField(report.HasNgs ? (report.NgsText ?? "Sí") : "")));
+                sb.AppendLine("NHC;Nombre Paciente;Fecha Muestra;Diagnóstico;Código Muestra;Biobanco;Genómica;NGS");
+                foreach (var report in reports)
+                {
+                    sb.AppendLine(string.Join(';',
+                        CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.NHC),
+                        CsvUtils.EscapeField(report.Sample?.ClinicalRequest?.Patient?.FullName),
+                        CsvUtils.EscapeField(report.Sample != null ? _localTimeService.ToLocal(report.Sample.ReceptionDate).ToString("dd/MM/yyyy") : ""),
+                        CsvUtils.EscapeField(report.Conclusions),
+                        CsvUtils.EscapeField(report.Sample?.SampleNumber),
+                        CsvUtils.EscapeField(report.HasBiobank ? (report.BiobankText ?? "Sí") : ""),
+                        CsvUtils.EscapeField(report.HasGenomics ? (report.GenomicsText ?? "Sí") : ""),
+                        CsvUtils.EscapeField(report.HasNgs ? (report.NgsText ?? "Sí") : "")));
+                }
+            }
+            else
+            {
+                // Seudonimizado (N-2): sin NHC, nombre NI diagnóstico -- el diagnóstico
+                // combinado con la fecha y un histórico pequeño permite reidentificación
+                // (Regla 3), y para el uso real de esta pantalla (saber qué material hay
+                // disponible) el número de estudio basta.
+                sb.AppendLine("Código Muestra;Fecha Muestra;Biobanco;Genómica;NGS");
+                foreach (var report in reports)
+                {
+                    sb.AppendLine(string.Join(';',
+                        CsvUtils.EscapeField(report.Sample?.SampleNumber),
+                        CsvUtils.EscapeField(report.Sample != null ? _localTimeService.ToLocal(report.Sample.ReceptionDate).ToString("dd/MM/yyyy") : ""),
+                        CsvUtils.EscapeField(report.HasBiobank ? (report.BiobankText ?? "Sí") : ""),
+                        CsvUtils.EscapeField(report.HasGenomics ? (report.GenomicsText ?? "Sí") : ""),
+                        CsvUtils.EscapeField(report.HasNgs ? (report.NgsText ?? "Sí") : "")));
+                }
             }
 
             _db.AuditLogs.Add(new AuditLog
             {
                 EntityName = "ExcedenteCsvExport",
-                EntityId = reports.Count.ToString(),
+                EntityId = $"{desde:yyyyMMdd}-{hasta:yyyyMMdd}",
                 Action = "Export",
                 UserId = userId,
                 Username = username,
-                ActionContext = "Exportación CSV de excedente",
+                IpAddress = ipAddress,
+                ActionContext = $"Exportación CSV de excedente {(decision.IncludeIdentifiers ? "con identificadores" : "seudonimizada")}: " +
+                    $"{desde:yyyy-MM-dd} a {hasta:yyyy-MM-dd}, {reports.Count} fila(s)",
                 TimestampUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();
