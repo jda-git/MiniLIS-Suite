@@ -1348,7 +1348,10 @@
         // se usa por defecto el último año.
         var desde = (fromDate ?? DateTime.Today.AddDays(-366)).ToString("yyyy-MM-dd");
         var hasta = (toDate ?? DateTime.Today).ToString("yyyy-MM-dd");
-        var url = $"/api/downloads/muestras/csv?desde={desde}&hasta={hasta}&t={DateTime.Now.Ticks}";
+        // "t" es puramente anti-caché (fuerza una URL distinta en cada clic); un GUID expresa
+        // mejor esa intención que una marca de tiempo y evita el falso positivo de cualquier
+        // búsqueda futura de DateTime.Now (N-7).
+        var url = $"/api/downloads/muestras/csv?desde={desde}&hasta={hasta}&t={Guid.NewGuid().ToString("N")[..8]}";
         JS.InvokeVoidAsync("triggerDownload", url);
     }
 }

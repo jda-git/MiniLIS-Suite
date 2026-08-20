@@ -651,7 +651,7 @@
         var incluirIdentificadores = false; // seudonimizado por defecto (C-2)
         var bytes = await StorageService.ExportToCsvAsync(storedSpecimens, incluirIdentificadores);
         var base64 = Convert.ToBase64String(bytes);
-        await JS.InvokeVoidAsync("downloadFileFromBase64", $"Almacenamiento_{DateTime.Now:yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"Almacenamiento_{LocalTimeService.NowLocal():yyyyMMdd_HHmm}.csv", base64, "text/csv;charset=utf-8;");
     }
 
     private void OpenEventModal(StoredSpecimen sp)

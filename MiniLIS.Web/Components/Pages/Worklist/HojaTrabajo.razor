@@ -250,7 +250,9 @@
         try
         {
             var ids = string.Join(",", selectedIds);
-            var url = $"/api/downloads/hoja-trabajo?sampleIds={ids}&profileId={selectedProfileId}&t={DateTime.Now.Ticks}";
+            // "t" es puramente anti-caché; un GUID expresa mejor esa intención que una marca de
+            // tiempo y evita el falso positivo de cualquier búsqueda futura de DateTime.Now (N-7).
+            var url = $"/api/downloads/hoja-trabajo?sampleIds={ids}&profileId={selectedProfileId}&t={Guid.NewGuid().ToString("N")[..8]}";
             await JS.InvokeVoidAsync("triggerDownload", url);
             await Task.Delay(500); // deja tiempo a que el iframe de descarga inicie antes de recargar la lista
             await LoadPending();

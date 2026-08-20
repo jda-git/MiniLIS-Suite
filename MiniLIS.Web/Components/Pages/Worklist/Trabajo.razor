@@ -8,6 +8,7 @@
 @inject IWorklistService WorklistService
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ILocalTimeService LocalTimeService
 
 <PageTitle>Lista de Trabajo - MiniLIS Suite</PageTitle>
 
@@ -64,7 +65,10 @@
 @code {
     private WorklistBoard? board;
     private bool isLoading;
-    private DateTime lastUpdated = DateTime.Now;
+    // Se fija de verdad en el primer LoadBoard() de OnInitializedAsync (ILocalTimeService
+    // todavía no está disponible en un inicializador de campo) -- nunca se ve en pantalla sin
+    // pasar antes por ahí.
+    private DateTime lastUpdated;
     private string perfil = "Todos";
     private System.Threading.Timer? timer;
 
@@ -97,7 +101,7 @@
     {
         isLoading = true;
         board = await WorklistService.GetBoardAsync();
-        lastUpdated = DateTime.Now;
+        lastUpdated = LocalTimeService.NowLocal();
         isLoading = false;
     }
 
