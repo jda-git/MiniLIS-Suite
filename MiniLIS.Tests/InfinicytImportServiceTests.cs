@@ -12,6 +12,33 @@ namespace MiniLIS.Tests
         private static Stream ToStream(string xml) => new MemoryStream(Encoding.UTF8.GetBytes(xml));
 
         [Fact]
+        public void Parser_no_altera_los_valores_numericos_que_transfiere()
+        {
+            // N-8 / Regla 5 (Reglamento UE 2017/745): el valor que sale del parser es idéntico,
+            // carácter a carácter, al del XML de origen -- ceros finales, separador decimal de
+            // coma incluidos. Si esta prueba falla porque algo redondeó, recalculó o normalizó
+            // el número, alguien ha introducido cálculo clínico donde solo debe haber transporte
+            // de texto; ver la cabecera de InfinicytXmlParser.cs.
+            var xml = @"
+                <report version=""1"" exportID=""abc"">
+                  <sheet><table>
+                    <header><column column-id=""Visibility"" name=""% Visibilidad"" /></header>
+                    <data><file name=""Todos los archivos"">
+                      <population name=""Kappa"" level=""1"">
+                        <column column-id=""Visibility"" value=""31,0378000"" />
+                      </population>
+                    </file></data>
+                  </table></sheet>
+                </report>";
+
+            var result = InfinicytXmlParser.Parse(ToStream(xml));
+
+            result.Status.Should().Be(InfinicytImportStatus.Success);
+            result.Populations.Single().Stats.Single().Value.Should().Be("31,0378000",
+                "el parser transfiere el valor tal cual, sin redondear ni reformatear -- eso sería cálculo, prohibido por la Regla 5");
+        }
+
+        [Fact]
         public void Parse_HappyPath_UsesHeaderLabelsAndFormatsLine()
         {
             var xml = @"

@@ -105,6 +105,30 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+// N-9: BackupService ya abortaba si faltaba Backup:EncryptionKey, pero solo al intentar la
+// PRIMERA copia -- el administrador se enteraba cuando la copia de seguridad no existía, que
+// es tarde. Fuera de desarrollo, la misma comprobación se hace aquí, en el arranque: un fallo
+// ruidoso al desplegar es preferible a una instancia que parece funcionar pero nunca ha podido
+// respaldarse. (ConnectionStrings:DefaultConnection ya se valida más arriba, al leerla.)
+if (!app.Environment.IsDevelopment())
+{
+    var backupKey = builder.Configuration["Backup:EncryptionKey"];
+    var backupKeyValid = !string.IsNullOrWhiteSpace(backupKey);
+    if (backupKeyValid)
+    {
+        try { backupKeyValid = Convert.FromBase64String(backupKey!).Length == 32; }
+        catch (FormatException) { backupKeyValid = false; }
+    }
+    if (!backupKeyValid)
+    {
+        throw new InvalidOperationException(
+            "Backup:EncryptionKey no está configurada o no es una clave AES-256 válida (32 bytes en Base64). " +
+            "Genere una con, por ejemplo, `openssl rand -base64 32` y configúrela como variable de entorno " +
+            "Backup__EncryptionKey antes de desplegar -- sin ella, ninguna copia de seguridad puede crearse " +
+            "(ver BackupService.GetEncryptionKeyOrThrow).");
+    }
+}
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {

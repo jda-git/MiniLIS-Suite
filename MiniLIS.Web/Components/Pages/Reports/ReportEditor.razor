@@ -779,6 +779,10 @@
 
     private static int ParseLevel(string? level) => InfinicytXmlParser.ParseLevelDepth(level);
 
+    // FRONTERA REGULATORIA (Regla 5 -- ver la cabecera de InfinicytXmlParser.cs para el porqué
+    // completo): este método solo copia texto ya presente en el XML al campo del informe que
+    // elija el facultativo. No calcular, derivar, comparar ni clasificar aquí los valores de
+    // población -- eso convertiría a MiniLIS en producto sanitario (Reglamento UE 2017/745).
     private async Task InsertInfinicytSelection()
     {
         if (infinicytResult == null || !selectedInfinicytRowIds.Any() || report == null) return;

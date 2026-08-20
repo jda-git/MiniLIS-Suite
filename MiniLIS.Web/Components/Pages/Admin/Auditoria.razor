@@ -324,13 +324,13 @@
         <div class="audit-search-card">
             <h2 class="acc-section-title">Retención y purga</h2>
             <p class="small text-muted">
-                Retención mínima recomendada: dos años (RGPD/ENS). La purga elimina los registros
-                anteriores al corte y queda ella misma auditada (Action = "Purge").
+                Retención mínima: dos años (RGPD/ENS), aplicado por el servidor (N-9). La purga
+                elimina los registros anteriores al corte y queda ella misma auditada (Action = "Purge").
             </p>
             <div class="d-flex gap-3 align-items-end">
                 <div>
                     <label class="acc-label">Años de retención</label>
-                    <input type="number" min="1" class="filter-control" style="width:100px" @bind="retentionYears" />
+                    <input type="number" min="2" class="filter-control" style="width:100px" @bind="retentionYears" />
                 </div>
                 <button class="btn-audit-search" @onclick="SaveRetention">Guardar</button>
                 <button class="btn-audit-search" style="background:#dc2626" @onclick="ConfirmPurge">
@@ -340,6 +340,10 @@
             @if (!string.IsNullOrEmpty(purgeMessage))
             {
                 <div class="alert alert-success mt-2 py-2 px-3 small">@purgeMessage</div>
+            }
+            @if (!string.IsNullOrEmpty(retentionError))
+            {
+                <div class="alert alert-danger mt-2 py-2 px-3 small"><i class="bi bi-exclamation-triangle-fill me-2"></i>@retentionError</div>
             }
         </div>
     }
@@ -581,6 +585,7 @@
     private List<AuditLog> accLogs = new();
     private int retentionYears = 2;
     private string? purgeMessage;
+    private string? retentionError;
 
     private async Task SwitchToAccesos()
     {
@@ -611,8 +616,19 @@
 
     private async Task SaveRetention()
     {
-        await AuditQueryService.SetRetentionYearsAsync(retentionYears);
-        purgeMessage = $"Retención actualizada a {retentionYears} año(s).";
+        // El "min" del input es solo una pista visual (no bloquea tecleo/pegado manual);
+        // SetRetentionYearsAsync es la fuente de verdad real del mínimo de 2 años (N-9).
+        retentionError = null;
+        try
+        {
+            await AuditQueryService.SetRetentionYearsAsync(retentionYears);
+            purgeMessage = $"Retención actualizada a {retentionYears} año(s).";
+        }
+        catch (ArgumentException ex)
+        {
+            purgeMessage = null;
+            retentionError = ex.Message;
+        }
     }
 
     private async Task ConfirmPurge()

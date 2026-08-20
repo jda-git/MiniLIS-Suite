@@ -36,12 +36,29 @@ namespace MiniLIS.Infrastructure.Services
         public string FormattedLine { get; init; } = "";
     }
 
-    /// <summary>Parser puro (sin DB, sin usuario actual) del XML de exportación de BD/Cytognos
+    /// <summary>
+    /// Parser puro (sin DB, sin usuario actual) del XML de exportación de BD/Cytognos
     /// Infinicyt -- primera vía de la aplicación que ingiere un fichero XML de origen externo,
     /// así que el endurecimiento contra XXE/expansión de entidades es parte central del
     /// diseño, no un añadido. El esquema oficial (scheme.xsd) no declara targetNamespace, así
     /// que los elementos van sin namespace -- XElement.Element("report") funciona directo, sin
-    /// necesidad de XNamespace.</summary>
+    /// necesidad de XNamespace.
+    ///
+    /// FRONTERA REGULATORIA (Regla 5 -- Reglamento UE 2017/745, MDCG 2019-11).
+    ///
+    /// Este módulo TRANSFIERE texto: lee las poblaciones exportadas por Infinicyt y las pone a
+    /// disposición del facultativo, que selecciona cuáles insertar en el informe. No calcula,
+    /// no deriva, no compara, no clasifica y no marca nada como anormal -- cada valor que sale
+    /// de aquí es idéntico, carácter a carácter, al que traía el XML de origen.
+    ///
+    /// Esa limitación es lo que mantiene MiniLIS fuera del ámbito de producto sanitario.
+    /// NO añadir aquí ni en los consumidores de este parser: cálculo de porcentajes o ratios,
+    /// comparación con estudios previos, comparación con rangos de referencia, resaltado por
+    /// valor, puntuaciones o clasificación automática de poblaciones.
+    ///
+    /// Si se recibe una petición en ese sentido, es una decisión regulatoria del responsable de
+    /// la unidad, no una mejora técnica.
+    /// </summary>
     public static class InfinicytXmlParser
     {
         private const int MaxValueLength = 500;

@@ -4,11 +4,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MiniLIS.Domain.Identity;
 using MiniLIS.Infrastructure.Persistence;
 using MiniLIS.Infrastructure.Seed;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -49,6 +51,19 @@ namespace MiniLIS.Tests.TestSupport
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment(_environment);
+
+            // N-9: fuera de Development, Program.cs aborta el arranque si falta
+            // Backup:EncryptionKey (antes solo se descubría al fallar la primera copia de
+            // seguridad) -- se configura aquí una clave AES-256 válida cualquiera para que los
+            // tests que instancian el host completo no choquen con esa comprobación, que no es
+            // lo que están verificando.
+            builder.ConfigureAppConfiguration(config =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Backup:EncryptionKey"] = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
+                });
+            });
 
             builder.ConfigureServices(services =>
             {

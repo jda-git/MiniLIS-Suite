@@ -74,7 +74,11 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task SetRetentionYearsAsync(int years)
         {
-            if (years < 1) throw new ArgumentException("La retención debe ser de al menos 1 año.");
+            // N-9: mínimo 2 años, no 1 -- suelo real, no solo una recomendación en el texto de
+            // la descripción del ajuste (cl. RGPD/ENS sobre conservación de registros de
+            // auditoría de un sistema que trata datos de salud de categoría especial).
+            if (years < DefaultRetentionYears)
+                throw new ArgumentException($"La retención debe ser de al menos {DefaultRetentionYears} años.");
             await _masterDataService.SaveSettingAsync(RetentionSettingKey, years.ToString(),
                 "Años de retención de AuditLogs antes de que puedan purgarse (mínimo recomendado: 2, cl. RGPD/ENS).");
         }
