@@ -41,8 +41,41 @@ namespace MiniLIS.Infrastructure.Seed
                 var generated = string.IsNullOrWhiteSpace(adminPassword);
                 if (generated)
                 {
-                    // Cumple sobradamente la política de contraseñas configurada (mín. 6, sin requisitos de complejidad).
-                    adminPassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
+                    // La contraseña se construye para cumplir la política definida en Program.cs
+                    // (longitud 12+, dígito, mayúscula, minúscula, no alfanumérico, 4 caracteres
+                    // únicos) por CONSTRUCCIÓN, no por azar -- Base64 (A-Za-z0-9+/) solo tiene un
+                    // ~3% de símbolos por posición, así que generar 18 bytes al azar y esperar
+                    // que "toque" un símbolo fallaba la política de Identity en torno al 48% de
+                    // las veces (ver N-1), dejando el sistema sin ningún administrador sin avisar
+                    // más que en el log del servidor. Si la política cambia, revisa
+                    // GenerateCompliantPassword: la validación de más abajo aborta el arranque en
+                    // vez de dejar el sistema sin administrador.
+                    adminPassword = GenerateCompliantPassword();
+                }
+
+                // Validar ANTES de intentar el alta (tanto la generada como la configurada por
+                // Seed:AdminPassword): así un endurecimiento futuro de la política no vuelve a
+                // romper el sembrado en silencio -- un sistema clínico que arranca sin
+                // administrador está en peor estado que uno que no arranca: el segundo es
+                // evidente y se corrige de inmediato, el primero parece funcionar y no se puede
+                // administrar.
+                var passwordValidators = serviceProvider.GetServices<IPasswordValidator<ApplicationUser>>();
+                var probeUser = new ApplicationUser { UserName = adminUser, Email = adminUser };
+                foreach (var validator in passwordValidators)
+                {
+                    var validation = await validator.ValidateAsync(userManager, probeUser, adminPassword!);
+                    if (!validation.Succeeded)
+                    {
+                        var errors = string.Join("; ", validation.Errors.Select(e => e.Description));
+                        logger.LogCritical(
+                            "[SEED] La contraseña {Origen} para el administrador inicial no cumple la política " +
+                            "configurada: {Errors}. Revise GenerateCompliantPassword frente a Password options en Program.cs.",
+                            generated ? "generada" : "configurada en Seed:AdminPassword", errors);
+                        throw new InvalidOperationException(
+                            "No se puede sembrar el administrador inicial: la contraseña " +
+                            (generated ? "generada" : "configurada en Seed:AdminPassword") +
+                            $" no cumple la política de contraseñas ({errors}).");
+                    }
                 }
 
                 var admin = new ApplicationUser
@@ -69,8 +102,13 @@ namespace MiniLIS.Infrastructure.Seed
                 }
                 else
                 {
-                    logger.LogError("[SEED] No se pudo crear el administrador inicial: {Errors}",
-                        string.Join("; ", createPowerUser.Errors.Select(e => e.Description)));
+                    // Validado justo arriba contra la misma política, así que llegar aquí con un
+                    // error de complejidad de contraseña no debería pasar -- si ocurre, es una
+                    // causa distinta (ver Errors) y sigue mereciendo abortar el arranque en vez
+                    // de continuar sin administrador.
+                    var errors = string.Join("; ", createPowerUser.Errors.Select(e => e.Description));
+                    logger.LogCritical("[SEED] No se pudo crear el administrador inicial: {Errors}", errors);
+                    throw new InvalidOperationException($"No se pudo crear el administrador inicial: {errors}");
                 }
             }
 
@@ -357,6 +395,42 @@ namespace MiniLIS.Infrastructure.Seed
                 });
             }
             await context.SaveChangesAsync();
+        }
+
+        /// <summary>Genera una contraseña que cumple la política de Identity configurada en
+        /// Program.cs POR CONSTRUCCIÓN (un carácter de cada categoría exigida, no al azar sobre
+        /// un alfabeto que puede no tocar ninguno -- ver N-1). Se excluyen los caracteres
+        /// ambiguos I/O/l/0/1 porque esta contraseña se lee de un log y se teclea a mano una
+        /// vez; con 20 caracteres del alfabeto reducido la entropía sigue siendo holgada
+        /// (~humano ilegible, pero no confundible al copiarla).</summary>
+        public static string GenerateCompliantPassword(int length = 20)
+        {
+            const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // sin I ni O
+            const string lower = "abcdefghijkmnopqrstuvwxyz";  // sin l
+            const string digits = "23456789";                  // sin 0 ni 1
+            const string symbols = "!@#$%*-_=+?";
+            const string all = upper + lower + digits + symbols;
+
+            var chars = new List<char>
+            {
+                upper[RandomNumberGenerator.GetInt32(upper.Length)],
+                lower[RandomNumberGenerator.GetInt32(lower.Length)],
+                digits[RandomNumberGenerator.GetInt32(digits.Length)],
+                symbols[RandomNumberGenerator.GetInt32(symbols.Length)]
+            };
+
+            while (chars.Count < length)
+                chars.Add(all[RandomNumberGenerator.GetInt32(all.Length)]);
+
+            // Barajado Fisher-Yates con fuente criptográfica: sin esto, los cuatro caracteres
+            // obligatorios quedarían siempre en las primeras posiciones.
+            for (int i = chars.Count - 1; i > 0; i--)
+            {
+                int j = RandomNumberGenerator.GetInt32(i + 1);
+                (chars[i], chars[j]) = (chars[j], chars[i]);
+            }
+
+            return new string(chars.ToArray());
         }
 
         /// <summary>Inserta el perfil si no existe; si ya existe, lo actualiza en sitio (perfil
