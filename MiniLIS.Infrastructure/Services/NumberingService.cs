@@ -16,9 +16,10 @@ namespace MiniLIS.Infrastructure.Services
         private const string KEY_YEAR = "System:CurrentYear";
         private const string KEY_SEQUENCE = "System:LastSampleSequence";
 
-        /// <summary>Formato real de la numeración: AA-NNNN (año de 2 dígitos, secuencia de 4).</summary>
+        /// <summary>Formato real de la numeración: AA-NNNNN (año de 2 dígitos, secuencia de 5
+        /// -- D4 hasta N-5, techo de 9.999 estudios/año demasiado bajo).</summary>
         public static readonly System.Text.RegularExpressions.Regex ManualNumberPattern =
-            new(@"^\d{2}-\d{4}$");
+            new(@"^\d{2}-\d{5}$");
 
         public NumberingService(ApplicationDbContext db, ILogger<NumberingService> logger)
         {
@@ -79,7 +80,7 @@ namespace MiniLIS.Infrastructure.Services
             seqSetting.Value = nextSeq.ToString();
             await _db.SaveChangesAsync();
 
-            return $"{currentYear}-{nextSeq:D4}";
+            return $"{currentYear}-{nextSeq:D5}";
         }
 
         /// <summary>Salta cualquier secuencia dentro de un bloque reservado abierto del año en
@@ -135,25 +136,31 @@ namespace MiniLIS.Infrastructure.Services
             int nextSeq = Math.Max(lastSeq, dbMaxSeq) + 1;
             nextSeq = await SkipReservedBlocksAsync(currentYear, nextSeq);
 
-            return $"{currentYear}-{nextSeq:D4}";
+            return $"{currentYear}-{nextSeq:D5}";
         }
 
+        /// <summary>Máximo real de secuencia para el año, comparando NUMÉRICAMENTE (N-5).
+        /// OrderByDescending(s => s.SampleNumber) ordenaba por CADENA: durante la convivencia
+        /// de números de ancho D4 y D5 (justo tras la migración a D5, o con cualquier número
+        /// manual de ancho distinto), "26-0042" ordena por delante de "26-00043"
+        /// lexicográficamente aunque 43 &gt; 42 -- el máximo calculado sería el equivocado.</summary>
         private async Task<int> GetMaxSequenceFromDbAsync(string yearPrefix)
         {
-            var maxSn = await _db.Samples
+            var sampleNumbers = await _db.Samples
                 .Where(s => s.SampleNumber.StartsWith(yearPrefix + "-"))
-                .OrderByDescending(s => s.SampleNumber)
                 .Select(s => s.SampleNumber)
-                .FirstOrDefaultAsync();
+                .ToListAsync();
 
-            if (string.IsNullOrEmpty(maxSn)) return 0;
-
-            var parts = maxSn.Split('-');
-            if (parts.Length == 2 && int.TryParse(parts[1], out int seq))
+            var max = 0;
+            foreach (var sn in sampleNumbers)
             {
-                return seq;
+                var parts = sn.Split('-');
+                if (parts.Length == 2 && int.TryParse(parts[1], out var seq) && seq > max)
+                {
+                    max = seq;
+                }
             }
-            return 0;
+            return max;
         }
 
         public async Task SetNextSequenceAsync(int year, int nextSequence)

@@ -10,7 +10,7 @@ MiniLIS cubre el proceso de la muestra. Fuera de su alcance deliberadamente, y r
 
 ## Funcionalidades principales
 
-- Registro transaccional de pacientes, peticiones y muestras, con numeración correlativa automática (`AA-NNNN`) y modo de contingencia para caídas del sistema.
+- Registro transaccional de pacientes, peticiones y muestras, con numeración correlativa automática (`AA-NNNNN`) y modo de contingencia para caídas del sistema.
 - Recepción con registro de aceptación/salvedad/rechazo y notificación al peticionario.
 - Editor de informes con captura de intensidades/porcentajes de marcadores y síntesis de texto.
 - Generación de PDF (QuestPDF) y ODT editable (LibreOffice).

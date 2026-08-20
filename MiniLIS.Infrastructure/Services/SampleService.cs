@@ -52,7 +52,7 @@ namespace MiniLIS.Infrastructure.Services
                 bool isManual = !string.IsNullOrWhiteSpace(manualSampleNumber);
                 if (isManual && !NumberingService.ManualNumberPattern.IsMatch(manualSampleNumber!.Trim()))
                 {
-                    throw new InvalidOperationException($"El número de muestra manual '{manualSampleNumber}' no tiene el formato AA-NNNN.");
+                    throw new InvalidOperationException($"El número de muestra manual '{manualSampleNumber}' no tiene el formato AA-NNNNN.");
                 }
 
                 Sample sample = null!;

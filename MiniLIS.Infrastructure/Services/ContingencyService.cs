@@ -66,7 +66,7 @@ namespace MiniLIS.Infrastructure.Services
             {
                 var yearSuffix = (block.Year % 100).ToString("D2", CultureInfo.InvariantCulture);
                 var numbers = Enumerable.Range(block.FromSequence, block.ToSequence - block.FromSequence + 1)
-                    .Select(seq => $"{yearSuffix}-{seq:D4}")
+                    .Select(seq => $"{yearSuffix}-{seq:D5}")
                     .ToList();
 
                 var used = await _db.Samples

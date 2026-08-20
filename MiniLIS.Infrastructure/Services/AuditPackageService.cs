@@ -476,7 +476,7 @@ namespace MiniLIS.Infrastructure.Services
                 col.Item().Text($"Bloques reservados en el periodo: {blocks.Count}").FontSize(10).Bold();
                 foreach (var b in blocks)
                 {
-                    col.Item().Text($"  · {b.Year}: {b.FromSequence:D4}—{b.ToSequence:D4} — {b.Reason} — {(b.IsClosed ? "Cerrado" : "Abierto")}").FontSize(8);
+                    col.Item().Text($"  · {b.Year}: {b.FromSequence:D5}—{b.ToSequence:D5} — {b.Reason} — {(b.IsClosed ? "Cerrado" : "Abierto")}").FontSize(8);
                 }
                 col.Item().PaddingTop(10).Text($"Registros diferidos en el periodo: {deferred.Count}").FontSize(10).Bold();
                 foreach (var s in deferred)
