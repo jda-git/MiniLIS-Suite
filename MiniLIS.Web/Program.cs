@@ -148,3 +148,9 @@ using (var scope = app.Services.CreateScope())
 }
 
 await app.RunAsync();
+
+// N-4: visibilidad mínima necesaria para que WebApplicationFactory<Program> (pruebas de
+// integración/autorización) pueda referenciar este ensamblado -- las instrucciones de nivel
+// superior generan una clase Program interna por defecto. No cambia ningún comportamiento
+// de la aplicación.
+public partial class Program { }

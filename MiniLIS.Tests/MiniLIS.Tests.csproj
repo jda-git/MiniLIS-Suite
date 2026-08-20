@@ -11,6 +11,7 @@
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="FluentAssertions" Version="6.*" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
@@ -25,6 +26,7 @@
     <ProjectReference Include="..\MiniLIS.Domain\MiniLIS.Domain.csproj" />
     <ProjectReference Include="..\MiniLIS.Application\MiniLIS.Application.csproj" />
     <ProjectReference Include="..\MiniLIS.Infrastructure\MiniLIS.Infrastructure.csproj" />
+    <ProjectReference Include="..\MiniLIS.Web\MiniLIS.Web.csproj" />
   </ItemGroup>
 
 </Project>
