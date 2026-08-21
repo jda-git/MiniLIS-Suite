@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -67,6 +68,16 @@ namespace MiniLIS.Tests.TestSupport
 
             builder.ConfigureServices(services =>
             {
+                // Sin esto, Data Protection persiste el anillo de claves (con el que se
+                // firman los tokens antiforgery) en disco, en la misma ruta por defecto para
+                // TODAS las instancias de WebApplicationFactory que arrancan los distintos
+                // ficheros de test -- en el runner de CI (Linux) esa escritura/lectura
+                // compartida y concurrente entre procesos provoca que el token emitido en el
+                // GET /login dedique una clave que ya no coincide al validar el POST,
+                // devolviendo 400 en vez de 302 (LoginBehaviorTests, intermitente y solo en
+                // CI). Un proveedor efímero por instancia, en memoria, elimina esa carrera.
+                services.AddDataProtection().UseEphemeralDataProtectionProvider();
+
                 var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
                 if (descriptor != null) services.Remove(descriptor);
 
