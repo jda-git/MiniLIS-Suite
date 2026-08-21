@@ -103,12 +103,9 @@ namespace MiniLIS.Tests
 
             var response = await AttemptLoginAsync(client, MiniLisWebApplicationFactory.FacultativoUser, _factory.TestUserPassword);
 
-            var env = _factory.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
-            var antiforgeryOptions = _factory.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Antiforgery.AntiforgeryOptions>>().Value;
+            var body = await response.Content.ReadAsStringAsync();
             response.StatusCode.Should().Be(HttpStatusCode.Found,
-                $"un login correcto redirige, no se queda en /login con error -- DIAGNOSTICO2: EnvironmentName={env.EnvironmentName}, " +
-                $"antiforgeryCookieName={antiforgeryOptions.Cookie.Name}, antiforgeryCookieSecure={antiforgeryOptions.Cookie.SecurePolicy}, " +
-                $"formFieldName={antiforgeryOptions.FormFieldName}, headerName={antiforgeryOptions.HeaderName}");
+                $"un login correcto redirige, no se queda en /login con error -- DIAGNOSTICO3 body='{body}'");
             // ASP.NET Core serializa los atributos de Set-Cookie en minúsculas (httponly,
             // samesite=strict), así que la comprobación va sin distinguir mayúsculas.
             var setCookie = response.Headers.TryGetValues("Set-Cookie", out var values) ? string.Join(" | ", values) : "";
