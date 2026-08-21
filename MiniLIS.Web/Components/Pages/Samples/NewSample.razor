@@ -237,7 +237,7 @@
                             <InputText @bind-Value="issueFreeText" class="clin-input mt-1" placeholder="Especifique el motivo (obligatorio)..." />
                         }
 
-                        @if (receptionStatus == ReceptionStatus.ConSalvedad)
+                        @if (receptionStatus == ReceptionStatus.ConSalvedad || receptionStatus == ReceptionStatus.Rechazada)
                         {
                             <label class="radio-group-label d-block mt-2 mb-1">TEXTO PARA EL INFORME (editable)</label>
                             <InputTextArea @bind-Value="model.ReceptionCaveatForReport" class="clin-input" rows="2" />
@@ -675,8 +675,10 @@
         else selectedReasonIds.Remove(reasonId);
 
         // Propone un texto para el informe a partir de los motivos elegidos — el usuario
-        // puede editarlo o borrarlo libremente (Regla 5: plantilla, no interpretación).
-        if (receptionStatus == ReceptionStatus.ConSalvedad)
+        // puede editarlo o borrarlo libremente (Regla 5: plantilla, no interpretación). Vale
+        // tanto para "con salvedad" (LIMITACIONES) como para "rechazada" (MUESTRA RECHAZADA
+        // PREANALÍTICAMENTE) -- DocumentService decide qué apartado usar según ReceptionStatus.
+        if (receptionStatus == ReceptionStatus.ConSalvedad || receptionStatus == ReceptionStatus.Rechazada)
         {
             var descriptions = rejectionReasons.Where(r => selectedReasonIds.Contains(r.Id)).Select(r => r.Description);
             model.ReceptionCaveatForReport = string.Join("; ", descriptions);
@@ -831,7 +833,7 @@
                 Status = receptionStatus,
                 RejectionReasonIds = selectedReasonIds.ToList(),
                 IssueNotes = issueFreeText,
-                CaveatForReport = receptionStatus == ReceptionStatus.ConSalvedad ? model.ReceptionCaveatForReport : null,
+                CaveatForReport = (receptionStatus == ReceptionStatus.ConSalvedad || receptionStatus == ReceptionStatus.Rechazada) ? model.ReceptionCaveatForReport : null,
                 RequesterNotified = receptionStatus == ReceptionStatus.Rechazada && model.RequesterNotified,
                 NotificationNotes = receptionStatus == ReceptionStatus.Rechazada ? model.NotificationNotes : null
             };

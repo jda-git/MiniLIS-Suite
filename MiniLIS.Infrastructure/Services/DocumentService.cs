@@ -226,10 +226,36 @@ namespace MiniLIS.Infrastructure.Services
                         }
 
                         // LIMITACIONES (F-4): la salvedad de recepción debe constar en el informe (cl. 7.4).
-                        if (!string.IsNullOrWhiteSpace(fullReport.Sample?.ReceptionCaveatForReport))
+                        // Solo para "con salvedad" -- el rechazo tiene su propio apartado más abajo.
+                        if (fullReport.Sample?.ReceptionStatus == ReceptionStatus.ConSalvedad && !string.IsNullOrWhiteSpace(fullReport.Sample.ReceptionCaveatForReport))
                         {
                             col.Item().PaddingBottom(5).Text("LIMITACIONES").FontSize(11).FontColor(titleColor);
                             col.Item().PaddingBottom(15).Text(fullReport.Sample!.ReceptionCaveatForReport!).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                        }
+
+                        // MUESTRA RECHAZADA PREANALÍTICAMENTE (cl. 7.4): documenta el rechazo, su
+                        // motivo y, si consta, que se notificó al peticionario -- trazabilidad de
+                        // la no conformidad preanalítica, no solo del resultado.
+                        if (fullReport.Sample?.ReceptionStatus == ReceptionStatus.Rechazada)
+                        {
+                            col.Item().PaddingBottom(5).Text("MUESTRA RECHAZADA PREANALÍTICAMENTE").FontSize(11).FontColor(titleColor);
+                            if (!string.IsNullOrWhiteSpace(fullReport.Sample.ReceptionCaveatForReport))
+                            {
+                                col.Item().PaddingBottom(5).Text(fullReport.Sample.ReceptionCaveatForReport!).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                            }
+                            if (fullReport.Sample.RequesterNotified)
+                            {
+                                col.Item().PaddingBottom(15).Text(t =>
+                                {
+                                    t.Span("Peticionario notificado. ").FontSize(9).FontFamily(monoFont);
+                                    if (!string.IsNullOrWhiteSpace(fullReport.Sample.NotificationNotes))
+                                        t.Span(fullReport.Sample.NotificationNotes!).FontSize(9).FontFamily(monoFont);
+                                });
+                            }
+                            else
+                            {
+                                col.Item().PaddingBottom(15);
+                            }
                         }
 
                         if (!string.IsNullOrWhiteSpace(fullReport.Conclusions))
@@ -612,10 +638,27 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             // LIMITACIONES (F-4): la salvedad de recepción debe constar en el informe (cl. 7.4).
-            if (!string.IsNullOrWhiteSpace(s?.ReceptionCaveatForReport))
+            // Solo para "con salvedad" -- el rechazo tiene su propio apartado más abajo.
+            if (s?.ReceptionStatus == ReceptionStatus.ConSalvedad && !string.IsNullOrWhiteSpace(s.ReceptionCaveatForReport))
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">LIMITACIONES</text:p>");
                 sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(s!.ReceptionCaveatForReport!)}</text:p>");
+            }
+
+            // MUESTRA RECHAZADA PREANALÍTICAMENTE (cl. 7.4): documenta el rechazo, su motivo y,
+            // si consta, que se notificó al peticionario.
+            if (s?.ReceptionStatus == ReceptionStatus.Rechazada)
+            {
+                sb.Append($@"<text:p text:style-name=""SectionBlue"">MUESTRA RECHAZADA PREANALÍTICAMENTE</text:p>");
+                if (!string.IsNullOrWhiteSpace(s.ReceptionCaveatForReport))
+                {
+                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(s.ReceptionCaveatForReport!)}</text:p>");
+                }
+                if (s.RequesterNotified)
+                {
+                    var notif = "Peticionario notificado." + (!string.IsNullOrWhiteSpace(s.NotificationNotes) ? " " + s.NotificationNotes : "");
+                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(notif)}</text:p>");
+                }
             }
 
             // CONCLUSIÓN

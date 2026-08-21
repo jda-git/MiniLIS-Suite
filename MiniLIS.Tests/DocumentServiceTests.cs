@@ -11,13 +11,17 @@ namespace MiniLIS.Tests
 {
     public class DocumentServiceTests
     {
-        private static async Task<SampleReport> SeedReportAsync(TestDb db, SampleType sampleType, string? caveat = null)
+        private static async Task<SampleReport> SeedReportAsync(TestDb db, SampleType sampleType, string? caveat = null,
+            ReceptionStatus receptionStatus = ReceptionStatus.Correcta, bool requesterNotified = false, string? notificationNotes = null)
         {
             using var ctx = db.CreateContext();
             var patient = EntityBuilders.NewPatient(nhc: $"NHC-{sampleType}");
             var request = EntityBuilders.NewRequest(patient, requestNumber: $"REQ-{sampleType}");
             var sample = EntityBuilders.NewSample(request, sampleNumber: $"26-{(int)sampleType:D4}", sampleType: sampleType);
             sample.ReceptionCaveatForReport = caveat;
+            sample.ReceptionStatus = receptionStatus;
+            sample.RequesterNotified = requesterNotified;
+            sample.NotificationNotes = notificationNotes;
             ctx.Samples.Add(sample);
             await ctx.SaveChangesAsync();
 
@@ -58,7 +62,8 @@ namespace MiniLIS.Tests
 
             using var dbWith = new TestDb();
             var reportWith = await SeedReportAsync(dbWith, SampleType.SangrePeriferica,
-                caveat: "Volumen insuficiente para completar todos los tubos solicitados.");
+                caveat: "Volumen insuficiente para completar todos los tubos solicitados.",
+                receptionStatus: ReceptionStatus.ConSalvedad);
             using var ctxWith = dbWith.CreateContext();
             var serviceWith = new DocumentService(ctxWith, new MasterDataService(ctxWith), new LocalTimeService(), new PatientService(ctxWith, new FakeCurrentUserService()));
             var bytesWith = await serviceWith.GeneratePdfAsync(reportWith);
@@ -66,5 +71,29 @@ namespace MiniLIS.Tests
             bytesWith.Length.Should().BeGreaterThan(bytesWithout.Length,
                 "el bloque de LIMITACIONES (F-4) añade contenido al PDF cuando hay salvedad de recepción");
         }
+
+        [Fact]
+        public async Task GeneratePdfAsync_produces_larger_output_when_sample_is_rejected()
+        {
+            using var dbAccepted = new TestDb();
+            var reportAccepted = await SeedReportAsync(dbAccepted, SampleType.SangrePeriferica);
+            using var ctxAccepted = dbAccepted.CreateContext();
+            var serviceAccepted = new DocumentService(ctxAccepted, new MasterDataService(ctxAccepted), new LocalTimeService(), new PatientService(ctxAccepted, new FakeCurrentUserService()));
+            var bytesAccepted = await serviceAccepted.GeneratePdfAsync(reportAccepted);
+
+            using var dbRejected = new TestDb();
+            var reportRejected = await SeedReportAsync(dbRejected, SampleType.SangrePeriferica,
+                caveat: "Tubo roto en tránsito; hemólisis visible.",
+                receptionStatus: ReceptionStatus.Rechazada,
+                requesterNotified: true,
+                notificationNotes: "Dra. Pérez, 08:45, telefónicamente.");
+            using var ctxRejected = dbRejected.CreateContext();
+            var serviceRejected = new DocumentService(ctxRejected, new MasterDataService(ctxRejected), new LocalTimeService(), new PatientService(ctxRejected, new FakeCurrentUserService()));
+            var bytesRejected = await serviceRejected.GeneratePdfAsync(reportRejected);
+
+            bytesRejected.Length.Should().BeGreaterThan(bytesAccepted.Length,
+                "el aviso de MUESTRA RECHAZADA PREANALÍTICAMENTE (motivo + notificación al peticionario) debe añadirse al PDF");
+        }
+
     }
 }

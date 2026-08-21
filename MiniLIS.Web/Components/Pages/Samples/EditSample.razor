@@ -197,7 +197,7 @@
                             <InputText @bind-Value="issueFreeText" class="clin-input mt-1" placeholder="Especifique el motivo (obligatorio)..." />
                         }
 
-                        @if (receptionStatus == ReceptionStatus.ConSalvedad)
+                        @if (receptionStatus == ReceptionStatus.ConSalvedad || receptionStatus == ReceptionStatus.Rechazada)
                         {
                             <label class="radio-group-label d-block mt-2 mb-1">TEXTO PARA EL INFORME (editable)</label>
                             <InputTextArea @bind-Value="model.ReceptionCaveatForReport" class="clin-input" rows="2" />
@@ -499,7 +499,10 @@
         if (isChecked) selectedReasonIds.Add(reasonId);
         else selectedReasonIds.Remove(reasonId);
 
-        if (receptionStatus == ReceptionStatus.ConSalvedad)
+        // Vale tanto para "con salvedad" (LIMITACIONES) como para "rechazada" (MUESTRA
+        // RECHAZADA PREANALÍTICAMENTE) -- DocumentService decide qué apartado usar según
+        // ReceptionStatus.
+        if (receptionStatus == ReceptionStatus.ConSalvedad || receptionStatus == ReceptionStatus.Rechazada)
         {
             var descriptions = rejectionReasons.Where(r => selectedReasonIds.Contains(r.Id)).Select(r => r.Description);
             model.ReceptionCaveatForReport = string.Join("; ", descriptions);
@@ -693,7 +696,7 @@
 
             // Recepción (F-4)
             originalSample.ReceptionStatus = receptionStatus;
-            originalSample.ReceptionCaveatForReport = receptionStatus == ReceptionStatus.ConSalvedad ? model.ReceptionCaveatForReport : null;
+            originalSample.ReceptionCaveatForReport = (receptionStatus == ReceptionStatus.ConSalvedad || receptionStatus == ReceptionStatus.Rechazada) ? model.ReceptionCaveatForReport : null;
             originalSample.RequesterNotified = receptionStatus == ReceptionStatus.Rechazada && model.RequesterNotified;
             originalSample.NotificationNotes = receptionStatus == ReceptionStatus.Rechazada ? model.NotificationNotes : null;
 
