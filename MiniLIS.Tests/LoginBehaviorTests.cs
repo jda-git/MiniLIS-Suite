@@ -119,7 +119,7 @@ namespace MiniLIS.Tests
             }
             catch (Exception ex)
             {
-                keyRingDiag = $"FALLO: {ex.GetType().Name}: {ex.Message}";
+                keyRingDiag = $"FALLO: {ex.GetType().Name}: {ex.Message} | INNER: {ex.InnerException?.GetType().Name}: {ex.InnerException?.Message} | INNER2: {ex.InnerException?.InnerException?.GetType().Name}: {ex.InnerException?.InnerException?.Message}";
             }
 
             using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
