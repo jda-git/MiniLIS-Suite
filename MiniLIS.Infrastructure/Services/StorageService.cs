@@ -74,7 +74,14 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(s => s.Events)
                 .FirstOrDefaultAsync(s => s.Id == id);
 
-        public async Task<StoredSpecimen> AddAsync(int sampleId, StoredSpecimenType type, string? typeOther, string? freezerCode,
+        public async Task<List<StoredSpecimen>> GetByIdsAsync(List<int> ids) =>
+            await _db.StoredSpecimens
+                .Include(s => s.Sample)
+                .Where(s => ids.Contains(s.Id))
+                .OrderBy(s => s.BatchId).ThenBy(s => s.AliquotIndex)
+                .ToListAsync();
+
+        public async Task<List<StoredSpecimen>> AddAsync(int sampleId, StoredSpecimenType type, string? typeOther, string? freezerCode,
             string? rack, string? box, string? position, int aliquotCount, DateTime? expiryOverrideUtc, string? notes, int? userId)
         {
             var nowUtc = DateTime.UtcNow;
@@ -86,25 +93,33 @@ namespace MiniLIS.Infrastructure.Services
                 expiry = nowUtc.AddDays(days);
             }
 
-            var specimen = new StoredSpecimen
+            var batchId = Guid.NewGuid();
+            var batchSize = Math.Max(1, aliquotCount);
+            var specimens = new List<StoredSpecimen>();
+            for (var i = 1; i <= batchSize; i++)
             {
-                SampleId = sampleId,
-                Type = type,
-                TypeOther = type == StoredSpecimenType.Otros ? typeOther : null,
-                FreezerCode = freezerCode,
-                Rack = rack,
-                Box = box,
-                Position = position,
-                AliquotCount = aliquotCount,
-                StoredAtUtc = nowUtc,
-                StoredByUserId = userId,
-                ExpiryDateUtc = expiry,
-                Status = StoredSpecimenStatus.Almacenada,
-                Notes = notes
-            };
-            _db.StoredSpecimens.Add(specimen);
+                specimens.Add(new StoredSpecimen
+                {
+                    SampleId = sampleId,
+                    Type = type,
+                    TypeOther = type == StoredSpecimenType.Otros ? typeOther : null,
+                    FreezerCode = freezerCode,
+                    Rack = rack,
+                    Box = box,
+                    Position = position,
+                    StoredAtUtc = nowUtc,
+                    StoredByUserId = userId,
+                    ExpiryDateUtc = expiry,
+                    Status = StoredSpecimenStatus.Almacenada,
+                    Notes = notes,
+                    BatchId = batchId,
+                    AliquotIndex = i,
+                    BatchSize = batchSize
+                });
+            }
+            _db.StoredSpecimens.AddRange(specimens);
             await _db.SaveChangesAsync();
-            return specimen;
+            return specimens;
         }
 
         public async Task<List<StoredSpecimen>> GetExpiryAlertsAsync(int daysAhead = 30)
@@ -118,7 +133,7 @@ namespace MiniLIS.Infrastructure.Services
                 .ToListAsync();
         }
 
-        public async Task AddEventAsync(int storedSpecimenId, string eventType, string? reason, string? newLocation, int? aliquotsConsumed, int? userId)
+        public async Task AddEventAsync(int storedSpecimenId, string eventType, string? reason, string? newLocation, bool agotadaEnEsteUso, int? userId)
         {
             var specimen = await _db.StoredSpecimens.FirstOrDefaultAsync(s => s.Id == storedSpecimenId);
             if (specimen == null) throw new InvalidOperationException("Alícuota no encontrada.");
@@ -131,21 +146,17 @@ namespace MiniLIS.Infrastructure.Services
                 EventAtUtc = nowUtc,
                 PerformedByUserId = userId,
                 Reason = reason,
-                NewLocation = newLocation,
-                AliquotsConsumed = aliquotsConsumed
+                NewLocation = newLocation
             });
 
             // El evento es el registro inmutable; el estado actual de la alícuota se actualiza
-            // como reflejo de su último evento, nunca reescribiendo eventos pasados.
+            // como reflejo de su último evento, nunca reescribiendo eventos pasados. Cada fila
+            // es ya una sola alícuota (F-7): no hay recuento que restar, "Descongelación" actúa
+            // sobre esta única fila.
             switch (eventType)
             {
                 case "Descongelacion":
-                    specimen.Status = StoredSpecimenStatus.Descongelada;
-                    if (aliquotsConsumed.HasValue)
-                    {
-                        specimen.AliquotCount = Math.Max(0, specimen.AliquotCount - aliquotsConsumed.Value);
-                        if (specimen.AliquotCount == 0) specimen.Status = StoredSpecimenStatus.Agotada;
-                    }
+                    specimen.Status = agotadaEnEsteUso ? StoredSpecimenStatus.Agotada : StoredSpecimenStatus.Descongelada;
                     break;
                 case "Traslado":
                     if (!string.IsNullOrWhiteSpace(newLocation))
@@ -174,7 +185,7 @@ namespace MiniLIS.Infrastructure.Services
 
             if (incluirIdentificadores)
             {
-                sb.AppendLine("N Muestra;NHC;Tipo;Ubicacion;Alicuotas;Estado;Almacenada;Caduca");
+                sb.AppendLine("N Muestra;NHC;Tipo;Ubicacion;Alicuota;Lote;Estado;Almacenada;Caduca");
                 foreach (var s in items)
                 {
                     sb.AppendLine(string.Join(';',
@@ -182,7 +193,12 @@ namespace MiniLIS.Infrastructure.Services
                         CsvUtils.EscapeField(s.Sample?.ClinicalRequest?.Patient?.NHC),
                         CsvUtils.EscapeField(s.Type.ToString()),
                         CsvUtils.EscapeField(s.LocationDisplay),
-                        CsvUtils.EscapeField(s.AliquotCount.ToString()),
+                        // "N de M", no "N/M": Excel reinterpreta "1/20".."12/20" como fechas
+                        // (día/mes válido) al abrir el CSV, pero deja "13/20".."20/20" como
+                        // texto por no ser un mes válido -- una barra aquí corrompe justo las
+                        // primeras 12 alícuotas de cada lote de forma silenciosa.
+                        CsvUtils.EscapeField($"{s.AliquotIndex} de {s.BatchSize}"),
+                        CsvUtils.EscapeField(s.BatchId.ToString()),
                         CsvUtils.EscapeField(s.Status.ToString()),
                         CsvUtils.EscapeField(_localTimeService.ToLocal(s.StoredAtUtc).ToString("dd/MM/yyyy")),
                         CsvUtils.EscapeField(s.ExpiryDateUtc.HasValue ? _localTimeService.ToLocal(s.ExpiryDateUtc.Value).ToString("dd/MM/yyyy") : "")));
@@ -191,14 +207,15 @@ namespace MiniLIS.Infrastructure.Services
             else
             {
                 // Seudonimizado por defecto: sin NHC (C-2).
-                sb.AppendLine("N Muestra;Tipo;Ubicacion;Alicuotas;Estado;Almacenada;Caduca");
+                sb.AppendLine("N Muestra;Tipo;Ubicacion;Alicuota;Lote;Estado;Almacenada;Caduca");
                 foreach (var s in items)
                 {
                     sb.AppendLine(string.Join(';',
                         CsvUtils.EscapeField(s.Sample?.SampleNumber),
                         CsvUtils.EscapeField(s.Type.ToString()),
                         CsvUtils.EscapeField(s.LocationDisplay),
-                        CsvUtils.EscapeField(s.AliquotCount.ToString()),
+                        CsvUtils.EscapeField($"{s.AliquotIndex} de {s.BatchSize}"),
+                        CsvUtils.EscapeField(s.BatchId.ToString()),
                         CsvUtils.EscapeField(s.Status.ToString()),
                         CsvUtils.EscapeField(_localTimeService.ToLocal(s.StoredAtUtc).ToString("dd/MM/yyyy")),
                         CsvUtils.EscapeField(s.ExpiryDateUtc.HasValue ? _localTimeService.ToLocal(s.ExpiryDateUtc.Value).ToString("dd/MM/yyyy") : "")));

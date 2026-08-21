@@ -325,29 +325,29 @@
                         <input type="text" class="clin-input" @bind="aliquotTypeOther" />
                     </div>
                 }
-                <div class="clin-field" style="width: 120px;">
+                <div class="clin-field" style="width: 150px;">
                     <label>Alícuotas</label>
                     <input type="number" min="1" class="clin-input" @bind="aliquotCount" />
                 </div>
-                <div class="clin-field" style="width: 180px;">
+                <div class="clin-field" style="width: 260px;">
                     <label>Caducidad (opcional)</label>
                     <input type="date" class="clin-input" @bind="aliquotExpiry" />
                 </div>
             </div>
             <div class="clin-row mt-2">
-                <div class="clin-field" style="width: 150px;">
+                <div class="clin-field" style="width: 220px;">
                     <label>Congelador (QMS)</label>
                     <input type="text" class="clin-input" @bind="aliquotFreezer" />
                 </div>
-                <div class="clin-field" style="width: 120px;">
+                <div class="clin-field" style="width: 150px;">
                     <label>Rack</label>
                     <input type="text" class="clin-input" @bind="aliquotRack" />
                 </div>
-                <div class="clin-field" style="width: 120px;">
+                <div class="clin-field" style="width: 150px;">
                     <label>Caja</label>
                     <input type="text" class="clin-input" @bind="aliquotBox" />
                 </div>
-                <div class="clin-field" style="width: 120px;">
+                <div class="clin-field" style="width: 160px;">
                     <label>Posición</label>
                     <input type="text" class="clin-input" placeholder="A3" @bind="aliquotPosition" />
                 </div>
@@ -415,8 +415,8 @@
 <style>
     .iso-page { padding: 24px 32px; }
     .iso-panel { background: white; border-radius: 8px; border: 1px solid #e8e8e8; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); max-width: 1000px; }
-    .clin-row { display: flex; gap: 16px; width: 100%; align-items: center; }
-    .clin-field { display: flex; background: #fff; border: 1px solid #ced4da; border-radius: 6px; overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s; height: 36px; position: relative; }
+    .clin-row { display: flex; flex-wrap: wrap; gap: 16px; width: 100%; align-items: center; }
+    .clin-field { display: flex; flex-shrink: 0; background: #fff; border: 1px solid #ced4da; border-radius: 6px; overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s; height: 36px; position: relative; }
     .clin-field:focus-within { border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
     .clin-field:has(.invalid) { border-color: #dc3545; background-color: #fffafb; }
     .validation-inline { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #dc3545; font-size: 11px; font-weight: 700; pointer-events: none; }

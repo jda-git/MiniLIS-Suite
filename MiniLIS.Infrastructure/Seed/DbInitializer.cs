@@ -270,6 +270,10 @@ namespace MiniLIS.Infrastructure.Seed
             // (F-4, idempotente: solo actúa sobre filas todavía no migradas).
             await ReceptionMigrator.RunAsync(context, logger);
 
+            // 6.7 Expande los lotes históricos de StoredSpecimen (AliquotCount) en alícuotas
+            // individuales con estado propio (F-7, idempotente: solo BatchId == Guid.Empty).
+            await StoredSpecimenBatchMigrator.RunAsync(context, logger);
+
             // 7. Seed Quality Indicators (F-1). Umbrales sin definir a propósito: un umbral por
             // defecto inventado es peor que ninguno — la unidad debe fijarlos conscientemente.
             var indicators = new (string Code, string Name, string Definition, IndicatorUnit Unit, IndicatorDirection Direction)[]

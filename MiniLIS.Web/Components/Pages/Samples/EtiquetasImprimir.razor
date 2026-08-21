@@ -7,6 +7,7 @@
 @using System.Net
 @attribute [Authorize]
 @inject ISampleService SampleService
+@inject IStorageService StorageService
 @inject IMasterDataService MasterService
 @inject ILocalTimeService LocalTimeService
 @inject NavigationManager Nav
@@ -18,9 +19,9 @@
 {
     <div class="text-center py-5 no-print"><span class="spinner-border text-primary"></span></div>
 }
-else if (!samples.Any())
+else if (!sampleItems.Any() && !tubeItems.Any() && !specimenItems.Any())
 {
-    <div class="alert alert-warning no-print m-4">No se ha encontrado ninguna muestra para las etiquetas solicitadas.</div>
+    <div class="alert alert-warning no-print m-4">No se ha encontrado ninguna muestra ni alícuota para las etiquetas solicitadas.</div>
 }
 else
 {
@@ -58,10 +59,24 @@ else
                 </div>
             </div>
         }
+
+        @if (specimenItems.Any())
+        {
+            <div class="label-selector-col">
+                <h6>ETIQUETAS ALÍCUOTAS</h6>
+                @foreach (var item in specimenItems)
+                {
+                    <div class="label-selector-row">
+                        <input type="checkbox" @bind="item.Selected" />
+                        @BuildLabelMarkup(item)
+                    </div>
+                }
+            </div>
+        }
     </div>
 
     <div class="labels-sheet print-only">
-        @foreach (var item in sampleItems.Where(i => i.Selected).Concat(tubeItems.Where(i => i.Selected)))
+        @foreach (var item in sampleItems.Where(i => i.Selected).Concat(tubeItems.Where(i => i.Selected)).Concat(specimenItems.Where(i => i.Selected)))
         {
             for (var copy = 0; copy < settings.CopiesPerSample; copy++)
             {
@@ -139,6 +154,8 @@ else
     .label-type { font-weight: 700; color: #0f172a; }
     .label-id { color: #1e293b; margin-top: 0.3mm; }
     .label-date { color: #475569; margin-top: 0.3mm; }
+    .label-date-row { display: flex; justify-content: space-between; align-items: baseline; color: #475569; margin-top: 0.3mm; gap: 2mm; }
+    .label-date-row span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; margin-top: 0.3mm; }
     /* Lista de monoclonales del tubo (en vez de NHC/NASI en las etiquetas de tubo): una
        sola línea, cortada con puntos suspensivos si no cabe en el ancho de la etiqueta,
@@ -154,14 +171,21 @@ else
     [SupplyParameterFromQuery]
     public string? Ids { get; set; }
 
+    // F-7: alícuotas de excedente (Excedente.razor → "Imprimir etiquetas del lote"), fuente
+    // de datos independiente de Ids (muestras/tubos) -- las dos pueden convivir en teoría,
+    // aunque en la práctica cada botón de origen solo rellena una de las dos.
+    [SupplyParameterFromQuery]
+    public string? SpecimenIds { get; set; }
+
     private List<Sample> samples = new();
     private LabelSettings settings = new();
     private bool isLoading = true;
 
     private List<LabelItem> sampleItems = new();
     private List<LabelItem> tubeItems = new();
+    private List<LabelItem> specimenItems = new();
 
-    private int totalLabels => (sampleItems.Count(i => i.Selected) + tubeItems.Count(i => i.Selected)) * settings.CopiesPerSample;
+    private int totalLabels => (sampleItems.Count(i => i.Selected) + tubeItems.Count(i => i.Selected) + specimenItems.Count(i => i.Selected)) * settings.CopiesPerSample;
     private bool allTubesSelected => tubeItems.Count > 0 && tubeItems.All(i => i.Selected);
 
     private class LabelItem
@@ -172,29 +196,44 @@ else
         public string? IdLine;
         public string? DateLine;
         public string? TubeLine;
+        public string? AliquotTypeLine;
+        /// <summary>Nombre completo del tipo de alícuota (Células, Pellet, DNA...), mostrado
+        /// junto a la fecha de almacenamiento -- AliquotTypeLine ya lleva el código de 3
+        /// letras (TUB, CEL...) en la línea de arriba, este es el nombre legible.</summary>
+        public string? TypeName;
+        /// <summary>Dato codificado en el código de barras -- por defecto SampleNumber
+        /// (muestras/tubos, donde el número de muestra ya es único); las alícuotas necesitan
+        /// algo más específico, porque varias comparten SampleNumber (F-7).</summary>
+        public string? BarcodeData;
     }
 
     protected override async Task OnInitializedAsync()
     {
         settings = await MasterService.GetLabelSettingsAsync();
 
-        var ids = (Ids ?? string.Empty)
-            .Split(',', StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => int.TryParse(s.Trim(), out var id) ? id : (int?)null)
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value)
-            .Distinct()
-            .ToList();
-
+        var ids = ParseIdList(Ids);
         samples = ids.Any() ? await SampleService.GetSamplesByIdsAsync(ids) : new List<Sample>();
-        BuildLabelItems();
+
+        var specimenIds = ParseIdList(SpecimenIds);
+        var specimens = specimenIds.Any() ? await StorageService.GetByIdsAsync(specimenIds) : new List<StoredSpecimen>();
+
+        BuildLabelItems(specimens);
         isLoading = false;
     }
 
-    private void BuildLabelItems()
+    private static List<int> ParseIdList(string? raw) => (raw ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+        .Select(s => int.TryParse(s.Trim(), out var id) ? id : (int?)null)
+        .Where(id => id.HasValue)
+        .Select(id => id!.Value)
+        .Distinct()
+        .ToList();
+
+    private void BuildLabelItems(List<StoredSpecimen> specimens)
     {
         sampleItems = new List<LabelItem>();
         tubeItems = new List<LabelItem>();
+        specimenItems = new List<LabelItem>();
 
         foreach (var s in samples)
         {
@@ -226,6 +265,31 @@ else
                 }
             }
         }
+
+        foreach (var sp in specimens)
+        {
+            var sampleNumber = sp.Sample?.SampleNumber ?? "";
+            var typeCode = sp.Type.ToCode();
+            specimenItems.Add(new LabelItem
+            {
+                Selected = true,
+                SampleNumber = sampleNumber,
+                TypeCode = typeCode,
+                AliquotTypeLine = $"{typeCode} {sp.AliquotIndex}/{sp.BatchSize}",
+                // "{muestra}(T{índice})" -- legible y único: identifica la alícuota sin
+                // depender del Id interno de base de datos. BuildBarcodeSvg ya no estira el
+                // código para llenar el ancho de la etiqueta (ese era el bug de las barras
+                // ilegibles), así que un dato algo más largo que un simple Id ya no supone
+                // ningún riesgo de desbordar ni de engordar las barras.
+                BarcodeData = $"{sampleNumber}(T{sp.AliquotIndex})",
+                // Fecha de almacenamiento, no de recepción -- mismo formato que la columna
+                // "Almacenada" del CSV de excedentes (StorageService.ExportToCsvAsync).
+                DateLine = LocalTimeService.ToLocal(sp.StoredAtUtc).ToString("dd/MM/yyyy"),
+                TypeName = sp.Type == StoredSpecimenType.Otros && !string.IsNullOrWhiteSpace(sp.TypeOther)
+                    ? sp.TypeOther
+                    : sp.Type.ToDisplayName()
+            });
+        }
     }
 
     private void SetAllTubesSelected(bool value)
@@ -240,7 +304,14 @@ else
 
     private void Volver()
     {
-        Nav.NavigateTo("/muestras");
+        if (!sampleItems.Any() && !tubeItems.Any() && specimenItems.Any())
+        {
+            Nav.NavigateTo("/excedente");
+        }
+        else
+        {
+            Nav.NavigateTo("/muestras");
+        }
     }
 
     // Construye el mismo marcado para el selector en pantalla y para la hoja de impresión
@@ -251,10 +322,10 @@ else
     {
         var sb = new System.Text.StringBuilder();
         sb.Append($@"<div class=""label"" style=""width:{settings.WidthMm.ToString(CultureInfo.InvariantCulture)}mm; height:{settings.HeightMm.ToString(CultureInfo.InvariantCulture)}mm; padding:{settings.MarginMm.ToString(CultureInfo.InvariantCulture)}mm;"">");
-        sb.Append(BuildBarcodeSvg(item.SampleNumber));
+        sb.Append(BuildBarcodeSvg(item.BarcodeData ?? item.SampleNumber));
         sb.Append(@"<div class=""label-main-row"">");
         sb.Append($@"<span class=""label-number"" style=""font-size:{settings.MainFontPt}pt;"">{WebUtility.HtmlEncode(item.SampleNumber)}</span>");
-        if (settings.ShowSampleType)
+        if (settings.ShowSampleType && item.AliquotTypeLine == null)
         {
             sb.Append($@"<span class=""label-type"" style=""font-size:{settings.MainFontPt}pt;"">{WebUtility.HtmlEncode(item.TypeCode)}</span>");
         }
@@ -263,6 +334,10 @@ else
         if (item.TubeLine != null)
         {
             sb.Append($@"<div class=""label-tube"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.TubeLine)}</div>");
+        }
+        else if (item.AliquotTypeLine != null)
+        {
+            sb.Append($@"<div class=""label-tube"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.AliquotTypeLine)}</div>");
         }
         else if (item.IdLine != null)
         {
@@ -273,9 +348,24 @@ else
             sb.Append($@"<div class=""label-noid"" style=""font-size:{settings.SecondaryFontPt}pt;"">SIN IDENTIFICADOR</div>");
         }
 
-        if (item.TubeLine == null && settings.ShowReceptionDate && item.DateLine != null)
+        // Para alícuotas la fecha de almacenamiento siempre se muestra -- es su propio dato de
+        // trazabilidad, no la "fecha de recepción" que gobierna settings.ShowReceptionDate (esa
+        // casilla es específica de las etiquetas de muestra, ver ConfigIndex.razor).
+        if (item.TubeLine == null && item.DateLine != null && (item.AliquotTypeLine != null || settings.ShowReceptionDate))
         {
-            sb.Append($@"<div class=""label-date"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.DateLine)}</div>");
+            if (item.TypeName != null)
+            {
+                // Fecha a la izquierda, tipo de alícuota (Células, Pellet, DNA...) a la
+                // derecha, en la misma línea -- mismo patrón flex que label-main-row.
+                sb.Append($@"<div class=""label-date-row"" style=""font-size:{settings.SecondaryFontPt}pt;"">");
+                sb.Append($@"<span>{WebUtility.HtmlEncode(item.DateLine)}</span>");
+                sb.Append($@"<span>{WebUtility.HtmlEncode(item.TypeName)}</span>");
+                sb.Append("</div>");
+            }
+            else
+            {
+                sb.Append($@"<div class=""label-date"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.DateLine)}</div>");
+            }
         }
 
         sb.Append("</div>");
@@ -289,10 +379,18 @@ else
         var widths = Code128Encoder.EncodeToModuleWidths(data);
         var totalModules = widths.Sum();
 
-        // Módulo cuadrado: ancho total del código = altura de barra configurada / 2 aprox,
-        // pero preferimos que el código quepa dentro del ancho de la etiqueta menos el margen.
+        // Ancho de módulo (X-dimension) FIJO, no "el que haga falta para llenar el ancho
+        // disponible": con datos cortos (p. ej. el Id de una alícuota, muchos menos módulos
+        // que un número de muestra) estirar el código para ocupar todo el ancho produce
+        // barras anormalmente gruesas -- deja de parecerse a un Code128 real y un lector de
+        // mano no lo decodifica (comprobado: "no es legible por el lector"). 0.33mm es un
+        // ancho de módulo cómodo y habitual para lectores estándar a la distancia de uso en
+        // laboratorio. Solo se reduce (nunca se amplía) si el código no cupiera en la
+        // etiqueta con ese ancho -- eso sí puede pasar con datos largos, no con datos cortos.
+        const double targetModuleWidthMm = 0.33;
         double svgHeightMm = settings.BarcodeHeightMm;
-        double moduleWidthMm = Math.Max(0.25, (settings.WidthMm - 2 * settings.MarginMm) / totalModules);
+        double availableWidthMm = settings.WidthMm - 2 * settings.MarginMm;
+        double moduleWidthMm = Math.Min(targetModuleWidthMm, Math.Max(0.25, availableWidthMm / totalModules));
         double svgWidthMm = moduleWidthMm * totalModules;
 
         var sb = new System.Text.StringBuilder();

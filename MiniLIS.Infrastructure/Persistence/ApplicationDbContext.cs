@@ -200,6 +200,19 @@ namespace MiniLIS.Infrastructure.Persistence
                 .HasForeignKey(s => s.SampleId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // BatchId = Guid.Empty (no un Guid.NewGuid() por fila) es intencional: es la
+            // marca que StoredSpecimenBatchMigrator usa para detectar filas migradas de
+            // esquema todavía sin procesar, mismo motivo que WorklistExportProfile más
+            // arriba -- sin HasDefaultValue las filas ya existentes quedarían con el default
+            // CLR de Guid en memoria (que SÍ es Guid.Empty, coincide) pero AliquotIndex/
+            // BatchSize sin esto quedarían a 0 en vez de 1, y 0 no es una posición válida.
+            modelBuilder.Entity<StoredSpecimen>(e =>
+            {
+                e.Property(p => p.BatchId).HasDefaultValue(Guid.Empty);
+                e.Property(p => p.AliquotIndex).HasDefaultValue(1);
+                e.Property(p => p.BatchSize).HasDefaultValue(1);
+            });
+
             modelBuilder.Entity<StoredSpecimenEvent>()
                 .HasOne(e => e.StoredSpecimen)
                 .WithMany(s => s.Events)

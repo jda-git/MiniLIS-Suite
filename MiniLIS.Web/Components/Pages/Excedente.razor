@@ -16,6 +16,7 @@
 @inject ILocalTimeService LocalTimeService
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Nav
 
 <PageTitle>Excedente - MiniLIS Suite</PageTitle>
 
@@ -219,32 +220,55 @@
             <table class="bandeja-table">
                 <thead>
                     <tr>
+                        <th style="width:28px;"></th>
                         <th>Nº muestra</th><th>Tipo</th><th>Ubicación</th><th>Alícuotas</th><th>Estado</th><th>Caduca</th><th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (!storedSpecimens.Any())
                     {
-                        <tr><td colspan="7" class="cell-empty">Sin alícuotas almacenadas con los filtros actuales</td></tr>
+                        <tr><td colspan="8" class="cell-empty">Sin alícuotas almacenadas con los filtros actuales</td></tr>
                     }
                     else
                     {
-                        @foreach (var sp in storedSpecimens)
+                        @foreach (var batch in storedSpecimens.GroupBy(s => s.BatchId).OrderByDescending(g => g.Max(i => i.StoredAtUtc)))
                         {
-                            <tr>
-                                <td style="font-weight:600;">@sp.Sample?.SampleNumber</td>
-                                <td>@sp.Type</td>
-                                <td>@sp.LocationDisplay</td>
-                                <td>@sp.AliquotCount</td>
-                                <td>@sp.Status</td>
-                                <td class="@(sp.ExpiryDateUtc.HasValue && sp.ExpiryDateUtc < DateTime.UtcNow ? "text-danger fw-bold" : "")">
-                                    @sp.ExpiryDateUtc?.ToString("dd/MM/yyyy")
+                            var items = batch.OrderBy(i => i.AliquotIndex).ToList();
+                            var first = items[0];
+                            var isExpanded = expandedBatches.Contains(batch.Key);
+                            <tr class="batch-row" @onclick="() => ToggleBatch(batch.Key)">
+                                <td><i class="bi @(isExpanded ? "bi-chevron-down" : "bi-chevron-right")"></i></td>
+                                <td style="font-weight:600;">@first.Sample?.SampleNumber</td>
+                                <td>@first.Type</td>
+                                <td>@BuildLocationSummary(items)</td>
+                                <td>@items.Count de @first.BatchSize</td>
+                                <td>@BuildStatusSummary(items)</td>
+                                <td class="@(items.Any(i => i.ExpiryDateUtc.HasValue && i.ExpiryDateUtc < DateTime.UtcNow) ? "text-danger fw-bold" : "")">
+                                    @(items.Select(i => i.ExpiryDateUtc).Min()?.ToString("dd/MM/yyyy"))
                                 </td>
-                                <td class="cell-actions">
-                                    <button class="action-icon action-edit" title="Registrar evento" @onclick="() => OpenEventModal(sp)"><i class="bi bi-arrow-repeat"></i></button>
-                                    <button class="action-icon action-panel" title="Ver etiqueta" @onclick="() => OpenStorageLabel(sp)"><i class="bi bi-upc-scan"></i></button>
+                                <td class="cell-actions" @onclick:stopPropagation="true">
+                                    <button class="action-icon action-panel" title="Imprimir etiquetas del lote" @onclick="() => PrintBatchLabels(items)"><i class="bi bi-upc-scan"></i></button>
                                 </td>
                             </tr>
+                            @if (isExpanded)
+                            {
+                                @foreach (var sp in items)
+                                {
+                                    <tr class="batch-detail-row">
+                                        <td></td>
+                                        <td colspan="2" class="text-muted small">Alícuota @sp.AliquotIndex/@sp.BatchSize</td>
+                                        <td class="small">@sp.LocationDisplay</td>
+                                        <td></td>
+                                        <td>@sp.Status</td>
+                                        <td class="@(sp.ExpiryDateUtc.HasValue && sp.ExpiryDateUtc < DateTime.UtcNow ? "text-danger fw-bold" : "")">
+                                            @sp.ExpiryDateUtc?.ToString("dd/MM/yyyy")
+                                        </td>
+                                        <td class="cell-actions">
+                                            <button class="action-icon action-edit" title="Registrar evento" @onclick="() => OpenEventModal(sp)"><i class="bi bi-arrow-repeat"></i></button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
                         }
                     }
                 </tbody>
@@ -290,12 +314,12 @@
         <div class="modal-card animate-fade-in" @onclick:stopPropagation="true">
             <div class="modal-card-header d-flex align-items-center justify-content-between">
                 <h5 class="d-flex align-items-center m-0 text-white fw-bold">
-                    <i class="bi bi-snow2 me-2"></i> @eventModalSpecimen.Sample?.SampleNumber — @eventModalSpecimen.Type
+                    <i class="bi bi-snow2 me-2"></i> @eventModalSpecimen.Sample?.SampleNumber — @eventModalSpecimen.Type · Alícuota @eventModalSpecimen.AliquotIndex/@eventModalSpecimen.BatchSize
                 </h5>
                 <button type="button" class="btn-close btn-close-white" @onclick="CloseEventModal"></button>
             </div>
             <div class="modal-card-body">
-                <p class="small text-muted">Ubicación: @eventModalSpecimen.LocationDisplay · @eventModalSpecimen.AliquotCount alícuota(s) · Estado: @eventModalSpecimen.Status</p>
+                <p class="small text-muted">Ubicación: @eventModalSpecimen.LocationDisplay · Estado: @eventModalSpecimen.Status</p>
 
                 <div class="mb-2">
                     <label class="field-label">Acción</label>
@@ -309,9 +333,9 @@
 
                 @if (eventModalType == "Descongelacion")
                 {
-                    <div class="mb-2">
-                        <label class="field-label">Alícuotas consumidas</label>
-                        <input type="number" min="0" class="field-input w-100" @bind="eventModalAliquotsConsumed" />
+                    <div class="mb-2 d-flex align-items-center gap-2">
+                        <input type="checkbox" id="chkAgotada" @bind="eventModalAgotada" />
+                        <label for="chkAgotada" class="field-label mb-0">¿Se agota en este uso?</label>
                     </div>
                 }
                 @if (eventModalType == "Traslado")
@@ -348,22 +372,6 @@
     </div>
 }
 
-@if (labelSpecimen != null)
-{
-    <div class="modal-backdrop-custom" @onclick="() => labelSpecimen = null">
-        <div class="modal-card animate-fade-in" style="max-width:340px;" @onclick:stopPropagation="true">
-            <div class="modal-card-header d-flex align-items-center justify-content-between">
-                <h5 class="text-white fw-bold m-0">Etiqueta de alícuota</h5>
-                <button type="button" class="btn-close btn-close-white" @onclick="() => labelSpecimen = null"></button>
-            </div>
-            <div class="modal-card-body text-center">
-                @((MarkupString)BuildStorageLabelSvg(labelSpecimen))
-                <div class="mt-2 fw-bold">@labelSpecimen.Sample?.SampleNumber · @GetTypeCode(labelSpecimen.Type) · @labelSpecimen.Position</div>
-            </div>
-        </div>
-    </div>
-}
-
 <style>
     .storage-tree { display: flex; flex-direction: column; gap: 12px; }
     .storage-tree-freezer { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
@@ -377,6 +385,12 @@
     .storage-tree-item:hover { background: #e0f2fe; }
     .storage-event-list { list-style: none; padding: 0; font-size: 12px; max-height: 120px; overflow-y: auto; }
     .storage-event-list li { padding: 3px 0; border-bottom: 1px dashed #e2e8f0; }
+
+    /* Fila de lote (F-7): un clic expande/colapsa las alícuotas individuales debajo -- toda
+       la fila es clicable salvo la celda de acciones (con stopPropagation en el marcado). */
+    .batch-row { cursor: pointer; }
+    .batch-row:hover { background: #f8fafc; }
+    .batch-detail-row td { background: #fafbfc; font-size: 12px; padding-top: 6px; padding-bottom: 6px; }
 </style>
 
 <style>
@@ -605,10 +619,12 @@
     private string eventModalType = "Descongelacion";
     private string? eventModalReason;
     private string? eventModalNewLocation;
-    private int? eventModalAliquotsConsumed;
+    private bool eventModalAgotada;
     private string? eventModalError;
 
-    private StoredSpecimen? labelSpecimen;
+    // Lotes expandidos en la tabla (F-7): cada fila es ahora una alícuota individual, así que
+    // la tabla agrupa por BatchId y solo muestra el detalle alícuota a alícuota bajo demanda.
+    private HashSet<Guid> expandedBatches = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -660,7 +676,7 @@
         eventModalType = "Descongelacion";
         eventModalReason = null;
         eventModalNewLocation = null;
-        eventModalAliquotsConsumed = null;
+        eventModalAgotada = false;
         eventModalError = null;
     }
 
@@ -685,48 +701,47 @@
         var authState = await AuthStateTask;
         var currentUser = await UserManager.GetUserAsync(authState.User);
 
-        await StorageService.AddEventAsync(eventModalSpecimen.Id, eventModalType, eventModalReason, eventModalNewLocation, eventModalAliquotsConsumed, currentUser?.Id);
+        await StorageService.AddEventAsync(eventModalSpecimen.Id, eventModalType, eventModalReason, eventModalNewLocation, eventModalAgotada, currentUser?.Id);
         eventModalSpecimen = null;
         await LoadStorage();
     }
 
-    private void OpenStorageLabel(StoredSpecimen sp) => labelSpecimen = sp;
-
-    private string GetTypeCode(StoredSpecimenType t) => t switch
+    private void ToggleBatch(Guid batchId)
     {
-        StoredSpecimenType.TuboOriginal => "TUB",
-        StoredSpecimenType.CelulasViables => "CEL",
-        StoredSpecimenType.PelletCelular => "PEL",
-        StoredSpecimenType.ADN => "ADN",
-        StoredSpecimenType.ARN => "ARN",
-        StoredSpecimenType.Plasma => "PLA",
-        StoredSpecimenType.Suero => "SUE",
-        _ => "OTR"
-    };
-
-    // Etiqueta de alícuota reutilizando Code128Encoder (F-5): "{SampleNumber} · {TypeCode} · {Position}"
-    private string BuildStorageLabelSvg(StoredSpecimen sp)
-    {
-        var data = $"{sp.Sample?.SampleNumber}-{GetTypeCode(sp.Type)}-{sp.Position}";
-        var widths = Code128Encoder.EncodeToModuleWidths(data);
-        var totalModules = widths.Sum();
-        double moduleWidthPx = 2;
-        double svgWidth = moduleWidthPx * totalModules;
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append($"<svg width=\"{svgWidth}\" height=\"50\" viewBox=\"0 0 {totalModules} 1\" preserveAspectRatio=\"none\" xmlns=\"http://www.w3.org/2000/svg\">");
-        sb.Append("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"white\"/>");
-        double x = 0;
-        var isBar = true;
-        foreach (var w in widths)
-        {
-            if (isBar) sb.Append($"<rect x=\"{x}\" y=\"0\" width=\"{w}\" height=\"1\" fill=\"black\"/>");
-            x += w;
-            isBar = !isBar;
-        }
-        sb.Append("</svg>");
-        return sb.ToString();
+        if (!expandedBatches.Add(batchId)) expandedBatches.Remove(batchId);
     }
+
+    private void PrintBatchLabels(List<StoredSpecimen> items)
+    {
+        var ids = string.Join(",", items.Select(i => i.Id));
+        Nav.NavigateTo($"/etiquetas/imprimir?SpecimenIds={ids}");
+    }
+
+    private static string BuildLocationSummary(List<StoredSpecimen> items)
+    {
+        var locations = items.Select(i => i.LocationDisplay).Where(l => !string.IsNullOrWhiteSpace(l)).Distinct().ToList();
+        return locations.Count switch
+        {
+            0 => "—",
+            1 => locations[0],
+            _ => $"{locations.Count} ubicaciones"
+        };
+    }
+
+    private static string BuildStatusSummary(List<StoredSpecimen> items) => string.Join(" · ", items
+        .GroupBy(i => i.Status)
+        .OrderByDescending(g => g.Count())
+        .Select(g => $"{g.Count()} {StatusLabel(g.Key)}"));
+
+    private static string StatusLabel(StoredSpecimenStatus status) => status switch
+    {
+        StoredSpecimenStatus.Almacenada => "almacenada(s)",
+        StoredSpecimenStatus.Descongelada => "descongelada(s)",
+        StoredSpecimenStatus.Agotada => "agotada(s)",
+        StoredSpecimenStatus.Eliminada => "eliminada(s)",
+        StoredSpecimenStatus.Cedida => "cedida(s)",
+        _ => status.ToString()
+    };
 
     private async Task ApplyFilters() => await FilterData();
 
