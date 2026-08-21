@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -50,16 +49,6 @@ namespace MiniLIS.Tests
                 });
                 builder.ConfigureServices(services =>
                 {
-                    // Sin esto, esta factory persiste su anillo de claves de Data Protection
-                    // en la misma ruta por defecto que MiniLisWebApplicationFactory -- varias
-                    // factories escribiendo/leyendo esa carpeta compartida a la vez (los
-                    // cuatro tests de esta clase crean una instancia cada uno, en paralelo con
-                    // el resto de la batería) provoca una carrera que corrompe el anillo de
-                    // claves activo y hace fallar la validación antiforgery de
-                    // LoginBehaviorTests con 400 en vez de 302 -- vista en CI (Linux), nunca
-                    // reproducida en Windows en local. Mismo fix que MiniLisWebApplicationFactory.
-                    services.AddDataProtection().UseEphemeralDataProtectionProvider();
-
                     var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
                     if (descriptor != null) services.Remove(descriptor);
 

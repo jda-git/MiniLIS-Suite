@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -50,11 +49,6 @@ namespace MiniLIS.Tests
             })
                 .AddRoles<ApplicationRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
-            // AddIdentityCore activa Data Protection implícitamente (hash de contraseñas,
-            // tokens); sin aislarlo, persiste su anillo de claves en la misma ruta compartida
-            // por defecto que el resto de factories de test -- mismo fix que
-            // MiniLisWebApplicationFactory/StartupValidationTests.BareFactory.
-            services.AddDataProtection().UseEphemeralDataProtectionProvider();
 
             var provider = services.BuildServiceProvider();
 
@@ -134,11 +128,6 @@ namespace MiniLIS.Tests
             })
                 .AddRoles<ApplicationRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
-            // AddIdentityCore activa Data Protection implícitamente (hash de contraseñas,
-            // tokens); sin aislarlo, persiste su anillo de claves en la misma ruta compartida
-            // por defecto que el resto de factories de test -- mismo fix que
-            // MiniLisWebApplicationFactory/StartupValidationTests.BareFactory.
-            services.AddDataProtection().UseEphemeralDataProtectionProvider();
 
             var provider = services.BuildServiceProvider();
             using var scope = provider.CreateScope();

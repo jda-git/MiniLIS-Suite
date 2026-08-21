@@ -1,8 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -70,22 +67,6 @@ namespace MiniLIS.Tests.TestSupport
 
             builder.ConfigureServices(services =>
             {
-                // Sin esto, Data Protection persiste el anillo de claves (con el que se
-                // firman los tokens antiforgery) en disco, en la misma ruta por defecto para
-                // TODAS las instancias de WebApplicationFactory que arrancan los distintos
-                // ficheros de test -- en el runner de CI (Linux) esa escritura/lectura
-                // compartida y concurrente entre procesos provoca que el token emitido en el
-                // GET /login dedique una clave que ya no coincide al validar el POST,
-                // devolviendo 400 en vez de 302 (LoginBehaviorTests, intermitente y solo en
-                // CI). Un proveedor efímero por instancia, en memoria, elimina esa carrera.
-                services.AddDataProtection().UseEphemeralDataProtectionProvider();
-
-                // DIAGNÓSTICO TEMPORAL: MVC traga la AntiforgeryValidationException dentro del
-                // filtro [ValidateAntiForgeryToken] y solo deja un 400 sin cuerpo -- este
-                // IStartupFilter valida a mano ANTES de que la petición llegue a MVC, para que
-                // el mensaje de la excepción real aparezca en la respuesta.
-                services.AddSingleton<IStartupFilter, AntiforgeryDiagnosticStartupFilter>();
-
                 var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
                 if (descriptor != null) services.Remove(descriptor);
 
@@ -160,38 +141,6 @@ namespace MiniLIS.Tests.TestSupport
         {
             base.Dispose(disposing);
             _connection?.Dispose();
-        }
-    }
-
-    /// <summary>DIAGNÓSTICO TEMPORAL (ver comentario en ConfigureWebHost): valida antiforgery a
-    /// mano para POST /account/login y expone el mensaje de la excepción real en el cuerpo de
-    /// la respuesta 400, en vez del cuerpo vacío que deja [ValidateAntiForgeryToken] de MVC.</summary>
-    public class AntiforgeryDiagnosticStartupFilter : IStartupFilter
-    {
-        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
-        {
-            return app =>
-            {
-                app.Use(async (HttpContext context, RequestDelegate nextMiddleware) =>
-                {
-                    if (context.Request.Path == "/account/login" && context.Request.Method == "POST")
-                    {
-                        var antiforgery = context.RequestServices.GetRequiredService<Microsoft.AspNetCore.Antiforgery.IAntiforgery>();
-                        try
-                        {
-                            await antiforgery.ValidateRequestAsync(context);
-                        }
-                        catch (Exception ex)
-                        {
-                            context.Response.StatusCode = 400;
-                            await context.Response.WriteAsync("MINILIS-ANTIFORGERY-DIAGNOSTIC: " + ex.GetType().Name + ": " + ex.Message);
-                            return;
-                        }
-                    }
-                    await nextMiddleware(context);
-                });
-                next(app);
-            };
         }
     }
 }
