@@ -62,12 +62,7 @@ namespace MiniLIS.Tests.TestSupport
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Backup:EncryptionKey"] = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)),
-                    // DIAGNÓSTICO TEMPORAL: el nivel Debug de Antiforgery explica la razón
-                    // exacta de un rechazo (token/cookie ausente, descifrado fallido, usuario
-                    // distinto...), invisible en el nivel Information por defecto.
-                    ["Logging:LogLevel:Microsoft.AspNetCore.Antiforgery"] = "Debug",
-                    ["Logging:LogLevel:Microsoft.AspNetCore.DataProtection"] = "Debug"
+                    ["Backup:EncryptionKey"] = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
                 });
             });
 

@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using MiniLIS.Domain.Identity;
 using MiniLIS.Tests.TestSupport;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
@@ -102,34 +101,9 @@ namespace MiniLIS.Tests
             await _factory.EnsureTestUsersSeededAsync();
             using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-            var loginPage = await client.GetAsync("/login");
-            var html = await loginPage.Content.ReadAsStringAsync();
-            var token = ExtractAntiforgeryToken(html);
-            var form = new Dictionary<string, string>
-            {
-                ["Username"] = MiniLisWebApplicationFactory.FacultativoUser,
-                ["Password"] = _factory.TestUserPassword,
-                ["__RequestVerificationToken"] = token
-            };
-            var request = new HttpRequestMessage(HttpMethod.Post, "/account/login") { Content = new FormUrlEncodedContent(form) };
-            var setCookieHeaders = loginPage.Headers.TryGetValues("Set-Cookie", out var gc) ? gc.ToList() : new List<string>();
-            foreach (var sc in setCookieHeaders)
-            {
-                // Reenvía manualmente la cookie antiforgery en vez de confiar en el
-                // CookieContainer automático de HttpClient (diagnóstico: comprobar si esa es
-                // la pieza que no viaja en el entorno de CI).
-                var nameValue = sc.Split(';')[0];
-                request.Headers.Add("Cookie", nameValue);
-            }
-            var response = await client.SendAsync(request);
-            var body = await response.Content.ReadAsStringAsync();
+            var response = await AttemptLoginAsync(client, MiniLisWebApplicationFactory.FacultativoUser, _factory.TestUserPassword);
 
-            response.StatusCode.Should().Be(HttpStatusCode.Found,
-                $"un login correcto redirige, no se queda en /login con error -- DIAGNOSTICO: GET /login status={(int)loginPage.StatusCode}, " +
-                $"token_len={token.Length}, token_head='{(token.Length > 0 ? token.Substring(0, System.Math.Min(15, token.Length)) : "(vacio)")}', " +
-                $"set-cookie GET='{string.Join(" | ", setCookieHeaders)}', " +
-                $"cookies_reenviadas={setCookieHeaders.Count}, " +
-                $"POST body='{body.Substring(0, System.Math.Min(500, body.Length))}'");
+            response.StatusCode.Should().Be(HttpStatusCode.Found, "un login correcto redirige, no se queda en /login con error");
             // ASP.NET Core serializa los atributos de Set-Cookie en minúsculas (httponly,
             // samesite=strict), así que la comprobación va sin distinguir mayúsculas.
             var setCookie = response.Headers.TryGetValues("Set-Cookie", out var values) ? string.Join(" | ", values) : "";
