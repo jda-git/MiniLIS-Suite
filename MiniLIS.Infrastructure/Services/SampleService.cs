@@ -590,6 +590,15 @@ namespace MiniLIS.Infrastructure.Services
             if (sample != null && sample.AcquiredAtUtc == null)
             {
                 sample.AcquiredAtUtc = tube.ReadAtUtc;
+
+                // La primera lectura real es el paso que separa "recibida" de "en proceso"
+                // (se ha empezado a adquirir en el citómetro) -- solo promociona desde
+                // Recibida: si ya hay un informe en borrador/finalizado, o la muestra está
+                // rechazada, este evento no debe rebajar ese estado.
+                if (sample.Status == SampleStatus.Recibida)
+                {
+                    sample.Status = SampleStatus.EnProceso;
+                }
             }
         }
 

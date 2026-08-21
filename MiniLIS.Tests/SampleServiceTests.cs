@@ -234,11 +234,46 @@ namespace MiniLIS.Tests
             var afterFirst = await testCtx.Samples.FindAsync(sampleId);
             var firstAcquiredAt = afterFirst!.AcquiredAtUtc;
             firstAcquiredAt.Should().NotBeNull("la lectura del primer tubo marca la adquisición de la muestra");
+            afterFirst.Status.Should().Be(SampleStatus.EnProceso, "leer el primer tubo es lo que separa \"recibida\" de \"en proceso\"");
 
             await Task.Delay(10);
             await service.ToggleSampleTubeReadAsync(tubeBId, isRead: true, userId: userId);
             var afterSecond = await testCtx.Samples.FindAsync(sampleId);
             afterSecond!.AcquiredAtUtc.Should().Be(firstAcquiredAt, "AcquiredAtUtc se fija con el primer tubo leído, no se reescribe con los siguientes");
+        }
+
+        [Fact]
+        public async Task ToggleSampleTubeReadAsync_does_not_downgrade_a_status_more_advanced_than_Recibida()
+        {
+            // Si ya hay un informe en borrador (p. ej. se corrigió/reabrió la lectura de un
+            // tubo tras haber avanzado el informe), marcar un tubo como leído no debe hacer
+            // retroceder el estado de la muestra a "en proceso".
+            using var db = new TestDb();
+            var userId = await SeedUserAsync(db, "tecnico1");
+            int tubeId, sampleId;
+            using (var ctx = db.CreateContext())
+            {
+                var patient = EntityBuilders.NewPatient();
+                var request = EntityBuilders.NewRequest(patient);
+                var sample = EntityBuilders.NewSample(request);
+                sample.Status = SampleStatus.ReportadaParcial;
+                var panel = new SamplePanel { Sample = sample, IsRequested = true };
+                var tube = new SampleTube { SamplePanel = panel, TubeNumber = 1 };
+                panel.Tubes.Add(tube);
+                sample.Panels.Add(panel);
+                ctx.Samples.Add(sample);
+                await ctx.SaveChangesAsync();
+                sampleId = sample.Id;
+                tubeId = tube.Id;
+            }
+
+            using var testCtx = db.CreateContext();
+            var service = CreateService(testCtx, new ScriptedNumberingService("26-0001"));
+
+            await service.ToggleSampleTubeReadAsync(tubeId, isRead: true, userId: userId);
+
+            var updatedSample = await testCtx.Samples.FindAsync(sampleId);
+            updatedSample!.Status.Should().Be(SampleStatus.ReportadaParcial);
         }
     }
 }
