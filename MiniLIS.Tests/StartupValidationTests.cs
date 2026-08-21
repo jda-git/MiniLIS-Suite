@@ -59,7 +59,6 @@ namespace MiniLIS.Tests
                     // LoginBehaviorTests con 400 en vez de 302 -- vista en CI (Linux), nunca
                     // reproducida en Windows en local. Mismo fix que MiniLisWebApplicationFactory.
                     services.AddDataProtection().UseEphemeralDataProtectionProvider();
-                    Console.WriteLine("MINILIS-MARKER: ephemeral DP configured for BareFactory, env=" + _environment);
 
                     var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
                     if (descriptor != null) services.Remove(descriptor);

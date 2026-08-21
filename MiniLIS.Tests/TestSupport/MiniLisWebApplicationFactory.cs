@@ -77,7 +77,6 @@ namespace MiniLIS.Tests.TestSupport
                 // devolviendo 400 en vez de 302 (LoginBehaviorTests, intermitente y solo en
                 // CI). Un proveedor efímero por instancia, en memoria, elimina esa carrera.
                 services.AddDataProtection().UseEphemeralDataProtectionProvider();
-                Console.WriteLine("MINILIS-MARKER: ephemeral DP configured for MiniLisWebApplicationFactory, env=" + _environment);
 
                 var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
                 if (descriptor != null) services.Remove(descriptor);
