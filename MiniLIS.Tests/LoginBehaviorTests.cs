@@ -101,9 +101,23 @@ namespace MiniLIS.Tests
             await _factory.EnsureTestUsersSeededAsync();
             using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-            var response = await AttemptLoginAsync(client, MiniLisWebApplicationFactory.FacultativoUser, _factory.TestUserPassword);
+            var loginPage = await client.GetAsync("/login");
+            var html = await loginPage.Content.ReadAsStringAsync();
+            var token = ExtractAntiforgeryToken(html);
+            var form = new Dictionary<string, string>
+            {
+                ["Username"] = MiniLisWebApplicationFactory.FacultativoUser,
+                ["Password"] = _factory.TestUserPassword,
+                ["__RequestVerificationToken"] = token
+            };
+            var response = await client.PostAsync("/account/login", new FormUrlEncodedContent(form));
+            var body = await response.Content.ReadAsStringAsync();
 
-            response.StatusCode.Should().Be(HttpStatusCode.Found, "un login correcto redirige, no se queda en /login con error");
+            response.StatusCode.Should().Be(HttpStatusCode.Found,
+                $"un login correcto redirige, no se queda en /login con error -- DIAGNOSTICO: GET /login status={(int)loginPage.StatusCode}, " +
+                $"token_len={token.Length}, token_head='{(token.Length > 0 ? token.Substring(0, System.Math.Min(15, token.Length)) : "(vacio)")}', " +
+                $"set-cookie GET='{string.Join(" | ", loginPage.Headers.TryGetValues("Set-Cookie", out var gc) ? gc : new[] { "(ninguna)" })}', " +
+                $"POST body='{body.Substring(0, System.Math.Min(500, body.Length))}'");
             // ASP.NET Core serializa los atributos de Set-Cookie en minúsculas (httponly,
             // samesite=strict), así que la comprobación va sin distinguir mayúsculas.
             var setCookie = response.Headers.TryGetValues("Set-Cookie", out var values) ? string.Join(" | ", values) : "";
