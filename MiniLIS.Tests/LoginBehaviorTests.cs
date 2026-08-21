@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -99,13 +100,35 @@ namespace MiniLIS.Tests
         public async Task Login_correcto_establece_cookie_HttpOnly_y_SameSite_Strict()
         {
             await _factory.EnsureTestUsersSeededAsync();
+
+            // DIAGNÓSTICO TEMPORAL: comprueba si el propio anillo de claves es estable dentro
+            // del mismo proceso -- proteger con una resolución de IDataProtectionProvider y
+            // desproteger con otra resolución independiente del MISMO _factory.Services.
+            string keyRingDiag;
+            try
+            {
+                var dp1 = _factory.Services.GetRequiredService<IDataProtectionProvider>();
+                var protector1 = dp1.CreateProtector("MINILIS-DIAG-PURPOSE");
+                var protectedValue = protector1.Protect("hello-minilis");
+
+                var dp2 = _factory.Services.GetRequiredService<IDataProtectionProvider>();
+                var protector2 = dp2.CreateProtector("MINILIS-DIAG-PURPOSE");
+                var unprotectedValue = protector2.Unprotect(protectedValue);
+
+                keyRingDiag = $"OK, sameProviderInstance={ReferenceEquals(dp1, dp2)}, roundtrip='{unprotectedValue}'";
+            }
+            catch (Exception ex)
+            {
+                keyRingDiag = $"FALLO: {ex.GetType().Name}: {ex.Message}";
+            }
+
             using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
             var response = await AttemptLoginAsync(client, MiniLisWebApplicationFactory.FacultativoUser, _factory.TestUserPassword);
 
             var body = await response.Content.ReadAsStringAsync();
             response.StatusCode.Should().Be(HttpStatusCode.Found,
-                $"un login correcto redirige, no se queda en /login con error -- DIAGNOSTICO3 body='{body}'");
+                $"un login correcto redirige, no se queda en /login con error -- DIAGNOSTICO4 keyRing=[{keyRingDiag}], body='{body}'");
             // ASP.NET Core serializa los atributos de Set-Cookie en minúsculas (httponly,
             // samesite=strict), así que la comprobación va sin distinguir mayúsculas.
             var setCookie = response.Headers.TryGetValues("Set-Cookie", out var values) ? string.Join(" | ", values) : "";
