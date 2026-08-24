@@ -97,9 +97,9 @@
 
         <div class="filter-group filter-dates">
             <i class="bi bi-calendar3 filter-icon"></i>
-            <input type="date" class="filter-control filter-date" @bind="fromDate" @bind:after="ApplyFilters" title="Desde" />
+            <input type="date" class="filter-control filter-date" @bind="fromDate" @bind:after="OnDateFilterChanged" title="Desde" />
             <span class="date-separator">–</span>
-            <input type="date" class="filter-control filter-date" @bind="toDate" @bind:after="ApplyFilters" title="Hasta" />
+            <input type="date" class="filter-control filter-date" @bind="toDate" @bind:after="OnDateFilterChanged" title="Hasta" />
         </div>
 
         <div class="filter-actions">
@@ -109,6 +109,24 @@
             </button>
         </div>
     </div>
+
+    @* El alcance de la lista va siempre visible: una bandeja que muestra un subconjunto sin
+       decirlo llevaría a dar por inexistente una muestra que sí está registrada. *@
+    @if (SearchingAllHistory)
+    {
+        <div class="scope-notice scope-notice-search">
+            <i class="bi bi-search"></i>
+            <span>Buscando en <strong>todo el histórico</strong>.</span>
+        </div>
+    }
+    else if (defaultWindowActive)
+    {
+        <div class="scope-notice">
+            <i class="bi bi-clock-history"></i>
+            <span>Mostrando los <strong>últimos @DefaultWindowMonths meses</strong>. Para consultar estudios anteriores, busque por paciente o ajuste las fechas.</span>
+            <button class="btn-scope-all" @onclick="ShowAllHistory">Ver todo el histórico</button>
+        </div>
+    }
 
     <!-- Tabla -->
     <div class="bandeja-table-wrap">
@@ -564,6 +582,45 @@
         background: #e2e8f0;
         flex-shrink: 0;
     }
+    /* Aviso de alcance de la lista (ventana por defecto / búsqueda en todo el histórico) */
+    .scope-notice {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 10px 0 0;
+        padding: 7px 12px;
+        border: 1px solid #dbe4ec;
+        border-left: 3px solid #7d97ad;
+        border-radius: 4px;
+        background: #f5f8fa;
+        color: #46617a;
+        font-size: 12.5px;
+        line-height: 1.45;
+    }
+    .scope-notice i { color: #7d97ad; flex-shrink: 0; }
+    .scope-notice strong { font-weight: 600; color: #2d475e; }
+    .scope-notice-search {
+        border-left-color: #2f7d63;
+        background: #f2f9f6;
+        color: #2b6552;
+    }
+    .scope-notice-search i { color: #2f7d63; }
+    .scope-notice-search strong { color: #235143; }
+    .btn-scope-all {
+        margin-left: auto;
+        border: 1px solid #b9c9d6;
+        background: #fff;
+        color: #2d475e;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 3px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .btn-scope-all:hover { background: #eef3f7; border-color: #93aabd; }
+    .btn-scope-all:focus-visible { outline: 2px solid #2d475e; outline-offset: 2px; }
     .filter-actions {
         display: flex;
         align-items: center;
@@ -1048,20 +1105,59 @@
     [Inject] private IMasterDataService MasterService { get; set; } = default!;
     [Inject] private IPanelCatalogService PanelCatalogService { get; set; } = default!;
 
+    // Ventana por defecto de la bandeja. Sin ella, abrir la pantalla cargaba el histórico
+    // completo: con el volumen de la unidad (4.000-5.000 muestras/año) eso son ~2 s de espera
+    // al año de uso y ~17 s a los nueve, porque el coste crece en línea recta con el número de
+    // muestras (medido). El trabajo diario mira lo reciente; el histórico se consulta filtrando.
+    private const int DefaultWindowMonths = 3;
+
+    // Distingue "la ventana la puso el sistema" de "el usuario eligió estas fechas". Solo en el
+    // primer caso la búsqueda por texto puede ignorarla (ver LoadSamples).
+    private bool defaultWindowActive = true;
+
+    private bool SearchingAllHistory => defaultWindowActive && !string.IsNullOrWhiteSpace(searchTerm);
+
     protected override async Task OnInitializedAsync()
     {
         allPanelsForModal = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name).ToList();
+        fromDate = DateTime.Today.AddMonths(-DefaultWindowMonths);
+        defaultWindowActive = true;
         await LoadSamples();
     }
 
     private async Task LoadSamples()
     {
         isLoading = true;
-        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, fromDate, toDate, typeFilter, panelFilterId, receptionStatusFilter);
+
+        // Con término de búsqueda se consulta SIEMPRE el histórico completo, aunque la ventana
+        // por defecto esté puesta. Una caja de búsqueda que oculta coincidencias en silencio es
+        // peligrosa aquí: quien busca un estudio previo de un paciente y recibe "sin resultados"
+        // concluiría que no existe. Si el usuario ha fijado fechas a mano, se respetan.
+        var effectiveFrom = SearchingAllHistory ? null : fromDate;
+        var effectiveTo = SearchingAllHistory ? null : toDate;
+
+        samples = await SampleService.GetFilteredSamplesAsync(searchTerm, statusFilter, effectiveFrom, effectiveTo, typeFilter, panelFilterId, receptionStatusFilter);
         isLoading = false;
     }
 
     private async Task ApplyFilters() => await LoadSamples();
+
+    /// <summary>Cambiar una fecha a mano desactiva la ventana por defecto: a partir de ahí
+    /// manda lo que haya elegido el usuario, también durante las búsquedas.</summary>
+    private async Task OnDateFilterChanged()
+    {
+        defaultWindowActive = false;
+        await LoadSamples();
+    }
+
+    /// <summary>Quita la ventana por defecto y carga el histórico completo.</summary>
+    private async Task ShowAllHistory()
+    {
+        fromDate = null;
+        toDate = null;
+        defaultWindowActive = false;
+        await LoadSamples();
+    }
 
     // M-2: el término de búsqueda toma NHC/nombre/NASI del paciente, y cada consulta
     // efectiva queda auditada (dentro de GetFilteredSamplesAsync). Sin retardo, cada
@@ -1104,8 +1200,11 @@
         typeFilter = null;
         panelFilterId = null;
         receptionStatusFilter = null;
-        fromDate = null;
+        // Limpiar devuelve a la vista por defecto (últimos meses), no al histórico completo:
+        // "limpiar filtros" debe dejar la pantalla como al entrar.
+        fromDate = DateTime.Today.AddMonths(-DefaultWindowMonths);
         toDate = null;
+        defaultWindowActive = true;
         await LoadSamples();
     }
 

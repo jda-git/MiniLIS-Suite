@@ -30,6 +30,49 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.3.0
+
+### La Bandeja Técnica abre con una ventana de 3 meses
+
+Hasta ahora la bandeja cargaba **el histórico completo** al abrirse, sin paginación y con
+nueve `Include` anidados (paneles → tubos → usuario que leyó, informe → firmantes →
+usuario, incidencias → motivo). El coste crece en línea recta con el número de muestras:
+**0,43 ms por muestra**, medido sembrando bases de 1.000 a 40.000 muestras con 5 tubos
+cada una.
+
+| Muestras | Bandeja | Panel de control | Indicador TAT | Búsqueda por NHC |
+|---:|---:|---:|---:|---:|
+| 1.000 | 0,4 s | 2 ms | 2 ms | 45 ms |
+| 5.000 | 2,1 s | 4 ms | 12 ms | 258 ms |
+| 20.000 | 8,9 s | 134 ms | 116 ms | 1,1 s |
+| 40.000 | 17,3 s | 35 ms | 136 ms | 2,2 s |
+
+Con 4.000-5.000 muestras al año, la espera se notaba ya el segundo año y era inasumible
+hacia el octavo. **La base de datos no era el cuello de botella** —el panel de control
+resuelve en 35 ms sobre 40.000 muestras y los indicadores sobre todo el histórico en
+136 ms—, sino la materialización de decenas de miles de grafos de entidades para pintar
+una tabla.
+
+La bandeja abre ahora con los **últimos 3 meses**. El histórico se consulta ajustando las
+fechas o con el botón «Ver todo el histórico».
+
+**El alcance de la lista va siempre visible**, y esto no es cosmético: una bandeja que
+muestra un subconjunto sin decirlo llevaría a dar por inexistente una muestra que sí está
+registrada. Por la misma razón, **escribir en la caja de búsqueda consulta siempre el
+histórico completo**, aunque la ventana esté activa — una búsqueda que oculta
+coincidencias en silencio es peligrosa en un sistema clínico. Si el usuario fija fechas a
+mano, mandan las suyas. «Limpiar filtros» devuelve a la vista de tres meses, no al
+histórico entero.
+
+### Índice en `Sample.ReceivedAtUtc`
+
+Los doce indicadores de calidad acotan por `ReceivedAtUtc` (`FilteredReceivedQuery`), no
+por `ReceptionDate`. Solo esta última estaba indexada, así que cada indicador recorría la
+tabla completa. Son columnas distintas —fecha de negocio frente a marca de proceso— y
+necesitan índices distintos.
+
+---
+
 ## v2.2.1
 
 ### Corregido el desglose de PCT-INCIDENCIA

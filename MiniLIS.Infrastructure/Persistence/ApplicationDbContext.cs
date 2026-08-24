@@ -136,6 +136,11 @@ namespace MiniLIS.Infrastructure.Persistence
             modelBuilder.Entity<Sample>().HasIndex(s => s.SampleNumber).IsUnique();
             modelBuilder.Entity<Sample>().HasIndex(s => s.ReceptionDate);
             modelBuilder.Entity<Sample>().HasIndex(s => s.Status);
+            // Todos los indicadores de calidad acotan por ReceivedAtUtc (FilteredReceivedQuery),
+            // no por ReceptionDate: sin índice propio, cada uno de los doce recorría la tabla
+            // entera. ReceptionDate es la fecha de negocio y ReceivedAtUtc la marca de proceso;
+            // son columnas distintas y necesitan índices distintos.
+            modelBuilder.Entity<Sample>().HasIndex(s => s.ReceivedAtUtc);
 
             modelBuilder.Entity<ClinicalRequest>().HasIndex(c => c.RequestNumber);
 
