@@ -4,7 +4,9 @@
 
 ## Estado y alcance
 
-Sistema en uso real de la unidad, en desarrollo activo. **No es un producto sanitario conforme al Reglamento (UE) 2017/745** (dispositivos médicos) — es una herramienta de gestión de laboratorio, no interviene en el diagnóstico ni en el cálculo clínico automatizado. Trata datos de salud de categoría especial (RGPD art. 9); el control de acceso, la auditoría y las medidas del ENS existentes en el código reflejan esa exigencia, no son una funcionalidad opcional.
+En desarrollo activo. **La aplicación funciona hoy únicamente con datos de prueba**: no contiene ni ha contenido datos de pacientes reales. Su puesta en uso asistencial queda condicionada al despliegue en infraestructura gestionada por la institución — ver [Estado del despliegue](#estado-del-despliegue).
+
+**No es un producto sanitario conforme al Reglamento (UE) 2017/745** (dispositivos médicos) — es una herramienta de gestión de laboratorio, no interviene en el diagnóstico ni en el cálculo clínico automatizado. Está diseñada para tratar datos de salud de categoría especial (RGPD art. 9); el control de acceso, la auditoría y las medidas del ENS existentes en el código responden a esa exigencia, no son una funcionalidad opcional.
 
 El módulo donde esta frontera se vigila activamente es la importación de resultados desde XML de Infinicyt (Editor de Informe → "Importar resultados Infinicyt"): transfiere texto de poblaciones ya calculado por Infinicyt para que el facultativo elija qué insertar en el informe, pero no calcula, deriva, compara ni clasifica ningún valor por su cuenta — es, de todos los puntos de la aplicación, el más próximo a cruzar esa línea, y el más probable candidato a recibir peticiones que la crucen ("que calcule el porcentaje sobre celularidad total", "que marque en rojo si supera un umbral", "que compare con el estudio previo"). Ver la cabecera de `InfinicytXmlParser.cs` para el detalle.
 
@@ -13,11 +15,13 @@ MiniLIS cubre el proceso de la muestra. Fuera de su alcance deliberadamente, y r
 ## Funcionalidades principales
 
 - Registro transaccional de pacientes, peticiones y muestras, con numeración correlativa automática (`AA-NNNNN`) y modo de contingencia para caídas del sistema.
-- Recepción con registro de aceptación/salvedad/rechazo y notificación al peticionario.
+- Recepción con registro de aceptación/salvedad/rechazo y notificación al peticionario. Tanto la salvedad ("LIMITACIONES") como el rechazo preanalítico ("MUESTRA RECHAZADA PREANALÍTICAMENTE", con su motivo y la notificación al peticionario si consta) se trasladan al informe entregado al clínico (cl. 7.4).
+- Ciclo de vida de la muestra dirigido por la acción real y no por un desplegable: se registra como *Recibida*, pasa a *En proceso* al marcarse la lectura del primer tubo en el citómetro, a *Reportada parcial* al guardarse el primer borrador de informe y a *Finalizada* al validarse. Ninguna de esas promociones rebaja un estado más avanzado. El rechazo preanalítico vive en el estado de recepción (F-4), independiente de esta cadena, y el panel de control lo cuenta desde ahí.
 - Editor de informes con captura de intensidades/porcentajes de marcadores y síntesis de texto.
 - Generación de PDF (QuestPDF) y ODT editable (LibreOffice).
 - Cuadro de indicadores de calidad (TAT, % de rechazo/salvedad, actividad) según ISO 15189 cl. 8.8/8.9.
-- Etiquetas con código de barras Code128, hoja de trabajo del citómetro, gestión de excedente/alícuotas, enlace con ficheros FCS.
+- Etiquetas con código de barras Code128, hoja de trabajo del citómetro, enlace con ficheros FCS.
+- Excedente criopreservado con trazabilidad **por alícuota individual**: cada vial es una fila propia (`BatchId`/`AliquotIndex`/`BatchSize`) con su ubicación, su estado y su historial de eventos, de modo que descongelar una no altera el estado de sus hermanas. Impresión de etiquetas por lote desde la misma pantalla de etiquetas de muestra.
 - Auditoría de escritura y de consulta (búsquedas, lecturas de historial), paquete de evidencias para auditoría externa.
 - Concurrencia optimista, backups cifrados y verificados, control de acceso por rol.
 
@@ -26,8 +30,11 @@ MiniLIS cubre el proceso de la muestra. Fuera de su alcance deliberadamente, y r
 - **Frontend**: Blazor Server (ASP.NET Core 9, Interactive Server), Bootstrap 5, Bootstrap Icons.
 - **Backend**: C#, Entity Framework Core sobre **SQLite**.
 - **Documentos**: QuestPDF (PDF), manipulación OpenXML/ZIP (ODT).
-- **Pruebas**: xUnit + FluentAssertions sobre Sqlite en memoria (`MiniLIS.Tests`).
+- **Pruebas**: xUnit + FluentAssertions sobre Sqlite en memoria (`MiniLIS.Tests`), 164 pruebas — incluidas las de autorización y de login real, que levantan el host completo (`WebApplicationFactory`).
+- **Integración continua**: GitHub Actions (`.github/workflows/ci.yml`) compila en `Release` y ejecuta toda la batería en cada `push` y cada *pull request*.
 - **Arquitectura**: Domain / Application / Infrastructure / Web.
+
+Todos los paquetes van fijados a `9.0.*`, en línea con el *target framework* `net9.0`. Conviene no introducir referencias a versiones `10.x`: se resuelven contra un framework compartido distinto del que ejecuta la aplicación y fallan en tiempo de ejecución, no al compilar (el síntoma típico es un `MissingMethodException` dentro de Data Protection que solo aparece con la caché de NuGet limpia, es decir, en CI y no en local).
 
 ## Puesta en marcha
 
@@ -73,9 +80,17 @@ Revisar `appsettings.Production.json` antes de desplegar: `AllowedHosts` trae un
 | `Seed__AdminUser` | No | Se usa `admin@minilis.com` por defecto. |
 | `Seed__AdminPassword` | No | Se genera una contraseña que cumple la política configurada y se registra una única vez en el log del primer arranque (`[SEED] Administrador inicial creado...`) — revisar ese log si no se fija explícitamente. |
 
-La autenticación local (ASP.NET Core Identity) es una solución transitoria; debe migrar al directorio corporativo de la institución (LDAP/AD/SSO) cuando exista integración disponible.
+### Estado del despliegue
 
-**Base de datos (N-6, pendiente):** la instancia sigue en SQLite en fichero (`minilis.db`), sin cifrado propio — a diferencia de las copias de seguridad, que sí van cifradas en AES-256 (A-7). Mientras N-6 no esté hecho, el fichero de base de datos **no debe alojar datos reales de paciente sin cifrado a nivel de sistema de ficheros** (BitLocker/LUKS o equivalente) en el servidor donde resida, y el despliegue en producción con datos reales queda condicionado a resolver esa asimetría.
+La aplicación está funcionalmente completa y validada con datos de prueba, **pendiente de despliegue en infraestructura institucional**. Hasta que se resuelvan los tres puntos siguientes no debe tratar datos de pacientes reales:
+
+| Punto | Situación | Qué lo resuelve |
+|---|---|---|
+| **Alojamiento** | Ejecución local, fuera de infraestructura gestionada. | Máquina gestionada por la institución, con copias de seguridad, segmentación de red y acceso restringido al personal del laboratorio. |
+| **Cifrado en reposo** (N-6) | La instancia sigue en SQLite en fichero (`minilis.db`), sin cifrado propio — a diferencia de las copias de seguridad, que sí van cifradas en AES-256 (A-7). | Migración a SQL Server con TDE, o bien mantener SQLite sobre un volumen cifrado (BitLocker/LUKS). El fichero **no debe alojar datos reales de paciente sin una de las dos medidas**. |
+| **Identidad corporativa** (M-1) | Autenticación local propia (ASP.NET Core Identity), transitoria por diseño. | Integración con el directorio corporativo (LDAP/AD/SSO) cuando la institución la facilite. |
+
+Migrar a SQL Server no es un requisito funcional —el volumen de una unidad de citometría está muy por debajo de lo que SQLite soporta—, sino operativo: resuelve el cifrado en reposo e integra la base en las herramientas de respaldo y administración de la institución. El cambio está acotado: proveedor de acceso a datos, paquete correspondiente y regeneración de las migraciones (no son portables entre motores). El control de concurrencia se genera en código (`ApplicationDbContext`), no en el motor, por lo que es directamente compatible.
 
 ## Licencia
 
