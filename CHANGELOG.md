@@ -30,6 +30,38 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.2.0
+
+### Retirado el indicador TAT-PRE
+
+El cuadro de mando incluía «TAT preanalítico (recepción → registro)», definido como
+`RegisteredAtUtc - ReceivedAtUtc`. **Medía un intervalo que no existe:** el alta es de un
+solo paso, y `RegisterSampleAsync` asigna a ambas marcas el mismo instante, de modo que el
+resultado era cero por construcción y no por buen desempeño. Aparecía en el panel como
+«0 h (P90: 0 h)» de forma permanente.
+
+Solo podía dar un valor distinto de cero en el registro diferido (modo contingencia, F-8),
+donde el operador teclea ambas marcas a mano — es decir, mediría lo que alguien escribió,
+no un hecho observado por el sistema.
+
+Un indicador siempre a cero en un cuadro de mando de acreditación es peor que no tenerlo:
+sugiere que la unidad no entiende su propio indicador o que rellena el panel. **La fase
+preanalítica sigue cubierta** por PCT-RECHAZO, PCT-SALVEDAD y PCT-INCIDENCIA, que sí miden
+hechos reales. La cadena de TAT queda completa sin él: TAT-ADQ arranca en `RegisteredAtUtc`,
+que coincide con `ReceivedAtUtc`, así que no se abre ningún hueco.
+
+Se retira del catálogo también en las bases ya sembradas (`RetiredIndicatorsCleaner`,
+idempotente): quitarlo de la lista de siembra solo habría evitado crearlo en instalaciones
+nuevas.
+
+**Pendiente, como funcionalidad aparte:** el intervalo preanalítico que sí tiene valor
+clínico en citometría es **extracción → recepción**, porque la viabilidad celular se
+degrada con el tiempo de transporte. Requiere capturar `CollectedAtUtc` —campo que el
+modelo ya contempla pero que ninguna pantalla recoge— y es un dato que aporta el
+peticionario, no el laboratorio.
+
+---
+
 ## v2.1.0
 
 Primera versión con numeración formal. Hasta aquí el número mostrado en la pantalla de

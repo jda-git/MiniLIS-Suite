@@ -115,15 +115,12 @@ namespace MiniLIS.Infrastructure.Services
             return ComputeTat(rows.Select(r => (r.Id, r.SampleNumber, r.Start, r.End)).ToList(), DateTime.UtcNow);
         }
 
-        public async Task<TatIndicatorResult> GetTatPreAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro)
-        {
-            var (start, end) = ToUtcRange(desde, hasta);
-            var rows = await FilteredReceivedQuery(start, end, filtro)
-                .Where(s => s.ReceptionStatus != ReceptionStatus.Rechazada)
-                .Select(s => new { s.Id, s.SampleNumber, Start = s.ReceivedAtUtc, End = s.RegisteredAtUtc })
-                .ToListAsync();
-            return ComputeTat(rows.Select(r => (r.Id, r.SampleNumber, r.Start, r.End)).ToList(), DateTime.UtcNow);
-        }
+        // GetTatPreAsync se retiró en v2.2.0. Medía RegisteredAtUtc - ReceivedAtUtc, pero
+        // RegisterSampleAsync asigna a ambos el mismo `registrationMoment` (el alta es de un
+        // solo paso), así que el indicador daba cero por construcción, no por buen desempeño.
+        // El intervalo preanalítico que sí tiene valor clínico en citometría es
+        // extracción → recepción, y requiere capturar CollectedAtUtc, que hoy no recoge
+        // ninguna pantalla. Ver CHANGELOG.md.
 
         public async Task<TatIndicatorResult> GetTatAdqAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro)
         {
@@ -340,7 +337,6 @@ namespace MiniLIS.Infrastructure.Services
                 double? value = indicatorCode switch
                 {
                     "TAT-TOTAL" => (await GetTatTotalAsync(monthStart, monthEnd, filtro)).MedianHours,
-                    "TAT-PRE" => (await GetTatPreAsync(monthStart, monthEnd, filtro)).MedianHours,
                     "TAT-ADQ" => (await GetTatAdqAsync(monthStart, monthEnd, filtro)).MedianHours,
                     "TAT-ANA" => (await GetTatAnaAsync(monthStart, monthEnd, filtro)).MedianHours,
                     "PCT-RECHAZO" => (await GetPctRechazoAsync(monthStart, monthEnd, filtro)).Percentage,

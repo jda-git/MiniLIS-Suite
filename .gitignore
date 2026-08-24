@@ -28,6 +28,9 @@ secrets.json
 
 ## [EF Core]
 *.db
+# Diario WAL de SQLite: acompañan a *.db y no deben versionarse (contienen datos)
+*.db-shm
+*.db-wal
 *.sqlite
 *.bak
 

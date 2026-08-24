@@ -274,12 +274,19 @@ namespace MiniLIS.Infrastructure.Seed
             // individuales con estado propio (F-7, idempotente: solo BatchId == Guid.Empty).
             await StoredSpecimenBatchMigrator.RunAsync(context, logger);
 
+            // 6.8 Retira del catálogo los indicadores dados de baja (idempotente). Quitarlos de
+            // la lista de más abajo solo evita sembrarlos en instalaciones nuevas; en una base
+            // ya sembrada la fila persiste y el cuadro de mando la seguiría pintando.
+            await RetiredIndicatorsCleaner.RunAsync(context, logger);
+
             // 7. Seed Quality Indicators (F-1). Umbrales sin definir a propósito: un umbral por
             // defecto inventado es peor que ninguno — la unidad debe fijarlos conscientemente.
             var indicators = new (string Code, string Name, string Definition, IndicatorUnit Unit, IndicatorDirection Direction)[]
             {
+                // Sin "TAT-PRE" (recepción → registro): se retiró en v2.2.0 por medir un
+                // intervalo que no existe — el alta fija ambas marcas en el mismo instante.
+                // La fase preanalítica sigue cubierta por PCT-RECHAZO/SALVEDAD/INCIDENCIA.
                 ("TAT-TOTAL", "TAT total (recepción → validación)", "ValidatedAtUtc - ReceivedAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
-                ("TAT-PRE", "TAT preanalítico (recepción → registro)", "RegisteredAtUtc - ReceivedAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
                 ("TAT-ADQ", "TAT de adquisición (registro → adquisición)", "AcquiredAtUtc - RegisteredAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
                 ("TAT-ANA", "TAT analítico (adquisición → validación)", "ValidatedAtUtc - AcquiredAtUtc", IndicatorUnit.Horas, IndicatorDirection.MenorEsMejor),
                 ("PCT-RECHAZO", "% muestras rechazadas", "rechazadas / recibidas", IndicatorUnit.Porcentaje, IndicatorDirection.MenorEsMejor),

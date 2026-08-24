@@ -265,7 +265,6 @@
             switch (ind.Code)
             {
                 case "TAT-TOTAL": card.Tat = await QIService.GetTatTotalAsync(fromDate, toDate, filtro); break;
-                case "TAT-PRE": card.Tat = await QIService.GetTatPreAsync(fromDate, toDate, filtro); break;
                 case "TAT-ADQ": card.Tat = await QIService.GetTatAdqAsync(fromDate, toDate, filtro); break;
                 case "TAT-ANA": card.Tat = await QIService.GetTatAnaAsync(fromDate, toDate, filtro); break;
                 case "PCT-RECHAZO": card.Pct = await QIService.GetPctRechazoAsync(fromDate, toDate, filtro); break;

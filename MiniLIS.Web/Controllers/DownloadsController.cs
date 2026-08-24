@@ -383,11 +383,10 @@ namespace MiniLIS.Web.Controllers
 
                     switch (ind.Code)
                     {
-                        case "TAT-TOTAL": case "TAT-PRE": case "TAT-ADQ": case "TAT-ANA":
+                        case "TAT-TOTAL": case "TAT-ADQ": case "TAT-ANA":
                             var tat = ind.Code switch
                             {
                                 "TAT-TOTAL" => await _qualityIndicatorService.GetTatTotalAsync(desde, hasta, filtro),
-                                "TAT-PRE" => await _qualityIndicatorService.GetTatPreAsync(desde, hasta, filtro),
                                 "TAT-ADQ" => await _qualityIndicatorService.GetTatAdqAsync(desde, hasta, filtro),
                                 _ => await _qualityIndicatorService.GetTatAnaAsync(desde, hasta, filtro)
                             };

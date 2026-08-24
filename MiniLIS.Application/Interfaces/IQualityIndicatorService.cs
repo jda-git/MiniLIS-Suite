@@ -71,7 +71,10 @@ namespace MiniLIS.Application.Interfaces
     public interface IQualityIndicatorService
     {
         Task<TatIndicatorResult> GetTatTotalAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro);
-        Task<TatIndicatorResult> GetTatPreAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro);
+        // No hay GetTatPreAsync: el indicador "TAT preanalítico (recepción → registro)" se
+        // retiró en v2.2.0 por medir un intervalo inexistente — RegisterSampleAsync fija
+        // ReceivedAtUtc y RegisteredAtUtc al mismo instante, de modo que el resultado era
+        // cero por construcción. Ver CHANGELOG.md.
         Task<TatIndicatorResult> GetTatAdqAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro);
         Task<TatIndicatorResult> GetTatAnaAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro);
 

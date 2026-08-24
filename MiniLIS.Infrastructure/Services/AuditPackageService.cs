@@ -241,7 +241,6 @@ namespace MiniLIS.Infrastructure.Services
                     var value = ind.Code switch
                     {
                         "TAT-TOTAL" => DescribeTat(_qualityIndicatorService.GetTatTotalAsync(desde, hasta, filtro).GetAwaiter().GetResult()),
-                        "TAT-PRE" => DescribeTat(_qualityIndicatorService.GetTatPreAsync(desde, hasta, filtro).GetAwaiter().GetResult()),
                         "TAT-ADQ" => DescribeTat(_qualityIndicatorService.GetTatAdqAsync(desde, hasta, filtro).GetAwaiter().GetResult()),
                         "TAT-ANA" => DescribeTat(_qualityIndicatorService.GetTatAnaAsync(desde, hasta, filtro).GetAwaiter().GetResult()),
                         "PCT-RECHAZO" => DescribePct(_qualityIndicatorService.GetPctRechazoAsync(desde, hasta, filtro).GetAwaiter().GetResult()),
