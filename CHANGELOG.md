@@ -54,11 +54,30 @@ Se retira del catálogo también en las bases ya sembradas (`RetiredIndicatorsCl
 idempotente): quitarlo de la lista de siembra solo habría evitado crearlo en instalaciones
 nuevas.
 
-**Pendiente, como funcionalidad aparte:** el intervalo preanalítico que sí tiene valor
-clínico en citometría es **extracción → recepción**, porque la viabilidad celular se
-degrada con el tiempo de transporte. Requiere capturar `CollectedAtUtc` —campo que el
-modelo ya contempla pero que ninguna pantalla recoge— y es un dato que aporta el
-peticionario, no el laboratorio.
+**Sobre el intervalo extracción → recepción:** es el que sí tiene valor clínico en
+citometría, porque la viabilidad celular se degrada con el transporte, pero **ya está
+controlado en el proceso y no procede añadirlo aquí**. El dato vive en el LIS del
+hospital, y el técnico lo comprueba al registrar: si detecta una demora, levanta una
+incidencia con el motivo «Demora excesiva desde la extracción» (`DEMORA`). Eso queda como
+dato estructurado y lo recogen PCT-RECHAZO, PCT-SALVEDAD y PCT-INCIDENCIA, con desglose
+por causa y filtrables por servicio peticionario.
+
+Capturar `CollectedAtUtc` a mano en MiniLIS supondría teclear en cada muestra un dato que
+ya existe en el LIS corporativo, para calcular una métrica cuya parte accionable ya se
+registra. La vía correcta para medir la distribución completa de tiempos de transporte es
+la integración con el LIS del hospital, no la doble introducción manual.
+
+### Corregido el desglose de PCT-INCIDENCIA
+
+Agrupaba por `RejectionReason.Category`, campo que la siembra deja con su valor por
+defecto (`"Preanalítica"`) en los once motivos del catálogo. El resultado era **un
+desglose de una sola barra que repetía el total**, sin informar de nada.
+
+Pasa a agrupar por descripción, como ya hacían PCT-RECHAZO y PCT-SALVEDAD. Ahora sí se ve
+la causa concreta de cada incidencia — «Demora excesiva desde la extracción», «Muestra
+coagulada»… —, que es justo lo que permite actuar sobre el servicio peticionario que
+corresponda. `Category` sigue en el modelo por si el laboratorio decide definir una
+taxonomía real; ese sería el indicador natural para mostrarla.
 
 ---
 

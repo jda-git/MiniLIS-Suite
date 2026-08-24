@@ -190,10 +190,18 @@ namespace MiniLIS.Infrastructure.Services
             int denominator = await baseQuery.CountAsync();
             int numerator = await baseQuery.CountAsync(s => s.ReceptionStatus != ReceptionStatus.Correcta);
 
+            // Agrupado por Description, no por Category: el catálogo sembrado deja Category con
+            // su valor por defecto ("Preanalítica") en los once motivos, así que agrupar por ahí
+            // producía un desglose de una sola barra que se limitaba a repetir el total. Con la
+            // descripción se ve la causa real -- "Demora excesiva desde la extracción",
+            // "Muestra coagulada"... -- que es lo que permite actuar, y queda coherente con
+            // PCT-RECHAZO y PCT-SALVEDAD, que ya desglosaban así.
+            // Si algún día se define una taxonomía real en Category (decisión del laboratorio,
+            // no del código), este indicador es el candidato natural para mostrarla.
             var breakdown = await _db.SampleReceptionIssues
                 .Where(i => i.Sample.ReceivedAtUtc != null && i.Sample.ReceivedAtUtc >= start && i.Sample.ReceivedAtUtc <= end)
                 .Where(i => i.Sample.ReceptionStatus != ReceptionStatus.Correcta)
-                .GroupBy(i => i.RejectionReason.Category)
+                .GroupBy(i => i.RejectionReason.Description)
                 .Select(g => new BreakdownItem { Label = g.Key, Count = g.Select(x => x.SampleId).Distinct().Count() })
                 .OrderByDescending(b => b.Count)
                 .ToListAsync();
