@@ -1,0 +1,32 @@
+<Project>
+
+  <!--
+    Origen único de la versión de MiniLIS Suite.
+
+    Este fichero lo heredan automáticamente los cinco proyectos de la solución,
+    así que para publicar una versión nueva basta con cambiar <Version> aquí.
+
+    Esquema de numeración (MAYOR.MENOR.PARCHE) — ver CHANGELOG.md:
+
+      MAYOR   cambios que obligan a revalidar el sistema o que alteran el
+              informe emitido al clínico.
+      MENOR   funcionalidad nueva, compatible con los datos existentes.
+      PARCHE  correcciones sin cambio funcional.
+
+    No es SemVer de librería: aquí no hay API pública ni consumidores externos,
+    de modo que lo que discrimina el salto de versión no es la compatibilidad
+    binaria sino si el cambio obliga a revalidar (ISO 15189, cl. 7.6).
+
+    IMPORTANTE: el número no debe escribirse a mano en ningún otro sitio. La
+    interfaz lo lee de los metadatos del ensamblado mediante
+    MiniLIS.Web/Services/AppVersion.cs — en cuanto hay dos orígenes, divergen
+    (que es justo lo que pasaba antes: la interfaz decía 2.0.4 y los ensamblados
+    se compilaban como 1.0.0).
+  -->
+
+  <PropertyGroup>
+    <Version>2.1.0</Version>
+    <Product>MiniLIS Suite</Product>
+  </PropertyGroup>
+
+</Project>

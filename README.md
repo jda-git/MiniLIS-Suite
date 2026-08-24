@@ -36,6 +36,23 @@ MiniLIS cubre el proceso de la muestra. Fuera de su alcance deliberadamente, y r
 
 Todos los paquetes van fijados a `9.0.*`, en línea con el *target framework* `net9.0`. Conviene no introducir referencias a versiones `10.x`: se resuelven contra un framework compartido distinto del que ejecuta la aplicación y fallan en tiempo de ejecución, no al compilar (el síntoma típico es un `MissingMethodException` dentro de Data Protection que solo aparece con la caché de NuGet limpia, es decir, en CI y no en local).
 
+## Versionado
+
+El número de versión vive en un **único sitio**, `Directory.Build.props`, y de ahí lo heredan los cinco proyectos. La interfaz lo lee de los metadatos del ensamblado (`MiniLIS.Web/Services/AppVersion.cs`): **no debe escribirse a mano en ninguna página** — cuando había dos orígenes divergieron, con la pantalla de acceso mostrando `2.0.4.Final` mientras los ensamblados se compilaban como `1.0.0`.
+
+El esquema es `MAYOR.MENOR.PARCHE`, pero con el criterio de un sistema de laboratorio y no de una librería: lo que determina el salto no es la compatibilidad binaria sino si el cambio **obliga a revalidar** (MAYOR), aporta funcionalidad nueva compatible (MENOR) o corrige sin cambio funcional (PARCHE). Ver [CHANGELOG.md](CHANGELOG.md).
+
+Publicar una versión:
+
+```bash
+# 1. Actualizar <Version> en Directory.Build.props y añadir la entrada en CHANGELOG.md
+# 2. Etiquetar el commit desplegado
+git tag -a v2.1.0 -m "v2.1.0"
+git push origin v2.1.0
+```
+
+La etiqueta es lo que permite responder *«¿qué código exacto es esta versión?»*, necesario para la trazabilidad de los informes (ISO 15189 cl. 7.6), que se conservan cinco años o más. Los ensamblados llevan además el commit anexado a la versión informativa (`2.1.0+c339fa2`, cortesía de SourceLink, sin configuración adicional): es el dato a pedir ante una incidencia, porque identifica el código en ejecución incluso entre despliegues de una misma versión.
+
 ## Puesta en marcha
 
 ### Requisitos

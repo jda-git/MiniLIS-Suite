@@ -1,5 +1,6 @@
 @page "/login"
 @using Microsoft.AspNetCore.Components.Authorization
+@using MiniLIS.Web.Services
 @layout MiniLIS.Web.Components.Layout.LoginLayout
 @attribute [AllowAnonymous]
 @inject NavigationManager nav
@@ -22,7 +23,11 @@
             <div class="technical-info mb-4">
                 <div class="d-flex justify-content-between x-small text-tech-muted uppercase fw-bold mb-1">
                     <span>Terminal de Acceso</span>
-                    <span>v2.0.4.Final</span>
+                    @* El número sale de Directory.Build.props vía metadatos del ensamblado;
+                       el commit queda en el title para soporte, sin ensuciar la pantalla. *@
+                    @* Paréntesis obligatorios: "v@AppVersion" sin ellos lo toma Razor por una
+                       dirección de correo y lo emite como texto literal. *@
+                    <span title="@AppVersion.Full">v@(AppVersion.Display)</span>
                 </div>
                 <div class="tech-line"></div>
             </div>
