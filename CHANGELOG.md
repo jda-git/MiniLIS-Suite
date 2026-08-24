@@ -30,6 +30,22 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.2.1
+
+### Corregido el desglose de PCT-INCIDENCIA
+
+Agrupaba por `RejectionReason.Category`, campo que la siembra deja con su valor por
+defecto (`"Preanalítica"`) en los once motivos del catálogo. El resultado era **un
+desglose de una sola barra que repetía el total**, sin informar de nada.
+
+Pasa a agrupar por descripción, como ya hacían PCT-RECHAZO y PCT-SALVEDAD. Ahora sí se ve
+la causa concreta de cada incidencia — «Demora excesiva desde la extracción», «Muestra
+coagulada»… —, que es justo lo que permite actuar sobre el servicio peticionario que
+corresponda. `Category` sigue en el modelo por si el laboratorio decide definir una
+taxonomía real; ese sería el indicador natural para mostrarla.
+
+---
+
 ## v2.2.0
 
 ### Retirado el indicador TAT-PRE
@@ -66,18 +82,6 @@ Capturar `CollectedAtUtc` a mano en MiniLIS supondría teclear en cada muestra u
 ya existe en el LIS corporativo, para calcular una métrica cuya parte accionable ya se
 registra. La vía correcta para medir la distribución completa de tiempos de transporte es
 la integración con el LIS del hospital, no la doble introducción manual.
-
-### Corregido el desglose de PCT-INCIDENCIA
-
-Agrupaba por `RejectionReason.Category`, campo que la siembra deja con su valor por
-defecto (`"Preanalítica"`) en los once motivos del catálogo. El resultado era **un
-desglose de una sola barra que repetía el total**, sin informar de nada.
-
-Pasa a agrupar por descripción, como ya hacían PCT-RECHAZO y PCT-SALVEDAD. Ahora sí se ve
-la causa concreta de cada incidencia — «Demora excesiva desde la extracción», «Muestra
-coagulada»… —, que es justo lo que permite actuar sobre el servicio peticionario que
-corresponda. `Category` sigue en el modelo por si el laboratorio decide definir una
-taxonomía real; ese sería el indicador natural para mostrarla.
 
 ---
 
