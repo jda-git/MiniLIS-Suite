@@ -30,6 +30,42 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.4.0
+
+### Ventana de lectura de tubos («Paneles de Estudio»)
+
+Es la pantalla donde el técnico marca qué tubos ha leído en el citómetro y registra las
+incidencias de adquisición. Revisada en legibilidad, en flujo de trabajo y en seguridad
+del dato.
+
+**Legibilidad.** La ventana pasa de 600 a 900 px: llevaba una tabla de cuatro columnas
+con listas de marcadores y firma de lectura, y todo salía comprimido. La firma de quién
+leyó el tubo estaba **apilada debajo del interruptor**, lo que obligaba a un texto de 9 px
+para el nombre y 8 px para la fecha — ilegible justo donde hay que poder comprobar quién
+registró la lectura. Ahora va **a la derecha del interruptor**, en línea, a 11,5 px. Mismo
+tratamiento para el distintivo de incidencia.
+
+**Progreso por panel.** La columna mostraba un recuento estático («1 tubo(s)»). Ahora
+indica el avance real —«3/4 leídos»— con color según el estado: gris sin empezar, ámbar a
+medias, verde completo. El técnico ve de un vistazo qué panel le queda pendiente.
+
+**«Marcar todos».** Un panel se lee en una sola sesión de citómetro, pero marcar sus tubos
+exigía un clic por tubo. Se añade un botón que marca de una vez los pendientes del panel.
+Solo suma lecturas: **desmarcar sigue siendo tubo a tubo**, porque borra la firma de quién
+lo leyó y no debe ocurrir por descuido.
+
+**Confirmación al eliminar un panel con lecturas.** Eliminar un panel arrastra sus tubos y
+con ellos el registro de lectura —quién, cuándo, incidencias—, y bastaba un clic sin aviso
+alguno. Ahora, si el panel tiene alguna lectura o incidencia registrada, se pide
+confirmación explícita. Si no tiene ninguna, se elimina directamente y no se molesta al
+usuario.
+
+**Estado de la incidencia visible.** El botón de incidencia se veía igual hubiera
+incidencia o no; había que leer el tooltip. Con incidencia registrada pasa a icono
+relleno y fondo ámbar: deja de ser una acción disponible para ser un estado del tubo.
+
+---
+
 ## v2.3.0
 
 ### La Bandeja Técnica abre con una ventana de 3 meses

@@ -287,7 +287,10 @@
 @if (panelModalSample != null)
 {
     <div class="modal-backdrop-custom" @onclick="ClosePanelModal">
-        <div class="modal-card animate-fade-in" @onclick:stopPropagation="true">
+        @* modal-card-wide: esta ventana lleva una tabla de cuatro columnas con listas de
+           marcadores y la firma de lectura; a 600 px (ancho por defecto de .modal-card,
+           compartido con el modal de vista previa) todo quedaba comprimido. *@
+        <div class="modal-card modal-card-wide animate-fade-in" @onclick:stopPropagation="true">
             <div class="modal-card-header d-flex align-items-center justify-content-between">
                 <h5 class="d-flex align-items-center m-0 text-white font-weight-bold">
                     <i class="bi bi-clipboard2-pulse-fill text-info me-2 fs-5"></i>
@@ -320,9 +323,9 @@
                             <thead>
                                 <tr class="bg-light">
                                     <th class="ps-3 text-uppercase text-muted fw-bold">Panel / Tubo</th>
-                                    <th style="width:105px;" class="text-center text-uppercase text-muted fw-bold">Solicitado</th>
-                                    <th style="width:160px;" class="text-center text-uppercase text-muted fw-bold">Leído</th>
-                                    <th style="width:50px;"></th>
+                                    <th style="width:100px;" class="text-center text-uppercase text-muted fw-bold">Solicitado</th>
+                                    <th style="width:300px;" class="text-uppercase text-muted fw-bold">Leído</th>
+                                    <th style="width:56px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -341,11 +344,51 @@
                                                 <input class="form-check-input switch-requested cursor-pointer" type="checkbox" role="switch" checked="@sp.IsRequested" @onchange="@((ChangeEventArgs e) => sp.IsRequested = (bool)(e.Value ?? false))" />
                                             </div>
                                         </td>
-                                        <td class="text-center text-muted small">@sp.Tubes.Count() tubo(s)</td>
+                                        <td>
+                                            @{
+                                                var totalTubos = sp.Tubes.Count();
+                                                var leidos = sp.Tubes.Count(t => t.IsRead);
+                                                var completo = totalTubos > 0 && leidos == totalTubos;
+                                            }
+                                            <div class="panel-progress">
+                                                <span class="progress-pill @(completo ? "progress-done" : leidos > 0 ? "progress-partial" : "progress-none")">
+                                                    @if (completo)
+                                                    {
+                                                        <i class="bi bi-check-circle-fill me-1"></i>
+                                                    }
+                                                    @leidos/@totalTubos leídos
+                                                </span>
+                                                @* Solo suma lecturas; desmarcar sigue siendo tubo a tubo y deliberado,
+                                                   porque borra la firma de quién lo leyó. *@
+                                                @if (sp.Id != 0 && leidos < totalTubos)
+                                                {
+                                                    var pendientes = totalTubos - leidos;
+                                                    <button type="button" class="btn-mark-all"
+                                                            title="@($"Marcar como {(pendientes == 1 ? "leído el tubo pendiente" : $"leídos los {pendientes} tubos pendientes")}")"
+                                                            @onclick="@(() => MarkAllTubesRead(sp))">
+                                                        <i class="bi bi-check2-all me-1"></i>@(pendientes == 1 ? "Marcar el pendiente" : "Marcar todos")
+                                                    </button>
+                                                }
+                                            </div>
+                                        </td>
                                         <td class="text-end pe-3">
-                                            <button type="button" class="btn-delete-panel" @onclick="@(() => modalPanels.Remove(sp))" title="Eliminar Panel">
-                                                <i class="bi bi-trash3-fill"></i>
-                                            </button>
+                                            @* Eliminar un panel borra sus tubos y con ellos la firma de lectura
+                                               (quién leyó, cuándo, incidencias). Si hay lecturas, se pide confirmación. *@
+                                            @if (panelPendingDelete == sp)
+                                            {
+                                                <div class="delete-confirm">
+                                                    <button type="button" class="btn-delete-yes" title="Confirmar: se perderán las lecturas registradas"
+                                                            @onclick="@(() => ConfirmRemovePanel(sp))">Eliminar</button>
+                                                    <button type="button" class="btn-delete-no" title="Cancelar"
+                                                            @onclick="@(() => panelPendingDelete = null)">No</button>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="btn-delete-panel" @onclick="@(() => RequestRemovePanel(sp))" title="Eliminar panel">
+                                                    <i class="bi bi-trash3-fill"></i>
+                                                </button>
+                                            }
                                         </td>
                                     </tr>
                                     @foreach (var tube in sp.Tubes.OrderBy(t => t.TubeNumber))
@@ -359,40 +402,48 @@
                                                 }
                                             </td>
                                             <td></td>
-                                            <td class="text-center">
-                                                <div class="d-flex flex-column align-items-center justify-content-center">
-                                                    <div class="form-check form-switch d-inline-block">
+                                            @* Interruptor a la izquierda y firma a su derecha: apilada debajo obligaba
+                                               a un badge de 9 px, ilegible justo donde hay que poder leer quién
+                                               registró la lectura. *@
+                                            <td>
+                                                <div class="read-cell">
+                                                    <div class="form-check form-switch m-0">
                                                         <input class="form-check-input switch-read cursor-pointer" type="checkbox" role="switch"
                                                                checked="@tube.IsRead" disabled="@(sp.Id == 0)"
                                                                title="@(sp.Id == 0 ? "Guarde el panel primero para poder marcar sus tubos" : null)"
                                                                @onchange="@((ChangeEventArgs e) => ToggleTubeReadInModal(sp, tube, (bool)(e.Value ?? false)))" />
                                                     </div>
-                                                    @if (tube.IsRead && (tube.ReadByUser != null || !string.IsNullOrEmpty(currentUserName)))
-                                                    {
-                                                        <div class="read-signature-badge mt-1 shadow-xs animate-fade-in">
-                                                            <span class="read-user text-truncate" title="@(tube.ReadByUser?.FullName ?? currentUserName)">
-                                                                <i class="bi bi-person-fill me-1"></i>@(tube.ReadByUser?.FullName ?? currentUserName)
-                                                            </span>
-                                                            <span class="read-date">
-                                                                <i class="bi bi-clock-fill me-1"></i>@(LocalTimeService.ToLocal(tube.ReadAtUtc)?.ToString("dd/MM HH:mm"))
-                                                            </span>
-                                                        </div>
-                                                    }
-                                                    @if (tube.HasReadIncident)
-                                                    {
-                                                        <div class="tube-incident-badge mt-1 shadow-xs animate-fade-in" title="@tube.ReadIncidentNotes">
-                                                            <span><i class="bi bi-exclamation-triangle-fill me-1"></i>@tube.ReadIncidentReason?.Description</span>
-                                                            <span class="incident-resolution">@FormatResolution(tube.ReadIncidentResolution)</span>
-                                                        </div>
-                                                    }
+                                                    <div class="read-meta">
+                                                        @if (sp.Id == 0)
+                                                        {
+                                                            <span class="read-hint">Guarde el panel para poder marcar sus tubos</span>
+                                                        }
+                                                        else if (tube.IsRead && (tube.ReadByUser != null || !string.IsNullOrEmpty(currentUserName)))
+                                                        {
+                                                            <div class="read-signature-badge animate-fade-in">
+                                                                <span class="read-user" title="@(tube.ReadByUser?.FullName ?? currentUserName)">
+                                                                    <i class="bi bi-person-fill me-1"></i>@(tube.ReadByUser?.FullName ?? currentUserName)
+                                                                </span>
+                                                                <span class="read-date">@(LocalTimeService.ToLocal(tube.ReadAtUtc)?.ToString("dd/MM HH:mm"))</span>
+                                                            </div>
+                                                        }
+                                                        @if (tube.HasReadIncident)
+                                                        {
+                                                            <div class="tube-incident-badge animate-fade-in" title="@tube.ReadIncidentNotes">
+                                                                <span class="incident-reason"><i class="bi bi-exclamation-triangle-fill me-1"></i>@tube.ReadIncidentReason?.Description</span>
+                                                                <span class="incident-resolution">@FormatResolution(tube.ReadIncidentResolution)</span>
+                                                            </div>
+                                                        }
+                                                    </div>
                                                 </div>
                                             </td>
-                                            <td class="text-end">
+                                            <td class="text-end pe-3">
                                                 @if (sp.Id != 0)
                                                 {
-                                                    <button type="button" class="btn-incident-toggle" title="@(tube.HasReadIncident ? "Corregir incidencia" : "Marcar incidencia de lectura")"
+                                                    <button type="button" class="btn-incident-toggle @(tube.HasReadIncident ? "has-incident" : "")"
+                                                            title="@(tube.HasReadIncident ? "Corregir incidencia" : "Marcar incidencia de lectura")"
                                                             @onclick="@(() => ToggleIncidentForm(tube))">
-                                                        <i class="bi bi-exclamation-diamond"></i>
+                                                        <i class="bi @(tube.HasReadIncident ? "bi-exclamation-diamond-fill" : "bi-exclamation-diamond")"></i>
                                                     </button>
                                                 }
                                             </td>
@@ -809,6 +860,10 @@
         max-height: 90vh;
     }
     
+    /* Después de .modal-card a propósito: misma especificidad, así que el orden decide.
+       Declarado antes, el ancho por defecto de 600 px lo anularía en silencio. */
+    .modal-card-wide { width: 900px; }
+
     .modal-card-header {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         color: #fff;
@@ -857,37 +912,106 @@
         border-color: #16a34a;
     }
     
-    /* Signature info card */
+    /* Celda "Leído": interruptor a la izquierda, firma e incidencia a su derecha. */
+    .read-cell {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .read-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1;
+    }
+    .read-hint {
+        font-size: 10.5px;
+        color: #94a3b8;
+        font-style: italic;
+        line-height: 1.25;
+    }
+
+    /* Firma de lectura */
     .read-signature-badge {
         background: #f0fdf4;
         border: 1px solid #bbf7d0;
         border-radius: 6px;
-        padding: 4px 8px;
-        display: inline-flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        max-width: 140px;
+        padding: 3px 8px;
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        min-width: 0;
     }
     .read-signature-badge .read-user {
-        font-size: 9px;
+        font-size: 11.5px;
         color: #15803d;
-        font-weight: 700;
-        text-align: center;
+        font-weight: 600;
         white-space: nowrap;
         text-overflow: ellipsis;
         overflow: hidden;
-        width: 100%;
-        line-height: 1.2;
+        min-width: 0;
+        line-height: 1.3;
     }
     .read-signature-badge .read-date {
-        font-size: 8px;
+        font-size: 10.5px;
         font-weight: 500;
-        margin-top: 1px;
-        line-height: 1.1;
+        line-height: 1.3;
         color: #166534;
-        opacity: 0.8;
+        opacity: 0.85;
+        white-space: nowrap;
+        margin-left: auto;
+        font-variant-numeric: tabular-nums;
     }
+
+    /* Progreso de lectura del panel */
+    .panel-progress {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .progress-pill {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 10px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .progress-none { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+    .progress-partial { background: #fefce8; color: #a16207; border: 1px solid #fde68a; }
+    .progress-done { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+
+    .btn-mark-all {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: #15803d;
+        background: #fff;
+        border: 1px solid #bbf7d0;
+        border-radius: 5px;
+        padding: 2px 8px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background-color .15s, border-color .15s;
+    }
+    .btn-mark-all:hover { background: #f0fdf4; border-color: #86efac; }
+    .btn-mark-all:focus-visible { outline: 2px solid #15803d; outline-offset: 1px; }
+
+    /* Confirmación de borrado de panel con lecturas registradas */
+    .delete-confirm { display: inline-flex; gap: 4px; align-items: center; }
+    .btn-delete-yes, .btn-delete-no {
+        font-size: 10.5px;
+        font-weight: 700;
+        border-radius: 5px;
+        padding: 2px 7px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .btn-delete-yes { background: #dc2626; border: 1px solid #dc2626; color: #fff; }
+    .btn-delete-yes:hover { background: #b91c1c; }
+    .btn-delete-no { background: #fff; border: 1px solid #cbd5e1; color: #475569; }
+    .btn-delete-no:hover { background: #f1f5f9; }
 
     /* Incidencias de lectura de tubo -- nombre distinto de ".incident-badge" (columna
        "Incidencia" de la tabla, más abajo): mismo nombre de clase para dos componentes no
@@ -898,32 +1022,31 @@
         background: #fff7ed;
         border: 1px solid #fed7aa;
         border-radius: 6px;
-        padding: 4px 8px;
-        display: inline-flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        max-width: 150px;
+        padding: 3px 8px;
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        min-width: 0;
     }
-    .tube-incident-badge span:first-child {
-        font-size: 9px;
+    .tube-incident-badge .incident-reason {
+        font-size: 11px;
         color: #c2410c;
-        font-weight: 700;
-        text-align: center;
+        font-weight: 600;
         white-space: nowrap;
         text-overflow: ellipsis;
         overflow: hidden;
-        width: 100%;
-        line-height: 1.2;
+        min-width: 0;
+        line-height: 1.3;
     }
     .tube-incident-badge .incident-resolution {
-        font-size: 8px;
-        font-weight: 600;
-        margin-top: 1px;
-        line-height: 1.1;
+        font-size: 9.5px;
+        font-weight: 700;
+        line-height: 1.3;
         color: #9a3412;
         text-transform: uppercase;
         letter-spacing: 0.3px;
+        white-space: nowrap;
+        margin-left: auto;
     }
     .btn-incident-toggle {
         background: transparent;
@@ -939,6 +1062,13 @@
         background: #fff7ed;
         color: #c2410c;
     }
+    /* Con incidencia registrada el botón deja de ser una acción disponible y pasa a ser un
+       estado del tubo: debe distinguirse sin tener que leer el tooltip. */
+    .btn-incident-toggle.has-incident {
+        color: #c2410c;
+        background: #ffedd5;
+    }
+    .btn-incident-toggle.has-incident:hover { background: #fed7aa; }
     .incident-form-row td {
         padding: 0 !important;
         border-top: none !important;
@@ -1100,6 +1230,41 @@
         {
             modalErrorMessage = $"Error al marcar el tubo: {ex.Message}";
         }
+    }
+
+    /// <summary>Marca de una vez los tubos pendientes del panel. Un panel se lee en una sola
+    /// sesión de citómetro, así que exigir un clic por tubo es fricción sin contrapartida.
+    /// Solo suma lecturas: desmarcar sigue siendo tubo a tubo, porque borra la firma.</summary>
+    private async Task MarkAllTubesRead(SamplePanel sp)
+    {
+        if (sp.Id == 0) return;
+
+        foreach (var tube in sp.Tubes.Where(t => !t.IsRead).OrderBy(t => t.TubeNumber).ToList())
+        {
+            await ToggleTubeReadInModal(sp, tube, true);
+            if (modalErrorMessage != null) return; // no seguir encadenando fallos
+        }
+    }
+
+    // Eliminar un panel arrastra sus tubos y con ellos el registro de lectura (quién, cuándo
+    // e incidencias). Si no hay ninguna lectura no se molesta al usuario; si la hay, se pide
+    // una confirmación explícita antes de perderla.
+    private SamplePanel? panelPendingDelete;
+
+    private void RequestRemovePanel(SamplePanel sp)
+    {
+        if (sp.Tubes.Any(t => t.IsRead || t.HasReadIncident))
+        {
+            panelPendingDelete = sp;
+            return;
+        }
+        modalPanels.Remove(sp);
+    }
+
+    private void ConfirmRemovePanel(SamplePanel sp)
+    {
+        modalPanels.Remove(sp);
+        panelPendingDelete = null;
     }
 
     [Inject] private IMasterDataService MasterService { get; set; } = default!;
