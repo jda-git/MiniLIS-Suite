@@ -30,6 +30,46 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.6.0
+
+### Barra de acciones del editor de informe
+
+Los botones estaban repartidos en dos bloques a distinta altura, y «Validar» vivía en su
+propio apartado **por encima** de los intermedios: la acción final quedaba arriba y el
+conjunto se leía al revés del flujo real de trabajo.
+
+Ahora van en **una sola fila**, en el orden en que se usan: Previsualizar PDF · PDF · ODT ·
+Guardar Informe │ Validar informe. La barra queda **fija al pie**, porque el formulario es
+largo y antes había que bajar hasta el final para guardar o validar.
+
+**«Validar» va tras un divisor y en sólido**, no como quinto botón de la serie. Es
+irreversible sin una reapertura documentada, firma a nombre del facultativo y cierra la
+muestra, mientras que los demás son rutinarios y repetibles: pegado a «Guardar» —que se
+pulsa decenas de veces al día— invitaría al clic equivocado en la única acción con peso
+legal. Una vez validado, ese hueco muestra el estado en lugar del botón.
+
+El apartado «Validación» se queda como **registro**: estado, quién validó y cuándo, y el
+formulario de reapertura, que necesita el campo de motivo y no cabe en una barra.
+
+### «Volver» ya no pierde el trabajo en silencio
+
+Salía del editor con `NavigateTo` sin comprobar nada: quien redactara una conclusión y
+pulsara «Volver» la perdía sin aviso alguno. Ahora, si hay cambios pendientes, ofrece
+guardarlos antes de salir; si el guardado falla, no sale.
+
+Los cambios se detectan comparando una **huella del estado editable** en vez de marcar
+«sucio» desde cada control: son más de veinticinco campos repartidos por el formulario y
+bastaría olvidar uno para que el aviso no saltara. La huella se toma al terminar la carga
+—después del autorrelleno de «Paneles empleados», que si no contaría como edición del
+usuario— y se renueva tras cada guardado.
+
+**Sin indicador de «guardado/sin guardar»**, deliberadamente: previsualizar, PDF, ODT y
+validar ya guardan antes de ejecutarse, así que el indicador pasaría casi todo el tiempo
+en «guardado» y no aportaría información. El valor real estaba en avisar al salir, que es
+lo que se ha implementado.
+
+---
+
 ## v2.5.0
 
 ### Corregido: el informe podía declarar menos paneles de los empleados

@@ -377,6 +377,9 @@
             }
             else
             {
+                @* El botón de validar vive ahora en la barra de acciones del pie, junto al resto
+                   del flujo. Aquí queda el estado y, si falta algo para poder validar, el motivo
+                   -- que no cabe en la barra. *@
                 <p class="mb-2">
                     <i class="bi bi-hourglass-split text-warning me-2"></i>
                     Pendiente de validación
@@ -390,12 +393,17 @@
                         <form id="validarForm" method="post" action="/api/downloads/informe/@report.PublicId/validar" hidden>
                             <AntiforgeryToken />
                         </form>
-                        <button type="button" class="btn btn-success" @onclick="ValidateReport" disabled="@(!selectedFacultativos.Any())">
-                            <i class="bi bi-check-lg me-2"></i>Validar informe
-                        </button>
                         @if (!selectedFacultativos.Any())
                         {
-                            <p class="text-muted small mt-1 mb-0">Selecciona al menos un facultativo firmante en "Firmas" para poder validar.</p>
+                            <p class="text-muted small mb-0">
+                                Seleccione al menos un facultativo firmante en «Firmas» para poder validar.
+                            </p>
+                        }
+                        else
+                        {
+                            <p class="text-muted small mb-0">
+                                Use «Validar informe» en la barra inferior. La acción es irreversible sin una reapertura documentada.
+                            </p>
                         }
                     </Authorized>
                 </AuthorizeView>
@@ -403,13 +411,24 @@
         </fieldset>
     }
 
-    <!-- ═══════════════  BOTONES  ═══════════════ -->
-    <div class="rpt-actions mt-4 mb-5">
-        <button class="btn btn-light border px-4" @onclick='() => Nav.NavigateTo("/muestras")'>
+    @* ═══════════════  BARRA DE ACCIONES  ═══════════════
+       Una sola fila, en el orden real de trabajo: previsualizar → exportar → guardar → validar.
+       Antes "Validar" vivía arriba, en su propio apartado, de modo que la acción final quedaba
+       ENCIMA de las intermedias y el bloque se leía al revés del flujo.
+
+       Validar va tras un divisor y en sólido, no como quinto botón de la serie: es irreversible
+       sin reapertura documentada, firma a nombre del facultativo y cierra la muestra, mientras
+       que los otros son rutinarios y repetibles. Pegado a "Guardar" invitaría al clic
+       equivocado en la única acción con peso legal.
+
+       Fija al pie porque el formulario es largo: antes había que bajar hasta el final para
+       guardar o validar. *@
+    <div class="rpt-actionbar">
+        <button class="btn btn-light border px-4" @onclick="GoBack">
             <i class="bi bi-arrow-left me-2"></i>Volver
         </button>
 
-        <div class="d-flex gap-2">
+        <div class="rpt-actionbar-main">
             @if (report?.Id > 0)
             {
                 <AuthorizeView Roles="Administrador,Facultativo">
@@ -430,10 +449,37 @@
                     </Authorized>
                 </AuthorizeView>
             }
-            <button class="btn btn-primary px-5 fw-bold shadow-sm" disabled="@isSaving" @onclick="SaveAndNotify">
+            <button class="btn btn-primary px-4 fw-bold shadow-sm" disabled="@isSaving" @onclick="SaveAndNotify">
                 @if (isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
                 <i class="bi bi-check-lg me-2"></i>Guardar Informe
             </button>
+
+            @if (report != null)
+            {
+                <span class="rpt-actionbar-divider"></span>
+
+                @if (report.IsFinalized)
+                {
+                    @* Validado: el hueco de la acción pasa a mostrar el estado. El detalle
+                       (quién, cuándo) y la reapertura siguen en el apartado "Validación",
+                       que necesita el campo de motivo. *@
+                    <span class="rpt-validated-chip" title="Validado el @(LocalTimeService.ToLocal(report.ValidatedAtUtc)?.ToString("dd/MM/yyyy HH:mm") ?? "—")">
+                        <i class="bi bi-check-circle-fill me-1"></i>Validado
+                    </span>
+                }
+                else
+                {
+                    <AuthorizeView Roles="Administrador,Facultativo">
+                        <Authorized>
+                            <button type="button" class="btn btn-success px-4 fw-bold shadow-sm" @onclick="ValidateReport"
+                                    disabled="@(isSaving || !selectedFacultativos.Any())"
+                                    title="@(selectedFacultativos.Any() ? "Validar el informe: acción irreversible sin reapertura documentada" : "Seleccione al menos un facultativo firmante en \"Firmas\" para poder validar")">
+                                <i class="bi bi-check2-circle me-2"></i>Validar informe
+                            </button>
+                        </Authorized>
+                    </AuthorizeView>
+                }
+            }
         </div>
     </div>
     }
@@ -538,6 +584,51 @@
     /* ── Actions ── */
     .rpt-actions { display: flex; justify-content: space-between; align-items: center; }
 
+    /* Barra de acciones fija al pie: el formulario es largo y antes había que bajar hasta el
+       final para guardar o validar. */
+    .rpt-actionbar {
+        position: sticky;
+        bottom: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 24px -4px 0;
+        padding: 12px 16px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 -4px 16px -8px rgba(15, 23, 42, .18);
+    }
+    .rpt-actionbar-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    /* Separa la acción terminal (validar) de las rutinarias: mismo nivel, distinto peso. */
+    .rpt-actionbar-divider {
+        width: 1px;
+        align-self: stretch;
+        min-height: 32px;
+        background: #d8e0e8;
+        margin: 0 4px;
+    }
+    .rpt-validated-chip {
+        display: inline-flex;
+        align-items: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: #15803d;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 6px;
+        padding: 7px 14px;
+        white-space: nowrap;
+    }
+
     /* ── Estudios Previos ── */
     .prev-study-list { display: flex; flex-direction: column; }
     .prev-study-row { font-size: 13px; cursor: pointer; }
@@ -572,6 +663,45 @@
     private List<string> selectedFacultativos = new();
     private List<string> intensityOptions = new();
     private bool isSaving = false;
+
+    // ── Detección de cambios sin guardar ─────────────────────────────────────
+    // Se compara una huella del estado editable en vez de marcar "sucio" desde cada control:
+    // son más de veinticinco campos repartidos por el formulario y bastaría olvidar uno para
+    // que "Volver" se tragara cambios sin avisar. La huella se toma al cargar y tras cada
+    // guardado; si al salir no coincide, hay algo pendiente.
+    private string savedFingerprint = "";
+
+    private string CurrentFingerprint() => report == null ? "" : string.Join("", new[]
+    {
+        report.ReportBody, report.Conclusions, report.AdditionalText, report.PanelsUsedText,
+        report.MarkersSummary, report.CriticalValueText, report.BiobankText, report.GenomicsText,
+        report.NgsText, report.NewDiagnosisText,
+        report.HasCriticalValueAlert.ToString(), report.HasBiobank.ToString(),
+        report.HasGenomics.ToString(), report.HasNgs.ToString(), report.HasNewDiagnosisAlert.ToString(),
+        report.ShowPreviousStudies.ToString(), report.ShowPreviousConclusions.ToString(),
+        report.ShowPreviousMarkers.ToString(), report.ShowPreviousMotivo.ToString(),
+        report.ShowPreviousReportBody.ToString(),
+        reportDate.ToString("O"),
+        patientName, peticionElectronica, servicioSolicitante, medicoSolicitante, motivoSolicitud,
+        string.Join("|", selectedFacultativos),
+        string.Join(",", selectedPreviousStudyIds),
+        string.Join(";", report.MarkerValues.OrderBy(m => m.MarkerId).Select(m => $"{m.MarkerId}={m.IntensityValue}/{m.Percentage}"))
+    });
+
+    private bool HasUnsavedChanges => report != null && CurrentFingerprint() != savedFingerprint;
+
+    /// <summary>Volver con cambios sin guardar los perdía en silencio: el editor no avisaba y
+    /// la navegación es inmediata. Ofrece guardar antes de salir.</summary>
+    private async Task GoBack()
+    {
+        if (HasUnsavedChanges)
+        {
+            var guardar = await JS.InvokeAsync<bool>("confirm",
+                "Hay cambios sin guardar en el informe.\n\nAceptar: guardar y salir.\nCancelar: salir sin guardar.");
+            if (guardar && !await TrySaveSilently()) return; // el fallo ya se ha avisado: no salir
+        }
+        Nav.NavigateTo("/muestras");
+    }
     private List<string> readPanelNames = new();
 
     /// <summary>Listado de tubos leídos según el registro de la muestra, recalculado en cada
@@ -720,6 +850,11 @@
         // Load conclusions if template already selected
         if (report.TemplateId.HasValue)
             templateConclusions = await MasterService.GetTemplateConclusionsAsync(report.TemplateId.Value);
+
+        // Punto de partida para detectar cambios sin guardar. Va al final de la carga, después
+        // del autorrelleno de PanelsUsedText: si se tomara antes, ese relleno automático
+        // contaría como un cambio del usuario y "Volver" preguntaría nada más entrar.
+        savedFingerprint = CurrentFingerprint();
     }
 
     private async Task OnTemplateSelected(ChangeEventArgs e)
@@ -1001,6 +1136,10 @@
             report.SelectedSignatures = selectedFacultativos.Any() ? string.Join("|", selectedFacultativos) : null;
             report.PreviousStudiesSelectedSampleIds = selectedPreviousStudyIds.Any() ? string.Join(",", selectedPreviousStudyIds) : null;
             await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), new List<int>());
+
+            // Lo que hay en pantalla pasa a ser lo guardado: sin esto, "Volver" seguiría
+            // preguntando después de un guardado correcto.
+            savedFingerprint = CurrentFingerprint();
         }
         finally
         {
