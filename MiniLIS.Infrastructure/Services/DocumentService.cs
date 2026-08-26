@@ -64,13 +64,21 @@ namespace MiniLIS.Infrastructure.Services
             var fullReport = await _db.SampleReports
                 .Include(r => r.Sample).ThenInclude(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
                 .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.PanelVersion).ThenInclude(pv => pv!.Panel)
+                // Los tubos hacen falta para saber qué paneles se leyeron de verdad (la línea
+                // "Versión de panel" solo declara los empleados). Sin este Include la colección
+                // llega vacía y la línea desaparecería en silencio.
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Tubes)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
+            // Solo los paneles con algún tubo leído: la línea documenta la versión de lo que
+            // se EMPLEÓ, y debe ser coherente con PanelsUsedText. Incluyendo todos los paneles
+            // de la muestra, el informe declaraba la versión de paneles solicitados pero nunca
+            // leídos (M-4).
             var panelVersionsText = string.Join(", ", fullReport.Sample?.Panels
-                .Where(sp => sp.PanelVersion != null)
+                .Where(sp => sp.PanelVersion != null && sp.Tubes.Any(t => t.IsRead))
                 .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
@@ -426,6 +434,10 @@ namespace MiniLIS.Infrastructure.Services
             var fullReport = await _db.SampleReports
                 .Include(r => r.Sample).ThenInclude(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
                 .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.PanelVersion).ThenInclude(pv => pv!.Panel)
+                // Los tubos hacen falta para saber qué paneles se leyeron de verdad (la línea
+                // "Versión de panel" solo declara los empleados). Sin este Include la colección
+                // llega vacía y la línea desaparecería en silencio.
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Tubes)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
                 .AsNoTracking()
@@ -625,8 +637,10 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.PanelsUsedText)}</text:p>");
 
                 // Trazabilidad de versión exacta (M-4), independiente del texto libre de arriba.
+                // Solo paneles con algún tubo leído, por coherencia con PanelsUsedText: de otro
+                // modo se declaraba la versión de paneles solicitados pero nunca empleados.
                 var panelVersionsText = string.Join(", ", s?.Panels
-                    .Where(sp => sp.PanelVersion != null)
+                    .Where(sp => sp.PanelVersion != null && sp.Tubes.Any(t => t.IsRead))
                     .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
                 if (!string.IsNullOrWhiteSpace(panelVersionsText))
                 {

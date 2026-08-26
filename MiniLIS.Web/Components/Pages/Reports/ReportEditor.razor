@@ -211,6 +211,22 @@
         </div>
         <div>
             <label class="rpt-label">Paneles empleados:</label>
+            @* El listado se rellena solo la primera vez y no se sobrescribe después, para no
+               pisar lo que edite el facultativo. Si entre medias se han leído más tubos, el
+               desfase se avisa aquí en vez de emitir un informe incompleto en silencio. *@
+            @if (PanelsUsedTextDesfasado)
+            {
+                <div class="panels-stale-notice">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>
+                        El registro de la muestra tiene tubos leídos que <strong>no constan en este listado</strong>.
+                        Se rellenó automáticamente al crear el informe y no se actualiza solo para no sobrescribir sus cambios.
+                    </span>
+                    <button type="button" class="btn-update-panels" @onclick="ActualizarPanelsUsedText">
+                        Actualizar listado
+                    </button>
+                </div>
+            }
             <textarea class="rpt-textarea" rows="3" @bind="report.PanelsUsedText" placeholder="Listado de tubos empleados..."></textarea>
         </div>
     </fieldset>
@@ -462,6 +478,39 @@
     .rpt-select { font-size: 13px; border: 1px solid #ccc; border-radius: 3px; padding: 4px 8px; height: 30px; background: #fff; }
     .rpt-textarea { font-size: 13px; width: 100%; border: 1px solid #ccc; border-radius: 3px; padding: 8px 10px; font-family: 'Consolas', 'Courier New', monospace; resize: vertical; }
 
+    /* Aviso de listado de paneles desfasado respecto al registro de la muestra */
+    .panels-stale-notice {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 2px 0 6px;
+        padding: 7px 11px;
+        border: 1px solid #fde68a;
+        border-left: 3px solid #d97706;
+        border-radius: 4px;
+        background: #fffbeb;
+        color: #92400e;
+        font-size: 12.5px;
+        line-height: 1.45;
+    }
+    .panels-stale-notice > i { color: #d97706; flex-shrink: 0; }
+    .panels-stale-notice span { flex: 1; min-width: 220px; }
+    .panels-stale-notice strong { font-weight: 700; }
+    .btn-update-panels {
+        border: 1px solid #d97706;
+        background: #d97706;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 11px;
+        border-radius: 3px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .btn-update-panels:hover { background: #b45309; border-color: #b45309; }
+    .btn-update-panels:focus-visible { outline: 2px solid #92400e; outline-offset: 2px; }
+
     /* ── Markers grid ── */
     .rpt-markers-box { border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: #fafafa; max-height: 500px; overflow-y: auto; }
     .marker-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #eee; }
@@ -524,6 +573,33 @@
     private List<string> intensityOptions = new();
     private bool isSaving = false;
     private List<string> readPanelNames = new();
+
+    /// <summary>Listado de tubos leídos según el registro de la muestra, recalculado en cada
+    /// carga. Se compara con lo guardado en el informe para detectar si se leyeron tubos
+    /// después de rellenarlo.</summary>
+    private string expectedPanelsUsedText = "";
+
+    private bool PanelsUsedTextDesfasado =>
+        !string.IsNullOrWhiteSpace(expectedPanelsUsedText)
+        && !string.IsNullOrWhiteSpace(report.PanelsUsedText)
+        && NormalizeLines(report.PanelsUsedText) != NormalizeLines(expectedPanelsUsedText);
+
+    private static string NormalizeLines(string text) =>
+        string.Join("\n", text.Replace("\r\n", "\n").Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0));
+
+    private static string BuildPanelsUsedText(List<SamplePanel> samplePanels) =>
+        string.Join("\n", samplePanels
+            .SelectMany(sp => sp.Tubes
+                .Where(t => t.IsRead)
+                .OrderBy(t => t.TubeNumber)
+                .Select(t => $"{sp.Panel?.Name ?? sp.CustomText ?? "—"} — T{t.TubeNumber}: {t.MarkerList}")));
+
+    private void ActualizarPanelsUsedText()
+    {
+        report.PanelsUsedText = expectedPanelsUsedText;
+    }
 
     [Inject] private ISampleService SampleService { get; set; } = default!;
     [Inject] private IPatientService PatientService { get; set; } = default!;
@@ -604,20 +680,22 @@
         var readPanels = samplePanels.Where(sp => sp.IsRead).ToList();
         readPanelNames = readPanels.Select(sp => sp.Panel?.Name ?? sp.CustomText ?? "—").ToList();
 
-        // Auto-fill PanelsUsedText if empty, con los tubos realmente leídos de ESTE
-        // estudio (SamplePanel.Tubes, congelados en el registro -- M-4) y no con
-        // Panel.TubeListText, que quedó obsoleto desde M-4 y nunca se rellena para
-        // paneles dados de alta después: el resultado era un listado vacío aunque
-        // hubiera tubos leídos. Se listan los tubos leídos de cualquier panel con
-        // lectura parcial, no solo de los paneles completados del todo.
+        // Listado de tubos realmente leídos en ESTE estudio (SamplePanel.Tubes, congelados
+        // en el registro -- M-4) y no Panel.TubeListText, obsoleto desde M-4 y nunca
+        // rellenado para paneles dados de alta después: daba un listado vacío aunque
+        // hubiera tubos leídos. Incluye los tubos leídos de paneles con lectura parcial,
+        // no solo los paneles completados.
+        expectedPanelsUsedText = BuildPanelsUsedText(samplePanels);
+
+        // Solo se rellena solo cuando está vacío: el campo es editable y el texto final es
+        // responsabilidad del facultativo, así que no se le sobrescribe lo que haya escrito.
+        // Si más tarde se leen más tubos, el listado guardado se queda corto -- ese desfase
+        // NO se corrige en silencio (borraría ediciones manuales) pero tampoco se oculta:
+        // la plantilla avisa y ofrece actualizarlo. Un informe que declara dos paneles
+        // mientras el pie de versiones declara cuatro es un problema de trazabilidad.
         if (string.IsNullOrWhiteSpace(report.PanelsUsedText))
         {
-            var tubeLines = samplePanels
-                .SelectMany(sp => sp.Tubes
-                    .Where(t => t.IsRead)
-                    .OrderBy(t => t.TubeNumber)
-                    .Select(t => $"{sp.Panel?.Name ?? sp.CustomText ?? "—"} — T{t.TubeNumber}: {t.MarkerList}"));
-            report.PanelsUsedText = string.Join("\n", tubeLines);
+            report.PanelsUsedText = expectedPanelsUsedText;
         }
 
         // Load existing custom signatories

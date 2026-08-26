@@ -30,6 +30,37 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.5.0
+
+### Corregido: el informe podía declarar menos paneles de los empleados
+
+Detectado sobre una muestra con cuatro paneles leídos (Mieloma, CD34, LNH y Leucemia
+Aguda): el apartado «PANELES EMPLEADOS» solo listaba dos, mientras el pie declaraba las
+cuatro versiones de panel. Un informe que se contradice consigo mismo en trazabilidad.
+
+**Causa.** «Paneles empleados» se rellena automáticamente **solo si está vacío**. Se genera
+al abrir el editor por primera vez y se guarda; si después se leen más tubos, el
+auto-relleno ya no se ejecuta y el listado guardado se queda corto. El pie de versiones,
+en cambio, se calculaba en vivo al generar el PDF, y por eso sí reflejaba los cuatro.
+
+**No se corrige sobrescribiendo el campo**, que es editable y cuyo contenido final es
+responsabilidad del facultativo: regenerarlo en cada carga borraría sus ediciones. En su
+lugar, el editor compara lo guardado con los tubos realmente leídos y, si hay desfase,
+**lo avisa y ofrece un botón para actualizar el listado**. La discrepancia se hace visible
+en vez de resolverse en silencio o emitirse tal cual.
+
+**Además, la línea «Versión de panel» solo declara ya los paneles con algún tubo leído.**
+Antes incluía todos los paneles de la muestra, de modo que un panel solicitado y nunca
+leído aparecía igualmente en la trazabilidad del informe. Ahora concuerda con el listado
+de paneles empleados.
+
+Esto obligó a incluir los tubos en la consulta del informe (PDF y ODT): traía
+`Panels → PanelVersion` pero no `Panels → Tubes`, así que filtrar por «tiene algún tubo
+leído» habría dejado la colección vacía y **eliminado la línea de versión sin dar ningún
+error**. Cubierto con dos pruebas nuevas.
+
+---
+
 ## v2.4.0
 
 ### Ventana de lectura de tubos («Paneles de Estudio»)

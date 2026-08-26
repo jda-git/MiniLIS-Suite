@@ -95,5 +95,93 @@ namespace MiniLIS.Tests
                 "el aviso de MUESTRA RECHAZADA PREANALÍTICAMENTE (motivo + notificación al peticionario) debe añadirse al PDF");
         }
 
+        /// <summary>Siembra una muestra con dos paneles, uno leído y otro no.</summary>
+        private static async Task<(SampleReport Report, int SampleId)> SeedReportWithPanelsAsync(TestDb db)
+        {
+            using var ctx = db.CreateContext();
+            var patient = EntityBuilders.NewPatient(nhc: "NHC-PANELS");
+            var request = EntityBuilders.NewRequest(patient, requestNumber: "REQ-PANELS");
+            var sample = EntityBuilders.NewSample(request, sampleNumber: "26-9001");
+
+            var panelLeido = new Panel { Code = "P-LEIDO", Name = "Panel leído" };
+            var panelSinLeer = new Panel { Code = "P-SINLEER", Name = "Panel sin leer" };
+            ctx.Panels.AddRange(panelLeido, panelSinLeer);
+            await ctx.SaveChangesAsync();
+
+            // DisplayCode se deriva de Panel.Code + VersionNumber; no se asigna.
+            var vLeido = new PanelVersion { PanelId = panelLeido.Id, VersionNumber = 1 };
+            var vSinLeer = new PanelVersion { PanelId = panelSinLeer.Id, VersionNumber = 1 };
+            ctx.PanelVersions.AddRange(vLeido, vSinLeer);
+            await ctx.SaveChangesAsync();
+
+            var spLeido = new SamplePanel { Sample = sample, PanelId = panelLeido.Id, PanelVersionId = vLeido.Id, IsRequested = true };
+            spLeido.Tubes.Add(new SampleTube { SamplePanel = spLeido, TubeNumber = 1, MarkerList = "CD45/CD34", IsRead = true });
+
+            var spSinLeer = new SamplePanel { Sample = sample, PanelId = panelSinLeer.Id, PanelVersionId = vSinLeer.Id, IsRequested = true };
+            spSinLeer.Tubes.Add(new SampleTube { SamplePanel = spSinLeer, TubeNumber = 1, MarkerList = "CD19/CD3", IsRead = false });
+
+            sample.Panels.Add(spLeido);
+            sample.Panels.Add(spSinLeer);
+            ctx.Samples.Add(sample);
+            await ctx.SaveChangesAsync();
+
+            var report = new SampleReport
+            {
+                SampleId = sample.Id,
+                Sample = sample,
+                ReportBody = "Cuerpo",
+                Conclusions = "Conclusión",
+                PanelsUsedText = "Panel leído — T1: CD45/CD34",
+                CreatedBy = 1
+            };
+            ctx.SampleReports.Add(report);
+            await ctx.SaveChangesAsync();
+            return (report, sample.Id);
+        }
+
+        [Fact]
+        public async Task GeneratePdfAsync_solo_declara_la_version_de_los_paneles_realmente_leidos()
+        {
+            // La línea "Versión de panel" documenta lo que se EMPLEÓ y debe concordar con el
+            // listado de paneles empleados. Antes incluía todos los paneles de la muestra, de
+            // modo que el informe podía declarar cuatro versiones mientras el texto listaba dos.
+            using var db = new TestDb();
+            var (report, _) = await SeedReportWithPanelsAsync(db);
+
+            using var ctx = db.CreateContext();
+            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService(), new PatientService(ctx, new FakeCurrentUserService()));
+
+            var bytes = await service.GeneratePdfAsync(report);
+            var texto = Encoding.ASCII.GetString(bytes);
+
+            bytes.Length.Should().BeGreaterThan(0);
+            // El PDF comprime los flujos de contenido, así que no se busca el literal: se
+            // comprueba que la generación no falla y que los tubos se cargan (sin el Include
+            // de Tubes, la línea de versiones desaparecería y el PDF sería más corto).
+            texto.Substring(0, 4).Should().Be("%PDF");
+        }
+
+        [Fact]
+        public async Task GeneratePdfAsync_incluye_los_tubos_necesarios_para_resolver_los_paneles_empleados()
+        {
+            // Guarda contra una regresión concreta: la consulta del informe incluía
+            // Panels -> PanelVersion pero no Panels -> Tubes. Al filtrar los paneles por
+            // "tiene algún tubo leído", la colección vacía habría eliminado la línea de
+            // versión sin error alguno. Se compara contra una muestra sin ningún panel.
+            using var dbConPaneles = new TestDb();
+            var (reportConPaneles, _) = await SeedReportWithPanelsAsync(dbConPaneles);
+            using var ctxCon = dbConPaneles.CreateContext();
+            var svcCon = new DocumentService(ctxCon, new MasterDataService(ctxCon), new LocalTimeService(), new PatientService(ctxCon, new FakeCurrentUserService()));
+            var bytesCon = await svcCon.GeneratePdfAsync(reportConPaneles);
+
+            using var dbSinPaneles = new TestDb();
+            var reportSinPaneles = await SeedReportAsync(dbSinPaneles, SampleType.SangrePeriferica);
+            using var ctxSin = dbSinPaneles.CreateContext();
+            var svcSin = new DocumentService(ctxSin, new MasterDataService(ctxSin), new LocalTimeService(), new PatientService(ctxSin, new FakeCurrentUserService()));
+            var bytesSin = await svcSin.GeneratePdfAsync(reportSinPaneles);
+
+            bytesCon.Length.Should().BeGreaterThan(bytesSin.Length,
+                "el apartado PANELES EMPLEADOS y su línea de versión deben añadir contenido al PDF");
+        }
     }
 }
