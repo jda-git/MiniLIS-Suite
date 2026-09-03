@@ -114,7 +114,7 @@ namespace MiniLIS.Infrastructure.Services
             });
             await _db.SaveChangesAsync();
 
-            return Encoding.UTF8.GetBytes(sb.ToString());
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
     }
 }

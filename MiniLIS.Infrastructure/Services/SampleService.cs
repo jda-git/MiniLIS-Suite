@@ -389,7 +389,7 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             // Return as UTF-8 with BOM for Excel compatibility
-            return Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
 
         public async Task<Sample?> GetSampleByIdAsync(int sampleId)

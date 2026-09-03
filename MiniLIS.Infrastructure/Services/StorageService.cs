@@ -222,7 +222,7 @@ namespace MiniLIS.Infrastructure.Services
                 }
             }
 
-            return Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
 
         public async Task<Dictionary<StoredSpecimenType, int>> GetDefaultRetentionDaysAsync()

@@ -30,6 +30,29 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.7.2
+
+### Los acentos salían rotos al abrir los CSV en Excel
+
+«Recepción» aparecía como «RecepciÃ³n» y «Nº» como «NÂº»: los ficheros iban en UTF-8 pero
+**sin marca de orden de bytes (BOM)**, y sin ella Excel los abre como ANSI.
+
+La causa es una trampa de .NET que parece correcta al leerla:
+`new UTF8Encoding(true).GetBytes(...)` **no escribe el BOM**. Ese parámetro solo hace que
+`GetPreamble()` lo devuelva; `GetBytes` nunca antepone el preámbulo. Compila, produce un
+CSV válido, y el fallo solo se ve al abrirlo.
+
+Afectaba a **cinco exportaciones**: las tres nuevas de esta versión (detalle de TAT, de
+incidencias y del buscador) y dos anteriores que ya lo arrastraban, las de **excedente y
+notificaciones**.
+
+En vez de parchear cada sitio, la conversión pasa a `CsvUtils.ToExcelBytes`, que ya usan
+las nueve exportaciones del programa —incluidas las cuatro que sí lo hacían bien pero
+repetían el código—. Cubierto con pruebas que comprueban el BOM y que dejan constancia de
+por qué el atajo no vale, para que no vuelva a colarse.
+
+---
+
 ## v2.7.1
 
 ### El botón de exportar CSV no se encontraba

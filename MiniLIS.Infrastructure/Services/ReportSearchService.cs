@@ -266,7 +266,7 @@ namespace MiniLIS.Infrastructure.Services
                     CsvUtils.EscapeField(i.Conclusion)
                 }));
             }
-            return new UTF8Encoding(true).GetBytes(sb.ToString());   // BOM: Excel abre en UTF-8
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
     }
 }

@@ -333,7 +333,7 @@ namespace MiniLIS.Infrastructure.Services
                 sb.AppendLine(string.Join(';', fields));
             }
 
-            return Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
 
         // ── 05_VALIDACIONES ───────────────────────────────────────────────────────
@@ -410,7 +410,7 @@ namespace MiniLIS.Infrastructure.Services
                     CsvUtils.EscapeField(log.Action),
                     CsvUtils.EscapeField(log.ActionContext)));
             }
-            return Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
 
         // ── 08_COPIAS (A-7) ───────────────────────────────────────────────────────

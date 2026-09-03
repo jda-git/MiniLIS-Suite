@@ -454,7 +454,7 @@ namespace MiniLIS.Infrastructure.Services
                     CsvUtils.EscapeField(i.Hours.ToString("0.0", CultureInfo.GetCultureInfo("es-ES")))
                 }));
             }
-            return new UTF8Encoding(true).GetBytes(sb.ToString());   // BOM: Excel abre en UTF-8
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
 
         public byte[] ExportIncidenciaDetailsToCsv(List<IncidenciaDetailItem> items)
@@ -473,7 +473,7 @@ namespace MiniLIS.Infrastructure.Services
                     CsvUtils.EscapeField(i.Motivos)
                 }));
             }
-            return new UTF8Encoding(true).GetBytes(sb.ToString());
+            return CsvUtils.ToExcelBytes(sb.ToString());
         }
 
         public async Task<List<QualityIndicator>> GetAllIndicatorsAsync() =>
