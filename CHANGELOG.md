@@ -30,6 +30,33 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.7.1
+
+### El botón de exportar CSV no se encontraba
+
+Quedaba a **cuatro niveles de profundidad**: desplegar la tarjeta del indicador, pulsar
+«Detalle por muestra», que la lista no estuviera vacía y, solo entonces, aparecía. Con el
+rango por defecto —el mes en curso— bastaba con que no hubiera estudios ese mes para que
+el botón no llegara a existir.
+
+Ahora la barra de detalle muestra **el recuento junto al indicador** («Detalle por
+muestra · 4») en cuanto se despliega la tarjeta, tomado de lo ya calculado y sin consultar
+la base de datos, y el **CSV se descarga en un solo clic** sin pasar por la tabla: si el
+detalle no está cargado, lo trae y exporta. Con cero muestras, el desplegable queda
+deshabilitado en vez de prometer algo que no hay.
+
+### Los atajos de fecha no recalculaban
+
+«Mes en curso», «Trimestre», «Año en curso» y «Año anterior» cambiaban el rango pero **no
+volvían a calcular**: la pantalla mostraba un periodo en los selectores y las cifras de
+otro, sin señal alguna de que estuvieran obsoletas. Fallo anterior a esta versión,
+detectado al comprobar el arreglo del CSV.
+
+Al recalcular se cierra además el detalle que hubiera abierto, porque correspondía al
+rango anterior y habría quedado junto a una cifra que ya no lo explica.
+
+---
+
 ## v2.7.0
 
 ### Estadísticas duplicaba Indicadores, y no coincidía con él

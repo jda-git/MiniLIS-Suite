@@ -170,11 +170,31 @@
                                criterios que el indicador, así que no puede contradecirlo. *@
                             @if (card.Config.Code is "TAT-TOTAL" or "PCT-INCIDENCIA")
                             {
-                                <div class="mt-3 pt-2 border-top">
-                                    <button class="ind-detail-toggle" @onclick="@(() => ToggleDetail(card.Config.Code))">
+                                @* El recuento sale del propio indicador, ya calculado: asi se ve que hay
+                                   detalle sin tener que abrirlo, y el CSV se descarga en un solo clic sin
+                                   pasar por la tabla. Antes el boton de exportar quedaba a cuatro niveles
+                                   de profundidad y no se encontraba. *@
+                                <div class="mt-3 pt-2 border-top ind-detail-bar">
+                                    <button class="ind-detail-toggle" @onclick="@(() => ToggleDetail(card.Config.Code))" disabled="@(DetailCount(card) == 0)">
                                         <i class="bi @(detailOpen == card.Config.Code ? "bi-chevron-down" : "bi-chevron-right")"></i>
                                         Detalle por muestra
+                                        <span class="ind-detail-badge">@DetailCount(card)</span>
                                     </button>
+                                    @if (DetailCount(card) > 0)
+                                    {
+                                        <button class="ind-csv-btn" @onclick="@(() => ExportDetail(card.Config.Code))" disabled="@(exporting == card.Config.Code)">
+                                            @if (exporting == card.Config.Code)
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-filetype-csv me-1"></i>
+                                            }
+                                            Exportar CSV
+                                        </button>
+                                    }
+                                </div>
 
                                     @if (detailOpen == card.Config.Code)
                                     {
@@ -190,12 +210,6 @@
                                             }
                                             else
                                             {
-                                                <div class="ind-detail-actions">
-                                                    <span class="ind-detail-count">@tatDetails.Count muestras</span>
-                                                    <button class="ind-csv-btn" @onclick="ExportTatDetails">
-                                                        <i class="bi bi-filetype-csv me-1"></i>Exportar CSV
-                                                    </button>
-                                                </div>
                                                 <div class="ind-detail-scroll">
                                                     <table class="ind-detail-table">
                                                         <thead>
@@ -230,12 +244,6 @@
                                             }
                                             else
                                             {
-                                                <div class="ind-detail-actions">
-                                                    <span class="ind-detail-count">@incidenciaDetails.Count muestras</span>
-                                                    <button class="ind-csv-btn" @onclick="ExportIncidenciaDetails">
-                                                        <i class="bi bi-filetype-csv me-1"></i>Exportar CSV
-                                                    </button>
-                                                </div>
                                                 <div class="ind-detail-scroll">
                                                     <table class="ind-detail-table">
                                                         <thead>
@@ -263,7 +271,6 @@
                                             }
                                         }
                                     }
-                                </div>
                             }
 
                             @if (card.Pct != null && card.Pct.Breakdown.Any())
@@ -314,13 +321,6 @@
     private List<TatDetailItem> tatDetails = new();
     private List<IncidenciaDetailItem> incidenciaDetails = new();
 
-    private QualityIndicatorFilter BuildFilter() => new()
-    {
-        SampleType = selectedSampleType,
-        PanelId = selectedPanelId,
-        RequesterService = requesterFilter
-    };
-
     private async Task ToggleDetail(string code)
     {
         if (detailOpen == code)
@@ -335,7 +335,7 @@
         incidenciaDetails = new();
         StateHasChanged();
 
-        var filtro = BuildFilter();
+        var filtro = CurrentFilter();
         if (code == "TAT-TOTAL")
         {
             tatDetails = await QIService.GetTatTotalDetailsAsync(fromDate, toDate, filtro);
@@ -347,18 +347,52 @@
         loadingDetail = false;
     }
 
-    private async Task ExportTatDetails()
-    {
-        var csv = QIService.ExportTatDetailsToCsv(tatDetails);
-        await JS.InvokeVoidAsync("downloadFileFromBase64",
-            $"TAT-TOTAL_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.csv", Convert.ToBase64String(csv));
-    }
+    /// <summary>Cuantas muestras hay detras del indicador, tomado de lo ya calculado: permite
+    /// mostrar el recuento y decidir si ofrecer el CSV sin ir a la base de datos.</summary>
+    private static int DetailCount(IndicatorCard card) =>
+        card.Config.Code == "TAT-TOTAL"
+            ? (card.Tat?.CompletedCount ?? 0)
+            : (card.Pct?.Numerator ?? 0);
 
-    private async Task ExportIncidenciaDetails()
+    private string? exporting;
+
+    /// <summary>Exporta el detalle sin obligar a abrir antes la tabla: si no esta cargado,
+    /// lo trae y descarga. Obligar a desplegarla primero solo anadia un paso que ocultaba
+    /// la accion.</summary>
+    private async Task ExportDetail(string code)
     {
-        var csv = QIService.ExportIncidenciaDetailsToCsv(incidenciaDetails);
-        await JS.InvokeVoidAsync("downloadFileFromBase64",
-            $"Incidencias_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.csv", Convert.ToBase64String(csv));
+        exporting = code;
+        try
+        {
+            var filtro = CurrentFilter();
+            byte[] csv;
+            string nombre;
+
+            if (code == "TAT-TOTAL")
+            {
+                if (!tatDetails.Any() || detailOpen != code)
+                {
+                    tatDetails = await QIService.GetTatTotalDetailsAsync(fromDate, toDate, filtro);
+                }
+                csv = QIService.ExportTatDetailsToCsv(tatDetails);
+                nombre = $"TAT-TOTAL_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.csv";
+            }
+            else
+            {
+                if (!incidenciaDetails.Any() || detailOpen != code)
+                {
+                    incidenciaDetails = await QIService.GetIncidenciaDetailsAsync(fromDate, toDate, filtro);
+                }
+                csv = QIService.ExportIncidenciaDetailsToCsv(incidenciaDetails);
+                nombre = $"Incidencias_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.csv";
+            }
+
+            await JS.InvokeVoidAsync("downloadFileFromBase64", nombre, Convert.ToBase64String(csv));
+        }
+        finally
+        {
+            exporting = null;
+        }
     }
 
     private class IndicatorCard
@@ -384,7 +418,9 @@
         RequesterService = string.IsNullOrWhiteSpace(requesterFilter) ? null : requesterFilter
     };
 
-    private void AplicarAtajo(string atajo)
+    // Antes solo movia las fechas: las tarjetas se quedaban con las cifras del rango
+    // anterior, de modo que la pantalla mostraba un periodo y unos numeros de otro.
+    private async Task AplicarAtajo(string atajo)
     {
         var hoy = DateTime.Today;
         switch (atajo)
@@ -406,11 +442,19 @@
                 toDate = new DateTime(hoy.Year - 1, 12, 31);
                 break;
         }
+        await RecalcularAsync();
     }
 
     private async Task RecalcularAsync()
     {
         isLoading = true;
+
+        // El detalle cargado corresponde al rango anterior: dejarlo abierto mostraria
+        // muestras que ya no encajan con la cifra de al lado.
+        detailOpen = null;
+        tatDetails = new();
+        incidenciaDetails = new();
+
         StateHasChanged();
 
         var indicators = await QIService.GetAllIndicatorsAsync();
@@ -620,18 +664,25 @@
         gap: 6px;
     }
     .ind-detail-toggle:hover { text-decoration: underline; }
-    .ind-detail-actions {
+    .ind-detail-bar {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin: 8px 0 6px;
+        flex-wrap: wrap;
     }
-    .ind-detail-count {
-        font-size: 11.5px;
-        font-weight: 600;
-        color: #64748b;
-        margin-right: auto;
+    .ind-detail-badge {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #475569;
+        background: #e2e8f0;
+        border-radius: 8px;
+        padding: 1px 7px;
+        margin-left: 2px;
     }
+    .ind-detail-toggle:disabled { color: #94a3b8; cursor: default; }
+    .ind-detail-toggle:disabled:hover { text-decoration: none; }
+    .ind-csv-btn { margin-left: auto; }
+    .ind-csv-btn:disabled { opacity: .6; cursor: default; }
     .ind-csv-btn {
         font-size: 11.5px;
         font-weight: 600;
