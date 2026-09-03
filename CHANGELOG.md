@@ -30,6 +30,70 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.7.0
+
+### Estadísticas duplicaba Indicadores, y no coincidía con él
+
+La pantalla de Estadísticas daba cuatro cifras —total de muestras, incidencias, su
+porcentaje y el TAT medio— que el cuadro de indicadores ya cubría. No era solo
+duplicación: **las dos pantallas podían responder distinto a la misma pregunta**, por tres
+motivos.
+
+**Filtraban por columnas distintas.** Estadísticas acotaba por `ReceptionDate` (fecha de
+negocio) e Indicadores por `ReceivedAtUtc` (marca de proceso). Son columnas diferentes, y
+editar una muestra actualiza la primera pero no la segunda: con el mismo rango podían
+estar contando conjuntos distintos.
+
+**Usaban estadísticos distintos.** Media frente a mediana y P90. Para un TAT la media es
+el estadístico equivocado: un solo estudio que tardó tres semanas desplaza el resultado.
+
+**Y el TAT de Estadísticas podía inventarse la fecha final.** Resolvía el fin con la
+cadena `ValidatedAtUtc ?? FinalizedAt ?? UpdatedAtUtc ?? CreatedAtUtc`, de modo que una
+muestra finalizada sin fecha de validación acababa usando **la fecha de creación** y
+producía un TAT próximo a cero, indistinguible de los reales al promediarse. Indicadores
+nunca hace eso: si falta la validación, la muestra se cuenta como caso abierto y queda
+fuera del cálculo, visible como tal.
+
+Para una unidad acreditada, dos pantallas que responden distinto a «¿cuál fue nuestro
+TAT?» son un problema en sí mismas. Se retira `StatisticsService` completo.
+
+### Indicadores gana el detalle nominal por muestra
+
+Lo único que Estadísticas aportaba y no estaba cubierto era el **listado por muestra con
+exportación a CSV**. Se traslada a Indicadores como desplegable «Detalle por muestra» en
+TAT-TOTAL y PCT-INCIDENCIA, con su botón de exportación.
+
+Vive junto al indicador a propósito: **usa exactamente sus mismos criterios** —igual rango
+sobre `ReceivedAtUtc`, iguales exclusiones—, así que el detalle no puede contradecir a la
+cifra que explica, que era justamente el defecto anterior. Se carga solo al desplegarlo y
+únicamente un indicador a la vez: son listas de pacientes, no conviene traerlas sin que se
+pidan ni dejar varias abiertas en pantalla.
+
+### La pantalla pasa a ser un buscador de muestras e informes
+
+En lugar de retirar la ruta, `/estadisticas` (y ahora también `/buscador`) sirve un
+buscador que combina **todos los parámetros del estudio a la vez**, con Y lógica: rellenar
+dos campos estrecha el resultado.
+
+- Rango de fechas, sobre la fecha de recepción.
+- Conclusión diagnóstica y cuerpo del informe.
+- Sospecha clínica, facultativo solicitante y servicio de procedencia.
+- **Marcador**, buscado tanto en los valores del informe como en el resumen redactado a
+  mano: viven en dos sitios distintos y buscar solo en uno perdería la mitad de los
+  estudios.
+- **Panel realizado**, buscado en los paneles del estudio y en el campo de texto heredado,
+  para no perder el histórico antiguo.
+- Paciente o nº de muestra, tipo, estado y «solo validados».
+
+Con resultados exportables a CSV. **Sin ningún criterio no busca**: volcar el histórico
+entero no es una búsqueda y con miles de estudios sería lento e inútil.
+
+**La búsqueda queda auditada** (M-2). Alcanza contenido clínico e identificadores de
+paciente, así que consta quién buscó, con qué criterios y cuántos resultados obtuvo —
+nunca lo devuelto.
+
+---
+
 ## v2.6.0
 
 ### Barra de acciones del editor de informe

@@ -1,0 +1,311 @@
+@page "/buscador"
+@page "/estadisticas"
+@using Microsoft.AspNetCore.Authorization
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@attribute [Authorize(Roles = "Administrador,Facultativo")]
+@inject IReportSearchService SearchService
+@inject IJSRuntime JS
+
+@* Esta página ocupa la ruta /estadisticas, que antes servía un cuadro de agregados (TAT medio,
+   nº de incidencias y su porcentaje). Todo aquello lo daba ya el cuadro de indicadores, y mejor
+   calculado: mediana y P90 en vez de media, y sin la cadena de respaldo que podía fechar un TAT
+   con la fecha de creación de la muestra. Se conserva la ruta para no romper enlaces guardados. *@
+
+<PageTitle>Buscador de informes - MiniLIS Suite</PageTitle>
+
+<div class="bus-container animate-fade-in">
+
+    <div class="bus-header">
+        <h1 class="bus-title">
+            <i class="bi bi-search me-2"></i>Buscador de muestras e informes
+        </h1>
+        <p class="bus-sub">
+            Todos los campos son opcionales y se combinan entre sí: rellenar dos estrecha el
+            resultado. Las fechas se aplican sobre la fecha de recepción de la muestra.
+        </p>
+    </div>
+
+    <div class="bus-form">
+        <div class="bus-grid">
+            <div class="bus-field">
+                <label>Desde</label>
+                <input type="date" @bind="filtro.Desde" />
+            </div>
+            <div class="bus-field">
+                <label>Hasta</label>
+                <input type="date" @bind="filtro.Hasta" />
+            </div>
+            <div class="bus-field bus-wide">
+                <label>Conclusión diagnóstica</label>
+                <input type="text" @bind="filtro.Conclusiones" @bind:event="oninput" @onkeydown="OnKeyDown" placeholder="p. ej. síndrome linfoproliferativo" />
+            </div>
+            <div class="bus-field bus-wide">
+                <label>Sospecha clínica</label>
+                <input type="text" @bind="filtro.SospechaClinica" @bind:event="oninput" @onkeydown="OnKeyDown" placeholder="p. ej. MM" />
+            </div>
+
+            <div class="bus-field">
+                <label>Marcador</label>
+                <input type="text" @bind="filtro.Marcador" @bind:event="oninput" @onkeydown="OnKeyDown" placeholder="p. ej. CD34" />
+            </div>
+            <div class="bus-field">
+                <label>Panel realizado</label>
+                <input type="text" @bind="filtro.Panel" @bind:event="oninput" @onkeydown="OnKeyDown" placeholder="p. ej. Mieloma" />
+            </div>
+            <div class="bus-field">
+                <label>Facultativo solicitante</label>
+                <input type="text" @bind="filtro.Facultativo" @bind:event="oninput" @onkeydown="OnKeyDown" />
+            </div>
+            <div class="bus-field">
+                <label>Servicio de procedencia</label>
+                <input type="text" @bind="filtro.Servicio" @bind:event="oninput" @onkeydown="OnKeyDown" placeholder="p. ej. Hematología" />
+            </div>
+
+            <div class="bus-field bus-wide">
+                <label>Cuerpo del informe</label>
+                <input type="text" @bind="filtro.CuerpoInforme" @bind:event="oninput" @onkeydown="OnKeyDown" />
+            </div>
+            <div class="bus-field bus-wide">
+                <label>Paciente o nº de muestra</label>
+                <input type="text" @bind="filtro.Paciente" @bind:event="oninput" @onkeydown="OnKeyDown" placeholder="nombre, NHC, NASI o 26-00123" />
+            </div>
+
+            <div class="bus-field">
+                <label>Tipo de muestra</label>
+                <select @bind="filtro.TipoMuestra">
+                    <option value="">— Todos —</option>
+                    @foreach (var t in Enum.GetValues<SampleType>())
+                    {
+                        <option value="@t">@t.ToDisplayName()</option>
+                    }
+                </select>
+            </div>
+            <div class="bus-field">
+                <label>Estado</label>
+                <select @bind="filtro.Estado">
+                    <option value="">— Todos —</option>
+                    @foreach (var e in Enum.GetValues<SampleStatus>())
+                    {
+                        <option value="@e">@e</option>
+                    }
+                </select>
+            </div>
+            <div class="bus-field bus-check">
+                <label class="bus-checkbox">
+                    <input type="checkbox" @bind="filtro.SoloValidados" />
+                    Solo informes validados
+                </label>
+            </div>
+        </div>
+
+        <div class="bus-actions">
+            <button class="bus-btn-search" @onclick="Buscar" disabled="@isSearching">
+                @if (isSearching)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                }
+                <i class="bi bi-search me-2"></i>Buscar
+            </button>
+            <button class="bus-btn-clear" @onclick="Limpiar" disabled="@isSearching">
+                <i class="bi bi-x-lg me-1"></i>Limpiar
+            </button>
+            @if (resultado != null && resultado.Items.Any())
+            {
+                <button class="bus-btn-csv" @onclick="ExportarCsv">
+                    <i class="bi bi-filetype-csv me-1"></i>Exportar CSV
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (mensaje != null)
+    {
+        <div class="bus-msg"><i class="bi bi-info-circle me-2"></i>@mensaje</div>
+    }
+
+    @if (resultado != null)
+    {
+        @if (!resultado.Items.Any())
+        {
+            <div class="bus-empty">
+                <i class="bi bi-inbox"></i>
+                <p>Ningún estudio coincide con los criterios indicados.</p>
+            </div>
+        }
+        else
+        {
+            <div class="bus-results-head">
+                <span class="bus-count">@resultado.TotalMatches resultado@(resultado.TotalMatches == 1 ? "" : "s")</span>
+                @if (resultado.Truncated)
+                {
+                    <span class="bus-trunc">
+                        Se muestran los @resultado.Items.Count más recientes. Acote las fechas para verlos todos.
+                    </span>
+                }
+            </div>
+
+            <div class="bus-table-wrap">
+                <table class="bus-table">
+                    <thead>
+                        <tr>
+                            <th>Muestra</th>
+                            <th>Recepción</th>
+                            <th>Paciente</th>
+                            <th>Servicio</th>
+                            <th>Facultativo</th>
+                            <th>Sospecha</th>
+                            <th>Paneles</th>
+                            <th>Estado</th>
+                            <th>Conclusión</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in resultado.Items)
+                        {
+                            <tr>
+                                <td class="bus-nowrap">
+                                    <a href="/muestras/editar/@r.SampleId" target="_blank">@r.SampleNumber</a>
+                                </td>
+                                <td class="bus-nowrap">@r.ReceptionDate.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    @r.Patient
+                                    @if (!string.IsNullOrEmpty(r.Nhc))
+                                    {
+                                        <span class="bus-nhc">@r.Nhc</span>
+                                    }
+                                </td>
+                                <td>@r.Servicio</td>
+                                <td>@r.Facultativo</td>
+                                <td class="bus-small">@r.SospechaClinica</td>
+                                <td class="bus-small">@r.Paneles</td>
+                                <td class="bus-nowrap">
+                                    <span class="bus-estado">@r.Estado</span>
+                                    @if (r.Validado)
+                                    {
+                                        <span class="bus-val" title="Informe validado"><i class="bi bi-check-circle-fill"></i></span>
+                                    }
+                                </td>
+                                <td class="bus-concl">@r.Conclusion</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .bus-container { padding: 24px 28px 40px; max-width: 1500px; margin: 0 auto; }
+    .bus-header { margin-bottom: 16px; }
+    .bus-title { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0 0 4px; display: flex; align-items: center; }
+    .bus-sub { font-size: 13px; color: #64748b; margin: 0; max-width: 760px; }
+
+    .bus-form { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
+    .bus-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 14px; }
+    .bus-field { display: flex; flex-direction: column; min-width: 0; }
+    .bus-wide { grid-column: span 2; }
+    .bus-field label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #64748b; margin-bottom: 3px; }
+    .bus-field input[type=text], .bus-field input[type=date], .bus-field select {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 5px;
+        padding: 6px 9px;
+        font-size: 13px;
+        background: #fff;
+        color: #0f172a;
+    }
+    .bus-field input:focus, .bus-field select:focus { outline: 2px solid #93c5fd; outline-offset: -1px; border-color: #60a5fa; }
+    .bus-check { justify-content: flex-end; }
+    .bus-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #334155; text-transform: none; letter-spacing: 0; }
+
+    .bus-actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; flex-wrap: wrap; }
+    .bus-btn-search {
+        background: #0d6efd; border: 1px solid #0d6efd; color: #fff;
+        font-size: 13px; font-weight: 700; padding: 7px 20px; border-radius: 5px; cursor: pointer;
+        display: inline-flex; align-items: center;
+    }
+    .bus-btn-search:hover:not(:disabled) { background: #0b5ed7; }
+    .bus-btn-search:disabled { opacity: .65; cursor: default; }
+    .bus-btn-clear { background: #fff; border: 1px solid #cbd5e1; color: #475569; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 5px; cursor: pointer; }
+    .bus-btn-clear:hover:not(:disabled) { background: #f1f5f9; }
+    .bus-btn-csv { margin-left: auto; background: #fff; border: 1px solid #bbf7d0; color: #15803d; font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 5px; cursor: pointer; }
+    .bus-btn-csv:hover { background: #f0fdf4; border-color: #86efac; }
+
+    .bus-msg { margin-top: 14px; padding: 9px 13px; background: #eff6ff; border: 1px solid #bfdbfe; border-left: 3px solid #3b82f6; border-radius: 5px; font-size: 13px; color: #1e40af; }
+    .bus-empty { margin-top: 24px; text-align: center; color: #94a3b8; }
+    .bus-empty i { font-size: 34px; display: block; margin-bottom: 6px; }
+    .bus-empty p { font-size: 14px; margin: 0; }
+
+    .bus-results-head { display: flex; align-items: baseline; gap: 12px; margin: 20px 0 8px; flex-wrap: wrap; }
+    .bus-count { font-size: 14px; font-weight: 700; color: #0f172a; }
+    .bus-trunc { font-size: 12px; color: #a16207; background: #fefce8; border: 1px solid #fde68a; border-radius: 4px; padding: 2px 8px; }
+
+    /* La tabla es ancha: se desplaza dentro de su caja, la página no. */
+    .bus-table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 6px; }
+    .bus-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .bus-table th {
+        position: sticky; top: 0; background: #f1f5f9; text-align: left;
+        font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+        color: #475569; padding: 7px 9px; border-bottom: 1px solid #cbd5e1; white-space: nowrap;
+    }
+    .bus-table td { padding: 6px 9px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .bus-table tbody tr:hover { background: #f8fafc; }
+    .bus-nowrap { white-space: nowrap; }
+    .bus-small { font-size: 11.5px; color: #475569; max-width: 190px; }
+    .bus-concl { font-size: 11.5px; color: #334155; max-width: 380px; }
+    .bus-nhc { display: block; font-size: 10.5px; color: #94a3b8; font-family: Consolas, monospace; }
+    .bus-estado { font-size: 10.5px; font-weight: 700; color: #475569; background: #f1f5f9; border-radius: 8px; padding: 1px 7px; }
+    .bus-val { color: #16a34a; margin-left: 4px; }
+</style>
+
+@code {
+    private ReportSearchFilter filtro = new();
+    private ReportSearchResult? resultado;
+    private bool isSearching;
+    private string? mensaje;
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Buscar();
+    }
+
+    private async Task Buscar()
+    {
+        // Sin criterios no se busca: volcar el histórico entero no es una búsqueda, y con
+        // varios miles de estudios sería además lento e inútil.
+        if (filtro.EstaVacio)
+        {
+            mensaje = "Indique al menos un criterio de búsqueda.";
+            resultado = null;
+            return;
+        }
+
+        mensaje = null;
+        isSearching = true;
+        try
+        {
+            resultado = await SearchService.SearchAsync(filtro);
+        }
+        finally
+        {
+            isSearching = false;
+        }
+    }
+
+    private void Limpiar()
+    {
+        filtro = new ReportSearchFilter();
+        resultado = null;
+        mensaje = null;
+    }
+
+    private async Task ExportarCsv()
+    {
+        if (resultado == null) return;
+        var csv = SearchService.ExportToCsv(resultado.Items);
+        await JS.InvokeVoidAsync("downloadFileFromBase64",
+            $"Busqueda_informes_{DateTime.Now:yyyyMMdd_HHmm}.csv", Convert.ToBase64String(csv));
+    }
+}

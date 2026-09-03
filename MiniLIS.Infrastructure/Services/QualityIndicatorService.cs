@@ -5,6 +5,8 @@ using MiniLIS.Infrastructure.Persistence;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace MiniLIS.Infrastructure.Services
@@ -15,8 +17,7 @@ namespace MiniLIS.Infrastructure.Services
     /// corrección retroactiva se refleja automáticamente en el indicador.
     /// Los agregados PCT-*/ACT-* se resuelven con GroupBy traducible a SQL. Los TAT-* necesitan
     /// mediana/P90 sobre la serie ordenada, que no es expresable en GroupBy de SQL: se cargan las
-    /// duraciones (solo las columnas necesarias, no las entidades completas) y se ordenan en memoria,
-    /// mismo patrón ya usado por StatisticsService.GetTatDetailsAsync.
+    /// duraciones (solo las columnas necesarias, no las entidades completas) y se ordenan en memoria.
     /// </summary>
     public class QualityIndicatorService : IQualityIndicatorService
     {
@@ -365,6 +366,115 @@ namespace MiniLIS.Infrastructure.Services
         }
 
         // --- Catálogo / umbrales -----------------------------------------------------------
+
+        // --- Detalle nominal y exportación ------------------------------------------
+        // El cuadro de mando da el agregado; esto es la lista de muestras que hay detrás.
+        // Comparte los criterios EXACTOS del indicador -- mismo rango sobre ReceivedAtUtc y
+        // mismas exclusiones -- de modo que el detalle no puede contradecir a la cifra que
+        // explica. Ese era justamente el problema de la antigua pantalla de Estadísticas.
+
+        public async Task<List<TatDetailItem>> GetTatTotalDetailsAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro)
+        {
+            var (start, end) = ToUtcRange(desde, hasta);
+            var rows = await FilteredReceivedQuery(start, end, filtro)
+                .Where(s => s.ReceptionStatus != ReceptionStatus.Rechazada && s.Status != SampleStatus.Rechazada)
+                .Where(s => s.Report != null && s.Report.ValidatedAtUtc != null)
+                .Select(s => new
+                {
+                    s.Id,
+                    s.SampleNumber,
+                    Patient = s.ClinicalRequest.Patient.FullName,
+                    Service = s.ClinicalRequest.OriginService,
+                    Start = s.ReceivedAtUtc!.Value,
+                    End = s.Report!.ValidatedAtUtc!.Value
+                })
+                .ToListAsync();
+
+            return rows
+                .Select(r => new TatDetailItem
+                {
+                    SampleId = r.Id,
+                    SampleNumber = r.SampleNumber,
+                    Patient = r.Patient ?? "",
+                    RequesterService = r.Service ?? "",
+                    StartUtc = r.Start,
+                    EndUtc = r.End,
+                    Hours = Math.Round((r.End - r.Start).TotalHours, 1)
+                })
+                .Where(x => x.Hours >= 0)           // misma guarda que ComputeTat
+                .OrderByDescending(x => x.Hours)    // lo más lento primero: es lo que se revisa
+                .ToList();
+        }
+
+        public async Task<List<IncidenciaDetailItem>> GetIncidenciaDetailsAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro)
+        {
+            var (start, end) = ToUtcRange(desde, hasta);
+            var rows = await FilteredReceivedQuery(start, end, filtro)
+                .Where(s => s.ReceptionStatus != ReceptionStatus.Correcta)
+                .Select(s => new
+                {
+                    s.Id,
+                    s.SampleNumber,
+                    Patient = s.ClinicalRequest.Patient.FullName,
+                    Service = s.ClinicalRequest.OriginService,
+                    s.ReceivedAtUtc,
+                    s.ReceptionStatus,
+                    Motivos = s.ReceptionIssues.Select(i => i.RejectionReason.Description).ToList()
+                })
+                .ToListAsync();
+
+            return rows
+                .Select(r => new IncidenciaDetailItem
+                {
+                    SampleId = r.Id,
+                    SampleNumber = r.SampleNumber,
+                    Patient = r.Patient ?? "",
+                    RequesterService = r.Service ?? "",
+                    ReceivedAtUtc = r.ReceivedAtUtc,
+                    Estado = r.ReceptionStatus == ReceptionStatus.Rechazada ? "Rechazada" : "Con salvedad",
+                    Motivos = string.Join("; ", r.Motivos)
+                })
+                .OrderByDescending(x => x.ReceivedAtUtc)
+                .ToList();
+        }
+
+        public byte[] ExportTatDetailsToCsv(List<TatDetailItem> items)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Nº muestra;Paciente;Servicio;Recepción;Validación;Horas");
+            foreach (var i in items)
+            {
+                sb.AppendLine(string.Join(";", new[]
+                {
+                    CsvUtils.EscapeField(i.SampleNumber),
+                    CsvUtils.EscapeField(i.Patient),
+                    CsvUtils.EscapeField(i.RequesterService),
+                    CsvUtils.EscapeField(_localTimeService.ToLocal(i.StartUtc).ToString("dd/MM/yyyy HH:mm")),
+                    CsvUtils.EscapeField(_localTimeService.ToLocal(i.EndUtc).ToString("dd/MM/yyyy HH:mm")),
+                    CsvUtils.EscapeField(i.Hours.ToString("0.0", CultureInfo.GetCultureInfo("es-ES")))
+                }));
+            }
+            return new UTF8Encoding(true).GetBytes(sb.ToString());   // BOM: Excel abre en UTF-8
+        }
+
+        public byte[] ExportIncidenciaDetailsToCsv(List<IncidenciaDetailItem> items)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Nº muestra;Paciente;Servicio;Recepción;Estado;Motivos");
+            foreach (var i in items)
+            {
+                sb.AppendLine(string.Join(";", new[]
+                {
+                    CsvUtils.EscapeField(i.SampleNumber),
+                    CsvUtils.EscapeField(i.Patient),
+                    CsvUtils.EscapeField(i.RequesterService),
+                    CsvUtils.EscapeField(_localTimeService.ToLocal(i.ReceivedAtUtc)?.ToString("dd/MM/yyyy HH:mm")),
+                    CsvUtils.EscapeField(i.Estado),
+                    CsvUtils.EscapeField(i.Motivos)
+                }));
+            }
+            return new UTF8Encoding(true).GetBytes(sb.ToString());
+        }
 
         public async Task<List<QualityIndicator>> GetAllIndicatorsAsync() =>
             await _db.QualityIndicators.OrderBy(q => q.DisplayOrder).ToListAsync();

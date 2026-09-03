@@ -6,6 +6,8 @@
 @inject IQualityIndicatorService QIService
 @inject IMasterDataService MasterService
 @inject NavigationManager Nav
+@inject ILocalTimeService LocalTimeService
+@inject IJSRuntime JS
 
 <PageTitle>Indicadores de Calidad - MiniLIS Suite</PageTitle>
 
@@ -162,6 +164,108 @@
                                 </div>
                             }
 
+                            @* Listado nominal de las muestras que hay detrás del indicador. Es lo que
+                               pide una auditoría en cuanto cuestiona una cifra, y sustituye al listado
+                               de la antigua pantalla de Estadísticas — aquí usa exactamente los mismos
+                               criterios que el indicador, así que no puede contradecirlo. *@
+                            @if (card.Config.Code is "TAT-TOTAL" or "PCT-INCIDENCIA")
+                            {
+                                <div class="mt-3 pt-2 border-top">
+                                    <button class="ind-detail-toggle" @onclick="@(() => ToggleDetail(card.Config.Code))">
+                                        <i class="bi @(detailOpen == card.Config.Code ? "bi-chevron-down" : "bi-chevron-right")"></i>
+                                        Detalle por muestra
+                                    </button>
+
+                                    @if (detailOpen == card.Config.Code)
+                                    {
+                                        @if (loadingDetail)
+                                        {
+                                            <div class="small text-muted mt-2">Cargando detalle…</div>
+                                        }
+                                        else if (card.Config.Code == "TAT-TOTAL")
+                                        {
+                                            @if (!tatDetails.Any())
+                                            {
+                                                <div class="small text-muted mt-2">Sin muestras completadas en el periodo.</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="ind-detail-actions">
+                                                    <span class="ind-detail-count">@tatDetails.Count muestras</span>
+                                                    <button class="ind-csv-btn" @onclick="ExportTatDetails">
+                                                        <i class="bi bi-filetype-csv me-1"></i>Exportar CSV
+                                                    </button>
+                                                </div>
+                                                <div class="ind-detail-scroll">
+                                                    <table class="ind-detail-table">
+                                                        <thead>
+                                                            <tr><th>Muestra</th><th>Paciente</th><th>Servicio</th><th>Recepción</th><th>Validación</th><th class="text-end">Horas</th></tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var d in tatDetails.Take(200))
+                                                            {
+                                                                <tr>
+                                                                    <td><a href="/muestras/editar/@d.SampleId" target="_blank">@d.SampleNumber</a></td>
+                                                                    <td>@d.Patient</td>
+                                                                    <td>@d.RequesterService</td>
+                                                                    <td>@LocalTimeService.ToLocal(d.StartUtc).ToString("dd/MM/yy HH:mm")</td>
+                                                                    <td>@LocalTimeService.ToLocal(d.EndUtc).ToString("dd/MM/yy HH:mm")</td>
+                                                                    <td class="text-end fw-semibold">@d.Hours.ToString("0.#")</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                @if (tatDetails.Count > 200)
+                                                {
+                                                    <div class="small text-muted mt-1">Se muestran 200 de @tatDetails.Count. El CSV los incluye todos.</div>
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            @if (!incidenciaDetails.Any())
+                                            {
+                                                <div class="small text-muted mt-2">Sin incidencias en el periodo.</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="ind-detail-actions">
+                                                    <span class="ind-detail-count">@incidenciaDetails.Count muestras</span>
+                                                    <button class="ind-csv-btn" @onclick="ExportIncidenciaDetails">
+                                                        <i class="bi bi-filetype-csv me-1"></i>Exportar CSV
+                                                    </button>
+                                                </div>
+                                                <div class="ind-detail-scroll">
+                                                    <table class="ind-detail-table">
+                                                        <thead>
+                                                            <tr><th>Muestra</th><th>Paciente</th><th>Servicio</th><th>Recepción</th><th>Estado</th><th>Motivos</th></tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var d in incidenciaDetails.Take(200))
+                                                            {
+                                                                <tr>
+                                                                    <td><a href="/muestras/editar/@d.SampleId" target="_blank">@d.SampleNumber</a></td>
+                                                                    <td>@d.Patient</td>
+                                                                    <td>@d.RequesterService</td>
+                                                                    <td>@(LocalTimeService.ToLocal(d.ReceivedAtUtc)?.ToString("dd/MM/yy HH:mm") ?? "-")</td>
+                                                                    <td><span class="ind-estado @(d.Estado == "Rechazada" ? "es-rech" : "es-salv")">@d.Estado</span></td>
+                                                                    <td class="small">@d.Motivos</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                @if (incidenciaDetails.Count > 200)
+                                                {
+                                                    <div class="small text-muted mt-1">Se muestran 200 de @incidenciaDetails.Count. El CSV los incluye todos.</div>
+                                                }
+                                            }
+                                        }
+                                    }
+                                </div>
+                            }
+
                             @if (card.Pct != null && card.Pct.Breakdown.Any())
                             {
                                 <div class="mt-2">
@@ -202,6 +306,60 @@
     private bool isExportingPdf = false;
 
     private List<IndicatorCard> cards = new();
+
+    // Detalle nominal: un solo indicador abierto a la vez. Son listas de pacientes, no
+    // conviene dejar varias desplegadas en pantalla ni cargarlas sin que se pidan.
+    private string? detailOpen;
+    private bool loadingDetail;
+    private List<TatDetailItem> tatDetails = new();
+    private List<IncidenciaDetailItem> incidenciaDetails = new();
+
+    private QualityIndicatorFilter BuildFilter() => new()
+    {
+        SampleType = selectedSampleType,
+        PanelId = selectedPanelId,
+        RequesterService = requesterFilter
+    };
+
+    private async Task ToggleDetail(string code)
+    {
+        if (detailOpen == code)
+        {
+            detailOpen = null;
+            return;
+        }
+
+        detailOpen = code;
+        loadingDetail = true;
+        tatDetails = new();
+        incidenciaDetails = new();
+        StateHasChanged();
+
+        var filtro = BuildFilter();
+        if (code == "TAT-TOTAL")
+        {
+            tatDetails = await QIService.GetTatTotalDetailsAsync(fromDate, toDate, filtro);
+        }
+        else
+        {
+            incidenciaDetails = await QIService.GetIncidenciaDetailsAsync(fromDate, toDate, filtro);
+        }
+        loadingDetail = false;
+    }
+
+    private async Task ExportTatDetails()
+    {
+        var csv = QIService.ExportTatDetailsToCsv(tatDetails);
+        await JS.InvokeVoidAsync("downloadFileFromBase64",
+            $"TAT-TOTAL_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.csv", Convert.ToBase64String(csv));
+    }
+
+    private async Task ExportIncidenciaDetails()
+    {
+        var csv = QIService.ExportIncidenciaDetailsToCsv(incidenciaDetails);
+        await JS.InvokeVoidAsync("downloadFileFromBase64",
+            $"Incidencias_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.csv", Convert.ToBase64String(csv));
+    }
 
     private class IndicatorCard
     {
@@ -447,4 +605,69 @@
     .ind-hist-count { color: #334155; font-weight: 600; }
 
     .ind-breakdown-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; border-bottom: 1px dashed #e2e8f0; }
+
+    /* Detalle nominal por muestra */
+    .ind-detail-toggle {
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #0d6efd;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .ind-detail-toggle:hover { text-decoration: underline; }
+    .ind-detail-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 8px 0 6px;
+    }
+    .ind-detail-count {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #64748b;
+        margin-right: auto;
+    }
+    .ind-csv-btn {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #15803d;
+        background: #fff;
+        border: 1px solid #bbf7d0;
+        border-radius: 5px;
+        padding: 3px 9px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .ind-csv-btn:hover { background: #f0fdf4; border-color: #86efac; }
+    /* La tabla puede ser larga: se desplaza dentro de la tarjeta en vez de estirarla. */
+    .ind-detail-scroll { max-height: 340px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 6px; }
+    .ind-detail-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    .ind-detail-table th {
+        position: sticky;
+        top: 0;
+        background: #f1f5f9;
+        text-align: left;
+        font-weight: 700;
+        color: #475569;
+        padding: 5px 8px;
+        border-bottom: 1px solid #cbd5e1;
+        white-space: nowrap;
+    }
+    .ind-detail-table td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .ind-detail-table tbody tr:hover { background: #f8fafc; }
+    .ind-estado {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 8px;
+        white-space: nowrap;
+    }
+    .es-rech { background: #fee2e2; color: #b91c1c; }
+    .es-salv { background: #fef3c7; color: #a16207; }
 </style>

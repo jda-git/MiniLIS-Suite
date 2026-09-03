@@ -68,6 +68,33 @@ namespace MiniLIS.Application.Interfaces
         public double? Value { get; init; }
     }
 
+
+    /// <summary>Una muestra concreta detrás de un indicador TAT. El cuadro de mando da el
+    /// agregado; esto es la lista nominal que permite revisar caso por caso, que es lo que
+    /// pide una auditoría cuando cuestiona una cifra.</summary>
+    public class TatDetailItem
+    {
+        public int SampleId { get; init; }
+        public string SampleNumber { get; init; } = string.Empty;
+        public string Patient { get; init; } = string.Empty;
+        public string RequesterService { get; init; } = string.Empty;
+        public DateTime StartUtc { get; init; }
+        public DateTime EndUtc { get; init; }
+        public double Hours { get; init; }
+    }
+
+    /// <summary>Una incidencia de recepción concreta detrás de PCT-INCIDENCIA.</summary>
+    public class IncidenciaDetailItem
+    {
+        public int SampleId { get; init; }
+        public string SampleNumber { get; init; } = string.Empty;
+        public string Patient { get; init; } = string.Empty;
+        public string RequesterService { get; init; } = string.Empty;
+        public DateTime? ReceivedAtUtc { get; init; }
+        public string Estado { get; init; } = string.Empty;      // Con salvedad / Rechazada
+        public string Motivos { get; init; } = string.Empty;     // causas separadas por "; "
+    }
+
     public interface IQualityIndicatorService
     {
         Task<TatIndicatorResult> GetTatTotalAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro);
@@ -91,6 +118,17 @@ namespace MiniLIS.Application.Interfaces
         /// <summary>Serie mensual (últimos N meses) del valor representativo del indicador:
         /// mediana para TAT-*, porcentaje para PCT-*, recuento total para ACT-*.</summary>
         Task<List<MonthlyTrendPoint>> GetMonthlyTrendAsync(string indicatorCode, DateTime hasta, int meses, QualityIndicatorFilter filtro);
+
+
+        /// <summary>Listado nominal de las muestras que componen TAT-TOTAL en el periodo.
+        /// Solo las completadas: los casos sin validar ya se reportan como casos abiertos.</summary>
+        Task<List<TatDetailItem>> GetTatTotalDetailsAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro);
+
+        /// <summary>Listado nominal de las muestras con incidencia de recepción en el periodo.</summary>
+        Task<List<IncidenciaDetailItem>> GetIncidenciaDetailsAsync(DateTime desde, DateTime hasta, QualityIndicatorFilter filtro);
+
+        byte[] ExportTatDetailsToCsv(List<TatDetailItem> items);
+        byte[] ExportIncidenciaDetailsToCsv(List<IncidenciaDetailItem> items);
 
         Task<List<QualityIndicator>> GetAllIndicatorsAsync();
         Task<QualityIndicator> UpsertIndicatorThresholdsAsync(QualityIndicator indicator);

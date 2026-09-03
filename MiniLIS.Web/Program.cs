@@ -65,7 +65,7 @@ builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ISampleService, SampleService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
-builder.Services.AddScoped<IStatisticsService, StatisticsService>();
+builder.Services.AddScoped<IReportSearchService, ReportSearchService>();
 builder.Services.AddScoped<IQualityIndicatorService, QualityIndicatorService>();
 builder.Services.AddScoped<IWorklistService, WorklistService>();
 builder.Services.AddScoped<IWorklistExportService, WorklistExportService>();
