@@ -68,6 +68,14 @@ namespace MiniLIS.Infrastructure.Services
                 // "Versión de panel" solo declara los empleados). Sin este Include la colección
                 // llega vacía y la línea desaparecería en silencio.
                 .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Tubes)
+                // Los tubos de la VERSIÓN de panel: ahí viven las notas de alcance de
+                // acreditación. SampleTube congela MarkerList pero no Notes, y no hace falta
+                // congelarlas: una versión publicada es inmutable (M-4), así que la nota de
+                // CD34-v02/T1 no puede cambiar nunca. Una sola fuente de verdad.
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.PanelVersion).ThenInclude(pv => pv!.Tubes)
+                // sp.Panel da el NOMBRE del panel. Sin este Include el listado salia con un
+                // guion en su lugar: el texto lo generaba antes el editor, donde si estaba.
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Panel)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
                 .AsNoTracking()
@@ -222,10 +230,34 @@ namespace MiniLIS.Infrastructure.Services
                                 col.Item().PaddingBottom(11); 
                         }
 
-                        if (!string.IsNullOrWhiteSpace(fullReport.PanelsUsedText))
+                        var tubosEmpleados = BuildTubosEmpleados(fullReport.Sample);
+
+                        if (tubosEmpleados.Any() || !string.IsNullOrWhiteSpace(fullReport.PanelsUsedText))
                         {
                             col.Item().PaddingBottom(5).Text("PANELES EMPLEADOS").FontSize(11).FontColor(titleColor);
-                            col.Item().PaddingBottom(!string.IsNullOrWhiteSpace(panelVersionsText) ? 2 : 15).Text(fullReport.PanelsUsedText).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+
+                            if (tubosEmpleados.Any())
+                            {
+                                // Cada tubo en su fila, con la nota de alcance de acreditación a la
+                                // derecha. Se pinta desde los datos y no desde PanelsUsedText para que
+                                // la declaración de alcance no dependa de un campo de texto editable.
+                                foreach (var (descripcion, nota) in tubosEmpleados)
+                                {
+                                    col.Item().PaddingBottom(1).Row(fila =>
+                                    {
+                                        fila.RelativeItem(3).Text(descripcion).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                                        fila.RelativeItem(2).AlignRight().Text(nota).FontSize(8).FontColor(Colors.Grey.Darken1).LineHeight(1.1f);
+                                    });
+                                }
+                                col.Item().PaddingBottom(!string.IsNullOrWhiteSpace(panelVersionsText) ? 2 : 15);
+                            }
+                            else
+                            {
+                                // Sin tubos resolubles (estudios antiguos o informes redactados a
+                                // mano) se conserva el texto libre, para no vaciar el apartado.
+                                col.Item().PaddingBottom(!string.IsNullOrWhiteSpace(panelVersionsText) ? 2 : 15).Text(fullReport.PanelsUsedText).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                            }
+
                             if (!string.IsNullOrWhiteSpace(panelVersionsText))
                             {
                                 // Trazabilidad de versión exacta (M-4), independiente del texto libre de arriba.
@@ -438,6 +470,14 @@ namespace MiniLIS.Infrastructure.Services
                 // "Versión de panel" solo declara los empleados). Sin este Include la colección
                 // llega vacía y la línea desaparecería en silencio.
                 .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Tubes)
+                // Los tubos de la VERSIÓN de panel: ahí viven las notas de alcance de
+                // acreditación. SampleTube congela MarkerList pero no Notes, y no hace falta
+                // congelarlas: una versión publicada es inmutable (M-4), así que la nota de
+                // CD34-v02/T1 no puede cambiar nunca. Una sola fuente de verdad.
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.PanelVersion).ThenInclude(pv => pv!.Tubes)
+                // sp.Panel da el NOMBRE del panel. Sin este Include el listado salia con un
+                // guion en su lugar: el texto lo generaba antes el editor, donde si estaba.
+                .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Panel)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
                 .AsNoTracking()
@@ -631,10 +671,30 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             // PANELES EMPLEADOS
-            if (!string.IsNullOrWhiteSpace(report.PanelsUsedText))
+            var tubosEmpleados = BuildTubosEmpleados(s);
+            if (tubosEmpleados.Any() || !string.IsNullOrWhiteSpace(report.PanelsUsedText))
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">PANELES EMPLEADOS</text:p>");
-                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.PanelsUsedText)}</text:p>");
+
+                if (tubosEmpleados.Any())
+                {
+                    // Un párrafo por tubo con su nota de alcance de acreditación. En ODT no hay
+                    // columnas dentro de un párrafo monoespaciado, así que la nota va tras un
+                    // separador en vez de alineada a la derecha como en el PDF; el dato es el
+                    // mismo y el documento sigue siendo editable, que es para lo que se usa.
+                    foreach (var (descripcion, nota) in tubosEmpleados)
+                    {
+                        var linea = string.IsNullOrWhiteSpace(nota)
+                            ? EncodeForOdt(descripcion)
+                            : $"{EncodeForOdt(descripcion)}   —   {EncodeForOdt(nota)}";
+                        sb.Append($@"<text:p text:style-name=""MonoText"">{linea}</text:p>");
+                    }
+                }
+                else
+                {
+                    // Estudios antiguos o informes redactados a mano: se conserva el texto libre.
+                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.PanelsUsedText)}</text:p>");
+                }
 
                 // Trazabilidad de versión exacta (M-4), independiente del texto libre de arriba.
                 // Solo paneles con algún tubo leído, por coherencia con PanelsUsedText: de otro
@@ -1131,5 +1191,41 @@ namespace MiniLIS.Infrastructure.Services
 
             return Task.FromResult(doc.GeneratePdf());
         }
+
+        /// <summary>
+        /// Tubos realmente leídos del estudio, con la nota de su definición de panel a la
+        /// derecha. Esa nota es la que declara el alcance de acreditación de cada prueba
+        /// («Acreditado ISO 15189», «Fuera del alcance…»), exigible en el informe.
+        ///
+        /// Se resuelve desde los datos y NO desde PanelsUsedText, que es texto libre editable:
+        /// una declaración de alcance de acreditación no puede depender de que nadie borre una
+        /// línea, ni quedarse obsoleta como ya pasó con el listado (ver CHANGELOG v2.5.0).
+        ///
+        /// El texto se traslada tal cual, sin interpretarlo: MiniLIS documenta lo que el
+        /// laboratorio escribió en la definición del panel, no decide qué está acreditado.
+        /// </summary>
+        private static List<(string Descripcion, string Nota)> BuildTubosEmpleados(Sample? sample)
+        {
+            var filas = new List<(string, string)>();
+            if (sample?.Panels == null) return filas;
+
+            foreach (var sp in sample.Panels.OrderBy(x => x.Id))
+            {
+                // PanelVersion.Panel es el mismo panel por otra via: sirve de respaldo si la
+                // consulta no trajo sp.Panel, para no imprimir un guion donde va un nombre.
+                var nombrePanel = sp.Panel?.Name ?? sp.PanelVersion?.Panel?.Name ?? sp.CustomText ?? "—";
+                foreach (var tubo in sp.Tubes.Where(t => t.IsRead).OrderBy(t => t.TubeNumber))
+                {
+                    // La nota se empareja por número de tubo dentro de la versión fijada en
+                    // SamplePanel.PanelVersionId, que es la que se empleó de verdad.
+                    var nota = sp.PanelVersion?.Tubes
+                        .FirstOrDefault(pt => pt.TubeNumber == tubo.TubeNumber)?.Notes ?? "";
+                    filas.Add(($"{nombrePanel} — T{tubo.TubeNumber}: {tubo.MarkerList}", nota.Trim()));
+                }
+            }
+            return filas;
+        }
+
+
     }
 }

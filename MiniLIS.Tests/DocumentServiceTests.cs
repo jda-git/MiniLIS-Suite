@@ -114,6 +114,12 @@ namespace MiniLIS.Tests
             ctx.PanelVersions.AddRange(vLeido, vSinLeer);
             await ctx.SaveChangesAsync();
 
+            // Los tubos de la VERSIÓN llevan la nota de alcance de acreditación; los del
+            // estudio solo congelan la lista de marcadores.
+            vLeido.Tubes.Add(new PanelTube { PanelVersion = vLeido, TubeNumber = 1, MarkerList = "CD45/CD34", Notes = "Acreditado ISO 15189" });
+            vSinLeer.Tubes.Add(new PanelTube { PanelVersion = vSinLeer, TubeNumber = 1, MarkerList = "CD19/CD3", Notes = "Fuera del alcance" });
+            await ctx.SaveChangesAsync();
+
             var spLeido = new SamplePanel { Sample = sample, PanelId = panelLeido.Id, PanelVersionId = vLeido.Id, IsRequested = true };
             spLeido.Tubes.Add(new SampleTube { SamplePanel = spLeido, TubeNumber = 1, MarkerList = "CD45/CD34", IsRead = true });
 
@@ -182,6 +188,60 @@ namespace MiniLIS.Tests
 
             bytesCon.Length.Should().BeGreaterThan(bytesSin.Length,
                 "el apartado PANELES EMPLEADOS y su línea de versión deben añadir contenido al PDF");
+        }
+
+        [Fact]
+        public async Task El_ODT_incluye_la_nota_de_alcance_de_acreditacion_junto_al_tubo()
+        {
+            // ISO 15189 exige poder identificar en el informe qué pruebas están dentro del
+            // alcance de la acreditación. La nota vive en la definición del panel y se traslada
+            // tal cual: MiniLIS documenta, no decide qué está acreditado.
+            // Se comprueba sobre el ODT porque su contenido es XML legible; el PDF comprime.
+            using var db = new TestDb();
+            var (report, _) = await SeedReportWithPanelsAsync(db);
+
+            using var ctx = db.CreateContext();
+            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService(), new PatientService(ctx, new FakeCurrentUserService()));
+
+            var bytes = await service.GenerateOdtAsync(report);
+            var contenido = LeerContentXml(bytes);
+
+            contenido.Should().Contain("Acreditado ISO 15189",
+                "la nota del tubo leído debe aparecer en el informe");
+            contenido.Should().Contain("CD45/CD34");
+            // El nombre del panel se comprobaba de menos: salía como guion porque la consulta
+            // del informe no cargaba sp.Panel, y la prueba no lo detectaba.
+            contenido.Should().Contain("Panel leído — T1:",
+                "cada línea debe identificar el panel, no solo el tubo");
+        }
+
+        [Fact]
+        public async Task La_nota_de_un_panel_no_leido_no_aparece_en_el_informe()
+        {
+            // El apartado declara lo EMPLEADO: colar la nota de un panel que no se leyó sería
+            // afirmar un alcance de acreditación sobre una prueba que no se hizo.
+            using var db = new TestDb();
+            var (report, _) = await SeedReportWithPanelsAsync(db);
+
+            using var ctx = db.CreateContext();
+            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService(), new PatientService(ctx, new FakeCurrentUserService()));
+
+            var contenido = LeerContentXml(await service.GenerateOdtAsync(report));
+
+            contenido.Should().NotContain("Fuera del alcance",
+                "el panel sin tubos leídos no forma parte de los paneles empleados");
+        }
+
+        /// <summary>Un ODT es un ZIP; el texto del documento vive en content.xml.</summary>
+        private static string LeerContentXml(byte[] odt)
+        {
+            using var ms = new System.IO.MemoryStream(odt);
+            using var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Read);
+            var entrada = zip.GetEntry("content.xml")!;
+            using var lector = new System.IO.StreamReader(entrada.Open(), Encoding.UTF8);
+            // El ODT escapa los acentos como entidades XML ("le&#237;do"), así que se decodifican
+            // para poder afirmar sobre el texto tal y como lo lee una persona.
+            return System.Net.WebUtility.HtmlDecode(lector.ReadToEnd());
         }
     }
 }

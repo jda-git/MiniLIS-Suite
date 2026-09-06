@@ -25,7 +25,7 @@
   -->
 
   <PropertyGroup>
-    <Version>2.7.3</Version>
+    <Version>3.0.0</Version>
     <Product>MiniLIS Suite</Product>
   </PropertyGroup>
 

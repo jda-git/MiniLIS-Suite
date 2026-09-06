@@ -30,6 +30,42 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.0.0
+
+> **Salto MAYOR: altera el informe emitido al clínico.** Según el criterio de este proyecto
+> requiere validación documentada antes de su uso (ISO 15189, cl. 7.6).
+
+### El informe declara el alcance de acreditación de cada tubo
+
+ISO 15189 exige poder identificar en el informe qué pruebas están dentro del alcance de la
+acreditación. El apartado «PANELES EMPLEADOS» pasa a mostrar, **a la derecha de cada
+tubo**, la nota escrita en la definición de su panel:
+
+```
+CD34 — T1: CD34/45/7add        Acreditado ISO 15189
+CD34 — T2: CD3/CD45/7add       Prueba fuera del alcance de la acreditación
+```
+
+El texto se traslada **tal cual, sin interpretarlo**: MiniLIS documenta lo que el
+laboratorio escribió en la definición del panel, no decide qué está acreditado. Esa
+frontera es la misma que mantiene la aplicación fuera del alcance de producto sanitario.
+
+**El apartado se genera ahora desde los datos, no desde el campo de texto libre.** Era la
+parte importante de la decisión: `PanelsUsedText` es editable, solo se autorrellena la
+primera vez y ya se quedó obsoleto una vez (v2.5.0). Una declaración de alcance de
+acreditación no puede depender de que nadie borre una línea. Los estudios antiguos o los
+informes redactados a mano siguen mostrando su texto libre, para no vaciarles el apartado.
+
+**La nota se lee de la versión de panel, sin duplicarla en el estudio.** `SampleTube`
+congela la lista de marcadores pero no las notas — y no hace falta congelarlas: una versión
+publicada es **inmutable** (M-4), así que la nota de `CD34-v02/T1` no puede cambiar nunca.
+Una sola fuente de verdad, sin migración ni datos repetidos.
+
+Solo se listan los tubos **realmente leídos**: incluir los de un panel no leído sería
+afirmar un alcance de acreditación sobre una prueba que no se hizo.
+
+---
+
 ## v2.7.3
 
 ### El alta de muestra ofrecía la versión RETIRADA de un panel
