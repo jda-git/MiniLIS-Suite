@@ -30,6 +30,29 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.0.1
+
+### Maquetación de la cabecera del informe
+
+**PDF.** «TIPO DE MUESTRA: Sangre periférica» partía en dos líneas. La fila repartía el
+ancho 4/3/3, pero el nº de muestra tiene ancho fijo (`AA-NNNNN`) y le sobraba sitio,
+mientras que al tipo —el único de los tres que varía— le faltaba. Pasa a 3/5/2,5: el tipo
+se desplaza a la izquierda y cabe en una línea incluso con el valor más largo del catálogo,
+«Líquido cefalorraquídeo». De paso, «Nº PETICIÓN» queda casi alineado con «NASI» de la
+fila superior.
+
+**ODT.** La cabecera salía desplazada a la derecha de la hoja porque **el documento no
+definía su página**: sin `page-layout`, cada programa aplicaba sus márgenes por defecto, y
+con los de Word (2,54 cm) el área de texto queda en 15,9 cm — menos que los 17 cm que
+sumaban las columnas de la tabla, que se desbordaba.
+
+Ahora el ODT fija A4 con márgenes de 2 cm (área de 17 cm) y la tabla mide 16,8 cm anclada
+a la izquierda, de modo que entra con holgura y se ve igual en Word que en LibreOffice.
+Dos pruebas nuevas comprueban que la página está definida y que ambos XML siguen siendo
+válidos: uno mal formado abriría el documento roto sin dar ningún error.
+
+---
+
 ## v3.0.0
 
 > **Salto MAYOR: altera el informe emitido al clínico.** Según el criterio de este proyecto

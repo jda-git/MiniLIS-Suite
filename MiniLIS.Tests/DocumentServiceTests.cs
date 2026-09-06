@@ -243,5 +243,52 @@ namespace MiniLIS.Tests
             // para poder afirmar sobre el texto tal y como lo lee una persona.
             return System.Net.WebUtility.HtmlDecode(lector.ReadToEnd());
         }
+
+        [Fact]
+        public async Task El_ODT_define_la_pagina_para_no_depender_de_los_margenes_del_programa()
+        {
+            // Sin page-layout, cada programa aplicaba sus margenes por defecto: con los de Word
+            // (2,54 cm) el area de texto queda en 15,9 cm, menos que los 16,8 cm de la tabla de
+            // datos, y la cabecera se desplazaba hacia la derecha de la hoja.
+            using var db = new TestDb();
+            var report = await SeedReportAsync(db, SampleType.SangrePeriferica);
+
+            using var ctx = db.CreateContext();
+            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService(), new PatientService(ctx, new FakeCurrentUserService()));
+
+            var estilos = LeerEntradaOdt(await service.GenerateOdtAsync(report), "styles.xml");
+
+            estilos.Should().Contain("style:page-layout", "el ODT debe fijar su propia página");
+            estilos.Should().Contain("fo:page-width=\"21cm\"").And.Contain("fo:page-height=\"29.7cm\"");
+            estilos.Should().Contain("style:master-page", "la página definida debe estar aplicada");
+
+            // Y ambos XML deben seguir siendo válidos tras tocarlos.
+            var accion = () => System.Xml.Linq.XDocument.Parse(estilos);
+            accion.Should().NotThrow("styles.xml mal formado abriría el documento roto sin avisar");
+        }
+
+        [Fact]
+        public async Task El_content_xml_del_ODT_es_XML_valido()
+        {
+            using var db = new TestDb();
+            var (report, _) = await SeedReportWithPanelsAsync(db);
+
+            using var ctx = db.CreateContext();
+            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService(), new PatientService(ctx, new FakeCurrentUserService()));
+
+            var contenido = LeerEntradaOdt(await service.GenerateOdtAsync(report), "content.xml");
+
+            var accion = () => System.Xml.Linq.XDocument.Parse(contenido);
+            accion.Should().NotThrow();
+        }
+
+        /// <summary>Lee una entrada concreta del ODT (que es un ZIP) sin decodificar entidades.</summary>
+        private static string LeerEntradaOdt(byte[] odt, string nombre)
+        {
+            using var ms = new System.IO.MemoryStream(odt);
+            using var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Read);
+            using var lector = new System.IO.StreamReader(zip.GetEntry(nombre)!.Open(), Encoding.UTF8);
+            return lector.ReadToEnd();
+        }
     }
 }

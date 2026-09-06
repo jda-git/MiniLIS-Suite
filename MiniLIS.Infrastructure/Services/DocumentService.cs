@@ -179,9 +179,13 @@ namespace MiniLIS.Infrastructure.Services
 
                             dataCol.Item().PaddingBottom(4).Row(r =>
                             {
-                                r.RelativeItem(4).Text(t => { t.Span("Nº MUESTRA: ").Bold(); t.Span(sample?.SampleNumber ?? "").FontSize(10); });
-                                r.RelativeItem(3).Text(t => { t.Span("TIPO DE MUESTRA: ").Bold(); t.Span(finalTipoMuestra).FontSize(10); });
-                                r.RelativeItem(3).Text(t => { t.Span("Nº PETICIÓN: ").Bold(); t.Span(request?.RequestNumber ?? "").FontSize(10); });
+                                // Reparto 3/5/2,5 y no 4/3/3: el nº de muestra tiene ancho fijo
+                                // (AA-NNNNN) y le sobraba sitio, mientras que "TIPO DE MUESTRA:
+                                // Sangre periférica" no cabía y partía en dos líneas. El espacio
+                                // sobrante del primero pasa al segundo, que es el que varía.
+                                r.RelativeItem(3).Text(t => { t.Span("Nº MUESTRA: ").Bold(); t.Span(sample?.SampleNumber ?? "").FontSize(10); });
+                                r.RelativeItem(5).Text(t => { t.Span("TIPO DE MUESTRA: ").Bold(); t.Span(finalTipoMuestra).FontSize(10); });
+                                r.RelativeItem(2.5f).Text(t => { t.Span("Nº PETICIÓN: ").Bold(); t.Span(request?.RequestNumber ?? "").FontSize(10); });
                             });
 
                             dataCol.Item().PaddingBottom(4).Row(r =>
@@ -593,7 +597,7 @@ namespace MiniLIS.Infrastructure.Services
             // que envuelve el Column completo en el PDF -- el borde va en las celdas de la
             // primera y última fila (DemoCellTop/DemoCellBottom), no en la tabla (ver nota en
             // GenerateOdtStylesXml).
-            sb.Append(@"<table:table table:name=""Demographics"">");
+            sb.Append(@"<table:table table:name=""Demographics"" table:style-name=""DemoTable"">");
             sb.Append(@"<table:table-column table:style-name=""Col50""/>");
             sb.Append(@"<table:table-column table:style-name=""Col30""/>");
             sb.Append(@"<table:table-column table:style-name=""Col20""/>");
@@ -860,7 +864,7 @@ namespace MiniLIS.Infrastructure.Services
         private string GenerateOdtStylesXml()
         {
             return @"<?xml version=""1.0"" encoding=""UTF-8""?>
-<office:document-styles xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" xmlns:text=""urn:oasis:names:tc:opendocument:xmlns:text:1.0"" xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"">
+<office:document-styles xmlns:office=""urn:oasis:names:tc:opendocument:xmlns:office:1.0"" xmlns:style=""urn:oasis:names:tc:opendocument:xmlns:style:1.0"" xmlns:text=""urn:oasis:names:tc:opendocument:xmlns:text:1.0"" xmlns:fo=""urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"" xmlns:table=""urn:oasis:names:tc:opendocument:xmlns:table:1.0"" xmlns:svg=""urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"">
   <office:styles>
     <style:style style:name=""Header1"" style:family=""paragraph"">
       <style:paragraph-properties fo:margin-top=""0cm"" fo:margin-bottom=""0cm"" fo:text-align=""center""/>
@@ -920,18 +924,24 @@ namespace MiniLIS.Infrastructure.Services
     <style:style style:name=""AlignRight"" style:family=""paragraph""><style:paragraph-properties fo:text-align=""end""/></style:style>
     <style:style style:name=""AlignLeft"" style:family=""paragraph""><style:paragraph-properties fo:text-align=""start""/></style:style>
     
+    <!-- Tabla anclada a la izquierda y con ancho explícito (16,8 cm = suma de sus tres
+         columnas): sin table:align algunos programas la centran dentro del área de texto,
+         lo que descuadraba la cabecera respecto al resto del documento. -->
+    <style:style style:name=""DemoTable"" style:family=""table"">
+      <style:table-properties style:width=""16.8cm"" table:align=""left"" fo:margin-left=""0cm""/>
+    </style:style>
     <!-- Table Column Widths -->
     <style:style style:name=""Col50"" style:family=""table-column"">
-      <style:table-column-properties style:column-width=""8.5cm""/>
+      <style:table-column-properties style:column-width=""8.4cm""/>
     </style:style>
     <style:style style:name=""Col30"" style:family=""table-column"">
-      <style:table-column-properties style:column-width=""5.1cm""/>
+      <style:table-column-properties style:column-width=""5.0cm""/>
     </style:style>
     <style:style style:name=""Col20"" style:family=""table-column"">
       <style:table-column-properties style:column-width=""3.4cm""/>
     </style:style>
     <style:style style:name=""Col33"" style:family=""table-column"">
-      <style:table-column-properties style:column-width=""5.66cm""/>
+      <style:table-column-properties style:column-width=""5.6cm""/>
     </style:style>
 
     <!-- Marco negro que enmarca el bloque de datos demográficos, igual que en el PDF
@@ -952,6 +962,22 @@ namespace MiniLIS.Infrastructure.Services
       <style:table-cell-properties fo:padding-right=""0.6cm""/>
     </style:style>
   </office:styles>
+
+  <!-- Definición de página. Sin ella cada programa aplicaba sus márgenes por defecto:
+       con los de Word (2,54 cm) el área de texto queda en 15,9 cm, menos que los 17 cm
+       que suman las columnas de la tabla de datos, y el bloque se desbordaba hacia la
+       derecha. Con A4 y márgenes de 2 cm el área es de 17 cm y la tabla (16,8 cm) entra
+       con holgura, igual en Word que en LibreOffice. -->
+  <office:automatic-styles>
+    <style:page-layout style:name=""PL1"">
+      <style:page-layout-properties fo:page-width=""21cm"" fo:page-height=""29.7cm""
+        style:print-orientation=""portrait""
+        fo:margin-top=""2cm"" fo:margin-bottom=""2cm"" fo:margin-left=""2cm"" fo:margin-right=""2cm""/>
+    </style:page-layout>
+  </office:automatic-styles>
+  <office:master-styles>
+    <style:master-page style:name=""Standard"" style:page-layout-name=""PL1""/>
+  </office:master-styles>
 </office:document-styles>";
         }
 
