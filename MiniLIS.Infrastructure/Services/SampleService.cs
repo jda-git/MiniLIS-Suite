@@ -406,7 +406,13 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<List<Sample>> GetSamplesByIdsAsync(List<int> sampleIds)
         {
+            // AsNoTracking no es aquí una optimización: el Include filtrado solo es fiable sin
+            // rastreo (ver MasterDataService.GetPanelsForSelectionAsync). La Bandeja Técnica
+            // carga TODOS los paneles de la muestra en el mismo contexto del circuito, así que
+            // con rastreo se colarían aquí paneles no solicitados y se imprimirían etiquetas
+            // de tubos que nadie pidió.
             return await _db.Samples
+                .AsNoTracking()
                 .Include(s => s.ClinicalRequest)
                     .ThenInclude(cr => cr.Patient)
                 .Include(s => s.Panels.Where(p => p.IsRequested))

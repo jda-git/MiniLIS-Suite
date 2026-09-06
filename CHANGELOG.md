@@ -30,6 +30,39 @@ entre despliegues de una misma versión.
 
 ---
 
+## v2.7.3
+
+### El alta de muestra ofrecía la versión RETIRADA de un panel
+
+Tras publicar `CD34-v02` y quedar `CD34-v01` como retirada, la pantalla de registro seguía
+ofreciendo la v01 — con sus tubos antiguos. **Se habrían registrado estudios contra una
+versión de panel dada de baja**, y el informe habría declarado esa versión en su
+trazabilidad.
+
+**No ocurría siempre**, y eso es lo que lo hacía difícil de ver: solo después de haber
+abierto la pantalla de versiones del panel.
+
+La causa es la suma de dos cosas. Un `Include` filtrado **no es fiable cuando el contexto
+ya sigue otras entidades de esa navegación**: la corrección de navegaciones de EF Core
+vuelve a enganchar las que están en el rastreador, aunque la consulta SQL las haya
+excluido correctamente. Y `ApplicationDbContext` está registrado como *Scoped*, que en
+Blazor Server **dura todo el circuito** —la sesión entera, no una petición—. Así que
+bastaba con visitar antes la pantalla de versiones, que carga vigente y retirada, para que
+la retirada quedara rastreada y se colara después en el alta.
+
+Corregido con `AsNoTracking()` en la consulta —donde no es una optimización sino la
+condición para que el filtro se respete— y repitiendo el predicado al resolver la versión,
+para no depender del estado del rastreador.
+
+**El mismo patrón afectaba a la impresión de etiquetas.** `GetSamplesByIdsAsync` filtra los
+paneles a los solicitados, y la Bandeja Técnica carga todos en el mismo contexto: se
+habrían impreso etiquetas de tubos de paneles que nadie pidió. Blindado igual.
+
+Cubierto con dos pruebas: una con el contexto limpio y otra que reproduce la secuencia
+real —abrir versiones y luego registrar—, que es la que fallaba.
+
+---
+
 ## v2.7.2
 
 ### Los acentos salían rotos al abrir los CSV en Excel

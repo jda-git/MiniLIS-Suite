@@ -62,19 +62,27 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<List<PanelWithVigenteVersion>> GetPanelsForSelectionAsync()
         {
+            // AsNoTracking es imprescindible aquí, no una optimización. Un Include filtrado
+            // NO es fiable cuando el contexto ya sigue otras entidades de esa navegación: la
+            // corrección de navegaciones de EF Core vuelve a enganchar las que están en el
+            // rastreador, aunque el SQL las haya excluido. Y ApplicationDbContext es Scoped,
+            // que en Blazor Server dura todo el circuito: bastaba con haber abierto antes la
+            // pantalla de versiones del panel -- que carga todas -- para que el alta de
+            // muestra ofreciese la versión RETIRADA. Sin rastreo no hay a qué enganchar.
             var panels = await _db.Panels
+                .AsNoTracking()
                 .Where(p => p.IsActive)
                 .Include(p => p.Versions.Where(v => v.Status == PanelVersionStatus.Vigente))
                     .ThenInclude(v => v.Tubes)
                 .OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name)
                 .ToListAsync();
 
-            // Solo puede haber una versión Vigente por panel a la vez (PublishVersionAsync
-            // retira la anterior al publicar una nueva), así que FirstOrDefault sobre el
-            // Include ya filtrado a Vigente es seguro.
             return panels.Select(p =>
             {
-                var vigente = p.Versions.FirstOrDefault();
+                // El predicado se repite a propósito aunque el Include ya filtre: es la
+                // garantía que no depende del estado del rastreador. Solo puede haber una
+                // versión vigente por panel (PublishVersionAsync retira la anterior).
+                var vigente = p.Versions.FirstOrDefault(v => v.Status == PanelVersionStatus.Vigente);
                 return new PanelWithVigenteVersion
                 {
                     Panel = p,
