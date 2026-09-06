@@ -92,6 +92,33 @@ namespace MiniLIS.Infrastructure.Services
             }).ToList();
         }
 
+        // --- CITÓMETROS Y SOFTWARE (ISO 15189) ---
+
+        public async Task<List<Cytometer>> GetAllCytometersAsync() =>
+            await _db.Cytometers.OrderBy(c => c.DisplayOrder).ThenBy(c => c.Name).ToListAsync();
+
+        public async Task<List<Cytometer>> GetActiveCytometersAsync() =>
+            await _db.Cytometers.Where(c => c.IsActive)
+                .OrderBy(c => c.DisplayOrder).ThenBy(c => c.Name).ToListAsync();
+
+        public async Task<Cytometer> UpsertCytometerAsync(Cytometer cytometer)
+        {
+            if (cytometer.Id == 0) _db.Cytometers.Add(cytometer);
+            else _db.Cytometers.Update(cytometer);
+            await _db.SaveChangesAsync();
+            return cytometer;
+        }
+
+        /// <summary>Baja del catálogo. No toca los informes ya emitidos: estos guardan una
+        /// copia congelada del texto, no una referencia viva (ver SampleReport).</summary>
+        public async Task DeleteCytometerAsync(int id)
+        {
+            var c = await _db.Cytometers.FindAsync(id);
+            if (c == null) return;
+            _db.Cytometers.Remove(c);
+            await _db.SaveChangesAsync();
+        }
+
         // --- REJECTION REASONS (F-4) ---
         public async Task<List<RejectionReason>> GetAllRejectionReasonsAsync() =>
             await _db.RejectionReasons.OrderBy(r => r.DisplayOrder).ThenBy(r => r.Description).ToListAsync();

@@ -45,6 +45,10 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<TubeReadIncidentReason> TubeReadIncidentReasons => Set<TubeReadIncidentReason>();
         public DbSet<SampleReceptionIssue> SampleReceptionIssues => Set<SampleReceptionIssue>();
         public DbSet<QualityIndicator> QualityIndicators => Set<QualityIndicator>();
+
+        /// <summary>Lista de seleccion de citometros y su software (ISO 15189). No es el
+        /// maestro de equipos, que sigue en el QMS (F-0 / I.2).</summary>
+        public DbSet<Cytometer> Cytometers => Set<Cytometer>();
         public DbSet<WorklistExportProfile> WorklistExportProfiles => Set<WorklistExportProfile>();
         public DbSet<WorklistExportColumn> WorklistExportColumns => Set<WorklistExportColumn>();
         public DbSet<StoredSpecimen> StoredSpecimens => Set<StoredSpecimen>();
@@ -177,6 +181,7 @@ namespace MiniLIS.Infrastructure.Persistence
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<QualityIndicator>().HasIndex(q => q.Code).IsUnique();
+            modelBuilder.Entity<Cytometer>().HasIndex(c => c.Name).IsUnique();
 
             modelBuilder.Entity<WorklistExportColumn>()
                 .HasOne(c => c.Profile)

@@ -30,6 +30,42 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.1.0
+
+> **Altera el informe emitido** cuando se selecciona un citómetro. Sin selección, el
+> informe sale exactamente igual que antes, así que el despliegue no obliga a revalidar
+> nada por sí solo; sí conviene hacerlo antes de empezar a declarar el equipo.
+
+### Citómetro y software empleados en el informe
+
+Nueva pestaña **Configuración → Citómetros**: equipos del laboratorio con su software de
+adquisición y de análisis, cada uno con su versión. En el editor de informe se elige con un
+desplegable, que muestra los tres datos antes de guardar, y quedan impresos bajo «PANELES
+EMPLEADOS»:
+
+```
+Citómetro: Navios EX (n/s AN12345)
+Software de adquisición: Navios Software v1.3
+Software de análisis: Infinicyt v2.0
+```
+
+**No es un maestro de equipos.** Sigue vigente el principio F-0 / I.2: la calibración, el
+mantenimiento y la validación del equipo viven en el sistema de calidad. Esto es una lista
+de selección para no teclear a mano, con un campo «Código QMS» que enlaza cada equipo con
+su ficha — mismo patrón que `QmsDocumentRef` en paneles e indicadores.
+
+**El informe guarda una copia congelada del texto, no una referencia al catálogo.** Es la
+decisión de diseño importante y es la contraria a la de las notas de acreditación de los
+tubos (v3.0.0), por un motivo concreto: una versión de panel publicada es **inmutable**
+(M-4), pero el catálogo de citómetros **se edita en cuanto se actualiza un software**. Sin
+congelar, un informe de hace dos años declararía retroactivamente la versión nueva. Hay una
+prueba dedicada a ese escenario.
+
+Si no se elige citómetro, el apartado no aparece: un informe que no lo declara es preferible
+a uno que declara un hueco, y así los estudios antiguos no se ensucian.
+
+---
+
 ## v3.0.1
 
 ### Maquetación de la cabecera del informe

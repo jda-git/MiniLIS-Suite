@@ -41,6 +41,30 @@ namespace MiniLIS.Domain.Entities
         /// Panel.cs), pero queda editable por informe.</summary>
         public string? PanelsUsedText { get; set; }
 
+        // --- Equipo y software empleados (ISO 15189) --------------------------------
+        // Se guarda la seleccion Y una copia congelada del texto. La copia NO es
+        // redundante: el catalogo de citometros se edita en cuanto se actualiza un
+        // software, y sin congelar, un informe de hace dos anos declararia
+        // retroactivamente la version nueva. Es lo contrario que las notas de panel,
+        // que se leen en vivo porque una version publicada es inmutable (M-4); aqui el
+        // origen SI cambia, asi que hay que fijar el dato en el momento de emitirlo.
+
+        /// <summary>Citometro elegido en el editor. Solo para recordar la seleccion.</summary>
+        public int? CytometerId { get; set; }
+        public virtual Cytometer? Cytometer { get; set; }
+
+        /// <summary>Equipo tal y como constaba al emitir el informe.</summary>
+        [MaxLength(200)]
+        public string? EquipmentCytometer { get; set; }
+
+        /// <summary>Software de adquisicion y version, congelados al emitir.</summary>
+        [MaxLength(200)]
+        public string? EquipmentAcquisitionSoftware { get; set; }
+
+        /// <summary>Software de analisis y version, congelados al emitir.</summary>
+        [MaxLength(200)]
+        public string? EquipmentAnalysisSoftware { get; set; }
+
         public DateTime? ReportDate { get; set; }
         public bool IsFinalized { get; set; } = false;
 

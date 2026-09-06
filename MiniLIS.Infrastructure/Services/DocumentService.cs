@@ -265,8 +265,20 @@ namespace MiniLIS.Infrastructure.Services
                             if (!string.IsNullOrWhiteSpace(panelVersionsText))
                             {
                                 // Trazabilidad de versión exacta (M-4), independiente del texto libre de arriba.
-                                col.Item().PaddingBottom(15).Text($"Versión de panel: {panelVersionsText}").FontSize(8).FontColor(Colors.Grey.Medium);
+                                col.Item().PaddingBottom(4).Text($"Versión de panel: {panelVersionsText}").FontSize(8).FontColor(Colors.Grey.Medium);
                             }
+                        }
+
+                        // Equipo y software empleados: va junto a los paneles porque documenta
+                        // lo mismo, cómo se obtuvo el resultado, y no el resultado en sí.
+                        var equipo = BuildEquipoEmpleado(fullReport);
+                        if (equipo.Any())
+                        {
+                            foreach (var (etiqueta, valor) in equipo)
+                            {
+                                col.Item().PaddingBottom(1).Text($"{etiqueta}: {valor}").FontSize(8).FontColor(Colors.Grey.Medium);
+                            }
+                            col.Item().PaddingBottom(15);
                         }
 
                         // LIMITACIONES (F-4): la salvedad de recepción debe constar en el informe (cl. 7.4).
@@ -713,6 +725,13 @@ namespace MiniLIS.Infrastructure.Services
                     // párrafo caía al estilo por defecto (12pt), de ahí el tamaño de más.
                     sb.Append($@"<text:p text:style-name=""GreySmall"">Versión de panel: {EncodeForOdt(panelVersionsText)}</text:p>");
                 }
+            }
+
+            // Equipo y software empleados (ISO 15189), desde la copia congelada del informe.
+            // Fuera del bloque de paneles: debe constar aunque el estudio no tenga paneles.
+            foreach (var (etiqueta, valor) in BuildEquipoEmpleado(report))
+            {
+                sb.Append($@"<text:p text:style-name=""GreySmall"">{EncodeForOdt(etiqueta)}: {EncodeForOdt(valor)}</text:p>");
             }
 
             // LIMITACIONES (F-4): la salvedad de recepción debe constar en el informe (cl. 7.4).
@@ -1230,6 +1249,29 @@ namespace MiniLIS.Infrastructure.Services
         /// El texto se traslada tal cual, sin interpretarlo: MiniLIS documenta lo que el
         /// laboratorio escribió en la definición del panel, no decide qué está acreditado.
         /// </summary>
+
+        /// <summary>
+        /// Equipo y software con que se obtuvo el resultado, para el pie del informe.
+        /// ISO 15189 obliga a poder identificar el equipo empleado en cada examen; en
+        /// citometria el resultado depende ademas del software de adquisicion y del de
+        /// analisis, cuyas versiones son un disparador de revalidacion.
+        ///
+        /// Sale de la copia congelada del informe, no del catalogo: el catalogo se edita en
+        /// cuanto se actualiza un software, y sin congelar, un informe antiguo declararia
+        /// retroactivamente una version que no se uso.
+        /// </summary>
+        private static List<(string Etiqueta, string Valor)> BuildEquipoEmpleado(SampleReport r)
+        {
+            var filas = new List<(string, string)>();
+            if (!string.IsNullOrWhiteSpace(r.EquipmentCytometer))
+                filas.Add(("Citómetro", r.EquipmentCytometer.Trim()));
+            if (!string.IsNullOrWhiteSpace(r.EquipmentAcquisitionSoftware))
+                filas.Add(("Software de adquisición", r.EquipmentAcquisitionSoftware.Trim()));
+            if (!string.IsNullOrWhiteSpace(r.EquipmentAnalysisSoftware))
+                filas.Add(("Software de análisis", r.EquipmentAnalysisSoftware.Trim()));
+            return filas;
+        }
+
         private static List<(string Descripcion, string Nota)> BuildTubosEmpleados(Sample? sample)
         {
             var filas = new List<(string, string)>();

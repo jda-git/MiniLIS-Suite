@@ -25,6 +25,13 @@ namespace MiniLIS.Application.Interfaces
         Task<List<PanelWithVigenteVersion>> GetPanelsForSelectionAsync();
 
         // REJECTION REASONS (F-4)
+        // --- CITÓMETROS Y SOFTWARE (ISO 15189) ---
+        // Lista de selección, no maestro de equipos: la vida del equipo sigue en el QMS (F-0).
+        Task<List<Cytometer>> GetAllCytometersAsync();
+        Task<List<Cytometer>> GetActiveCytometersAsync();
+        Task<Cytometer> UpsertCytometerAsync(Cytometer cytometer);
+        Task DeleteCytometerAsync(int id);
+
         Task<List<RejectionReason>> GetAllRejectionReasonsAsync();
         Task<RejectionReason> UpsertRejectionReasonAsync(RejectionReason reason);
         /// <summary>Si el motivo tiene SampleReceptionIssue asociados, lo desactiva (IsActive=false) en vez de borrarlo.</summary>

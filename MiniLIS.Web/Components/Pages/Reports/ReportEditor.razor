@@ -209,6 +209,43 @@
                 <p class="text-muted small mt-1">No hay paneles marcados como leídos en el registro de la muestra.</p>
             }
         </div>
+        @* Equipo y software empleados (ISO 15189). Un desplegable en vez de campos de texto:
+           el dato debe ser el mismo en todos los informes del mismo equipo, y tecleado a mano
+           acaba con tres formas distintas de escribir la misma version. *@
+        <div class="rpt-equip">
+            <label class="rpt-label">Citómetro y software empleados:</label>
+            @if (!cytometers.Any())
+            {
+                <p class="rpt-equip-empty">
+                    <i class="bi bi-info-circle me-1"></i>
+                    No hay citómetros dados de alta. Se configuran en
+                    <a href="/configuracion" target="_blank">Configuración → Citómetros</a>.
+                </p>
+            }
+            else
+            {
+                <select class="rpt-select" @bind="selectedCytometerId" @bind:after="OnCytometerChanged">
+                    <option value="0">— Sin especificar —</option>
+                    @foreach (var c in cytometers)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+                @if (selectedCytometerId > 0)
+                {
+                    var sel = cytometers.FirstOrDefault(c => c.Id == selectedCytometerId);
+                    if (sel != null)
+                    {
+                        <div class="rpt-equip-detail">
+                            <div><span>Equipo</span> @sel.EquipmentDisplay</div>
+                            <div><span>Adquisición</span> @(string.IsNullOrWhiteSpace(sel.AcquisitionDisplay) ? "— sin definir —" : sel.AcquisitionDisplay)</div>
+                            <div><span>Análisis</span> @(string.IsNullOrWhiteSpace(sel.AnalysisDisplay) ? "— sin definir —" : sel.AnalysisDisplay)</div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+
         <div>
             <label class="rpt-label">Paneles empleados:</label>
             @* El listado se rellena solo la primera vez y no se sobrescribe después, para no
@@ -524,6 +561,24 @@
     .rpt-select { font-size: 13px; border: 1px solid #ccc; border-radius: 3px; padding: 4px 8px; height: 30px; background: #fff; }
     .rpt-textarea { font-size: 13px; width: 100%; border: 1px solid #ccc; border-radius: 3px; padding: 8px 10px; font-family: 'Consolas', 'Courier New', monospace; resize: vertical; }
 
+    /* Equipo y software empleados */
+    .rpt-equip { margin-bottom: 10px; }
+    .rpt-select {
+        font-size: 13px; width: 100%; max-width: 420px;
+        border: 1px solid #ccc; border-radius: 3px; padding: 6px 9px; background: #fff;
+    }
+    .rpt-equip-empty { font-size: 12.5px; color: #64748b; margin: 2px 0 0; }
+    .rpt-equip-detail {
+        margin-top: 6px; padding: 7px 11px;
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;
+        font-size: 12.5px; color: #334155; max-width: 620px;
+    }
+    .rpt-equip-detail div { display: flex; gap: 8px; line-height: 1.5; }
+    .rpt-equip-detail span {
+        min-width: 82px; font-weight: 700; color: #64748b;
+        font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding-top: 2px;
+    }
+
     /* Aviso de listado de paneles desfasado respecto al registro de la muestra */
     .panels-stale-notice {
         display: flex;
@@ -681,6 +736,7 @@
         report.ShowPreviousStudies.ToString(), report.ShowPreviousConclusions.ToString(),
         report.ShowPreviousMarkers.ToString(), report.ShowPreviousMotivo.ToString(),
         report.ShowPreviousReportBody.ToString(),
+        report.EquipmentCytometer, report.EquipmentAcquisitionSoftware, report.EquipmentAnalysisSoftware,
         reportDate.ToString("O"),
         patientName, peticionElectronica, servicioSolicitante, medicoSolicitante, motivoSolicitud,
         string.Join("|", selectedFacultativos),
@@ -702,6 +758,29 @@
         }
         Nav.NavigateTo("/muestras");
     }
+    private List<Cytometer> cytometers = new();
+    private int selectedCytometerId;
+
+    /// <summary>Al cambiar de equipo se copian sus datos al informe. Se congela el TEXTO y no
+    /// solo la referencia: el catálogo se edita en cuanto se actualiza un software, y sin
+    /// congelar, un informe antiguo declararía retroactivamente la versión nueva.</summary>
+    private void OnCytometerChanged()
+    {
+        var sel = cytometers.FirstOrDefault(c => c.Id == selectedCytometerId);
+        if (sel == null)
+        {
+            report.CytometerId = null;
+            report.EquipmentCytometer = null;
+            report.EquipmentAcquisitionSoftware = null;
+            report.EquipmentAnalysisSoftware = null;
+            return;
+        }
+        report.CytometerId = sel.Id;
+        report.EquipmentCytometer = sel.EquipmentDisplay;
+        report.EquipmentAcquisitionSoftware = string.IsNullOrWhiteSpace(sel.AcquisitionDisplay) ? null : sel.AcquisitionDisplay;
+        report.EquipmentAnalysisSoftware = string.IsNullOrWhiteSpace(sel.AnalysisDisplay) ? null : sel.AnalysisDisplay;
+    }
+
     private List<string> readPanelNames = new();
 
     /// <summary>Listado de tubos leídos según el registro de la muestra, recalculado en cada
@@ -850,6 +929,13 @@
         // Load conclusions if template already selected
         if (report.TemplateId.HasValue)
             templateConclusions = await MasterService.GetTemplateConclusionsAsync(report.TemplateId.Value);
+
+        cytometers = await MasterService.GetActiveCytometersAsync();
+        // Se restaura la selección guardada solo si ese citómetro sigue activo; si se dio de
+        // baja, el desplegable queda vacío pero el informe conserva su texto congelado.
+        selectedCytometerId = report.CytometerId.HasValue && cytometers.Any(c => c.Id == report.CytometerId.Value)
+            ? report.CytometerId.Value
+            : 0;
 
         // Punto de partida para detectar cambios sin guardar. Va al final de la carga, después
         // del autorrelleno de PanelsUsedText: si se tomara antes, ese relleno automático
