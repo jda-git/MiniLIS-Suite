@@ -30,6 +30,45 @@
     {
         <PatientHistoryPanel History="patientHistory" />
     }
+    @* Incidencias de adquisición registradas por el técnico. Van ARRIBA del todo y no en el
+       apartado de paneles a propósito: el objetivo es que el facultativo no pueda validar sin
+       haberlas visto, y el apartado de paneles queda muy abajo en un formulario largo.
+       No se imprimen en el informe: son información para decidir si procede un comentario. *@
+    @if (incidenciasTubo.Any())
+    {
+        <div class="rpt-incidencias">
+            <div class="rpt-incidencias-head">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span>
+                    @incidenciasTubo.Count incidencia@(incidenciasTubo.Count == 1 ? "" : "s") de adquisición
+                    registrada@(incidenciasTubo.Count == 1 ? "" : "s") en este estudio
+                </span>
+            </div>
+            <ul class="rpt-incidencias-lista">
+                @foreach (var inc in incidenciasTubo)
+                {
+                    <li>
+                        @* Paréntesis obligatorios: "T@inc" lo toma Razor por una dirección de correo y lo
+                           emite como texto literal. Mismo caso que "v@(AppVersion.Display)" en Login. *@
+                        <span class="rpt-inc-tubo">@inc.Panel — T@(inc.TubeNumber)</span>
+                        <span class="rpt-inc-motivo">@inc.Motivo</span>
+                        <span class="rpt-inc-resolucion rpt-res-@inc.ResolucionClase">@inc.Resolucion</span>
+                        @if (!string.IsNullOrWhiteSpace(inc.Notas))
+                        {
+                            <span class="rpt-inc-notas">@inc.Notas</span>
+                        }
+                        <span class="rpt-inc-quien">@inc.Quien@(inc.Cuando == null ? "" : $" · {inc.Cuando:dd/MM/yyyy HH:mm}")</span>
+                    </li>
+                }
+            </ul>
+            <div class="rpt-incidencias-pie">
+                <i class="bi bi-eye-slash me-1"></i>
+                Esto <strong>no aparece en el informe</strong>. Valore si procede reflejarlo en el
+                texto o en las conclusiones.
+            </div>
+        </div>
+    }
+
     <!-- ═══════════════  SECCIÓN 1 · IDENTIFICACIÓN  ═══════════════ -->
     <fieldset class="rpt-fieldset">
         <legend>Identificación</legend>
@@ -561,6 +600,42 @@
     .rpt-select { font-size: 13px; border: 1px solid #ccc; border-radius: 3px; padding: 4px 8px; height: 30px; background: #fff; }
     .rpt-textarea { font-size: 13px; width: 100%; border: 1px solid #ccc; border-radius: 3px; padding: 8px 10px; font-family: 'Consolas', 'Courier New', monospace; resize: vertical; }
 
+    /* Incidencias de adquisición: aviso al facultativo, no contenido del informe */
+    .rpt-incidencias {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-left: 4px solid #ea580c;
+        border-radius: 6px;
+        padding: 11px 14px;
+        margin-bottom: 14px;
+    }
+    .rpt-incidencias-head {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 13.5px; font-weight: 700; color: #9a3412; margin-bottom: 7px;
+    }
+    .rpt-incidencias-lista { list-style: none; margin: 0; padding: 0; }
+    .rpt-incidencias-lista li {
+        display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+        padding: 5px 0; border-top: 1px solid #fed7aa; font-size: 12.5px; color: #7c2d12;
+    }
+    .rpt-incidencias-lista li:first-child { border-top: none; }
+    .rpt-inc-tubo { font-weight: 700; white-space: nowrap; }
+    .rpt-inc-motivo { color: #9a3412; }
+    .rpt-inc-resolucion {
+        font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+        padding: 1px 7px; border-radius: 8px; white-space: nowrap;
+    }
+    /* Anular la lectura es lo más grave: se distingue del resto de un vistazo. */
+    .rpt-res-anula { background: #fee2e2; color: #b91c1c; }
+    .rpt-res-repetir { background: #e0e7ff; color: #3730a3; }
+    .rpt-res-salvedad { background: #fef3c7; color: #a16207; }
+    .rpt-inc-notas { color: #92400e; font-style: italic; }
+    .rpt-inc-quien { margin-left: auto; color: #a8703f; font-size: 11.5px; white-space: nowrap; }
+    .rpt-incidencias-pie {
+        margin-top: 8px; padding-top: 7px; border-top: 1px solid #fed7aa;
+        font-size: 12px; color: #9a3412;
+    }
+
     /* Equipo y software empleados */
     .rpt-equip { margin-bottom: 10px; }
     .rpt-select {
@@ -758,6 +833,37 @@
         }
         Nav.NavigateTo("/muestras");
     }
+    /// <summary>Una incidencia de adquisición para mostrar en el editor. Se aplana desde los
+    /// tubos porque la lista se lee de un vistazo y no hace falta el grafo completo.</summary>
+    private sealed class IncidenciaTubo
+    {
+        public string Panel { get; init; } = "";
+        public int TubeNumber { get; init; }
+        public string Motivo { get; init; } = "";
+        public string Resolucion { get; init; } = "";
+        public string ResolucionClase { get; init; } = "";
+        public string? Notas { get; init; }
+        public string Quien { get; init; } = "";
+        public DateTime? Cuando { get; init; }
+    }
+
+    private List<IncidenciaTubo> incidenciasTubo = new();
+
+    private static string TextoResolucion(TubeReadIncidentResolution? r) => r switch
+    {
+        TubeReadIncidentResolution.Repetir => "Se repite",
+        TubeReadIncidentResolution.Anula => "Anula la lectura",
+        TubeReadIncidentResolution.ConSalvedad => "Se usa con salvedad",
+        _ => "Sin resolución"
+    };
+
+    private static string ClaseResolucion(TubeReadIncidentResolution? r) => r switch
+    {
+        TubeReadIncidentResolution.Anula => "anula",
+        TubeReadIncidentResolution.Repetir => "repetir",
+        _ => "salvedad"
+    };
+
     private List<Cytometer> cytometers = new();
     private int selectedCytometerId;
 
@@ -895,6 +1001,25 @@
         // hubiera tubos leídos. Incluye los tubos leídos de paneles con lectura parcial,
         // no solo los paneles completados.
         expectedPanelsUsedText = BuildPanelsUsedText(samplePanels);
+
+        // Incidencias de adquisición de cualquier tubo, se haya usado su lectura o no: una que
+        // anuló la lectura también es relevante para interpretar el resultado.
+        incidenciasTubo = samplePanels
+            .SelectMany(sp => sp.Tubes
+                .Where(t => t.HasReadIncident)
+                .OrderBy(t => t.TubeNumber)
+                .Select(t => new IncidenciaTubo
+                {
+                    Panel = sp.Panel?.Name ?? sp.CustomText ?? "—",
+                    TubeNumber = t.TubeNumber,
+                    Motivo = t.ReadIncidentReason?.Description ?? "Sin motivo indicado",
+                    Resolucion = TextoResolucion(t.ReadIncidentResolution),
+                    ResolucionClase = ClaseResolucion(t.ReadIncidentResolution),
+                    Notas = t.ReadIncidentNotes,
+                    Quien = t.ReadIncidentByUser?.FullName ?? t.ReadIncidentByUser?.UserName ?? "—",
+                    Cuando = LocalTimeService.ToLocal(t.ReadIncidentAtUtc)
+                }))
+            .ToList();
 
         // Solo se rellena solo cuando está vacío: el campo es editable y el texto final es
         // responsabilidad del facultativo, así que no se le sobrescribe lo que haya escrito.

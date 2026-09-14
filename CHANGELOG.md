@@ -30,6 +30,41 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.3.0
+
+### El editor avisa de las incidencias de adquisición
+
+El técnico registra en la lectura de tubos las incidencias del citómetro —atasco, muestra
+insuficiente, error de adquisición— con su resolución. **Ese dato no llegaba al
+facultativo**: podía validar un informe sin enterarse de que un tubo había dado problemas.
+
+Ahora el editor de informe muestra un aviso con cada tubo afectado, su motivo, la
+resolución y quién y cuándo la registró:
+
+```
+2 incidencias de adquisición registradas en este estudio
+  Leucemia Aguda — T3   Muestra insuficiente    SE USA CON SALVEDAD
+  Leucemia Aguda — T4   Error de adquisición    SE REPITE
+```
+
+**No aparece en el informe entregado al clínico**, y así se indica expresamente en el
+propio aviso: es información para que el facultativo decida si procede un comentario en el
+texto o en las conclusiones.
+
+Va **arriba del todo**, antes de Identificación, y no junto a los paneles: el objetivo es
+que no se pueda validar sin haberlo visto, y el apartado de paneles queda muy abajo en un
+formulario largo. La resolución se colorea aparte —«anula la lectura» en rojo frente a las
+demás— porque no todas tienen la misma repercusión.
+
+Se listan las incidencias de **cualquier** tubo, se haya usado su lectura o no: una que
+anuló la lectura también es relevante para interpretar el resultado.
+
+Dos pruebas fijan las dos mitades del requisito: que el dato llega al editor resuelto
+(motivo, resolución y notas) y que **no** se cuela en el documento. La segunda detectaría
+una fuga si alguien tocara el renderizado del informe.
+
+---
+
 ## v3.2.0
 
 ### El buscador combina varios términos dentro de un mismo campo
