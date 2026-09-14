@@ -86,6 +86,11 @@ namespace MiniLIS.Application.Interfaces
         /// <summary>Total de coincidencias, aunque Items venga recortado por el tope.</summary>
         public int TotalMatches { get; init; }
         public bool Truncated { get; init; }
+
+        /// <summary>Problemas en la sintaxis de algún campo (p. ej. mezclar «&» y «|»). La
+        /// búsqueda se ejecuta ignorando ese campo, y el aviso se muestra: silenciarlo daría
+        /// un resultado que parece completo y no lo es.</summary>
+        public List<string> Avisos { get; init; } = new();
     }
 
     public interface IReportSearchService

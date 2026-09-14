@@ -5,6 +5,7 @@ using MiniLIS.Infrastructure.Persistence;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -37,6 +38,97 @@ namespace MiniLIS.Infrastructure.Services
         // que la búsqueda de la Bandeja Técnica.
         private static string Norm(string s) => s.Trim().ToLower();
 
+        // --- Combinación de varios términos dentro de un mismo campo ----------------------
+        //
+        // Operadores "&" (todos) y "|" (alguno). La elección no es estética: las cadenas
+        // reales de marcadores son del estilo "CD117 -/+d, HLA-DR -/+, MPO +d/+", de modo que
+        // "+", "-", "/" y el espacio forman parte del dato y no pueden separar términos.
+        // Tampoco valen las palabras "y"/"o": en el cuerpo del informe aparecen a cada línea.
+        // "&" y "|" no aparecen en ningún campo buscable.
+        //
+        // Sin operador, el texto se busca entero y literal: quien no conozca la sintaxis
+        // obtiene el comportamiento de siempre.
+
+        private const char OperadorY = '&';
+        private const char OperadorO = '|';
+
+        private sealed class TerminosCampo
+        {
+            public List<string> Terminos { get; init; } = new();
+            public bool EsO { get; init; }
+            public string? Error { get; init; }
+        }
+
+        private static TerminosCampo Analizar(string entrada, string nombreCampo)
+        {
+            bool tieneY = entrada.Contains(OperadorY);
+            bool tieneO = entrada.Contains(OperadorO);
+
+            // Mezclar ambos exigiría explicar precedencias; es preferible decirlo que
+            // resolverlo en silencio de una forma que el usuario no espera.
+            if (tieneY && tieneO)
+            {
+                return new TerminosCampo
+                {
+                    Error = $"En «{nombreCampo}» no se pueden mezclar «&» y «|» en la misma búsqueda. " +
+                            "Use uno u otro, o haga dos búsquedas."
+                };
+            }
+
+            var separador = tieneO ? OperadorO : OperadorY;
+            var partes = entrada
+                .Split(separador)
+                .Select(x => Norm(x))
+                .Where(x => x.Length > 0)
+                .ToList();
+
+            if (partes.Count == 0)
+            {
+                return new TerminosCampo { Error = $"En «{nombreCampo}» no hay ningún término que buscar." };
+            }
+
+            return new TerminosCampo { Terminos = partes, EsO = tieneO };
+        }
+
+        /// <summary>
+        /// Aplica un campo de texto a la consulta. `construir` recibe UN término ya
+        /// normalizado y devuelve la condición para ese término (que puede mirar en varias
+        /// columnas); aquí solo se combinan las condiciones de todos los términos.
+        /// </summary>
+        private static IQueryable<Sample> AplicarTexto(
+            IQueryable<Sample> q,
+            string? entrada,
+            string nombreCampo,
+            Func<string, Expression<Func<Sample, bool>>> construir,
+            List<string> errores)
+        {
+            if (string.IsNullOrWhiteSpace(entrada)) return q;
+
+            var analisis = Analizar(entrada, nombreCampo);
+            if (analisis.Error != null)
+            {
+                errores.Add(analisis.Error);
+                return q;
+            }
+
+            if (analisis.EsO)
+            {
+                var combinado = construir(analisis.Terminos[0]);
+                foreach (var t in analisis.Terminos.Skip(1))
+                {
+                    combinado = PredicateUtils.O(combinado, construir(t));
+                }
+                return q.Where(combinado);
+            }
+
+            // La Y se obtiene encadenando Where: más simple y con el mismo resultado.
+            foreach (var t in analisis.Terminos)
+            {
+                q = q.Where(construir(t));
+            }
+            return q;
+        }
+
         public async Task<ReportSearchResult> SearchAsync(ReportSearchFilter filtro, int maxResults = 500)
         {
             // Sin ningún criterio no se busca: devolver el histórico completo no es una
@@ -45,6 +137,8 @@ namespace MiniLIS.Infrastructure.Services
             {
                 return new ReportSearchResult();
             }
+
+            var errores = new List<string>();
 
             var q = _db.Samples
                 .Include(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
@@ -64,73 +158,54 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             // --- Contenido del informe ---------------------------------------------------
-            if (!string.IsNullOrWhiteSpace(filtro.Conclusiones))
-            {
-                var t = Norm(filtro.Conclusiones);
-                // Conclusions y el Diagnosis del informe son dos campos distintos que un
-                // facultativo usa indistintamente para la conclusión diagnóstica.
-                q = q.Where(s => s.Report != null &&
+            // Conclusions y el Diagnosis del informe son dos campos distintos que un
+            // facultativo usa indistintamente para la conclusión diagnóstica.
+            q = AplicarTexto(q, filtro.Conclusiones, "Conclusión diagnóstica", t =>
+                s => s.Report != null &&
                     ((s.Report.Conclusions != null && s.Report.Conclusions.ToLower().Contains(t)) ||
-                     (s.Report.Diagnosis != null && s.Report.Diagnosis.ToLower().Contains(t))));
-            }
-            if (!string.IsNullOrWhiteSpace(filtro.CuerpoInforme))
-            {
-                var t = Norm(filtro.CuerpoInforme);
-                q = q.Where(s => s.Report != null &&
+                     (s.Report.Diagnosis != null && s.Report.Diagnosis.ToLower().Contains(t))), errores);
+
+            q = AplicarTexto(q, filtro.CuerpoInforme, "Cuerpo del informe", t =>
+                s => s.Report != null &&
                     ((s.Report.ReportBody != null && s.Report.ReportBody.ToLower().Contains(t)) ||
-                     (s.Report.AdditionalText != null && s.Report.AdditionalText.ToLower().Contains(t))));
-            }
+                     (s.Report.AdditionalText != null && s.Report.AdditionalText.ToLower().Contains(t))), errores);
 
             // --- Datos de la petición ----------------------------------------------------
-            if (!string.IsNullOrWhiteSpace(filtro.SospechaClinica))
-            {
-                var t = Norm(filtro.SospechaClinica);
-                q = q.Where(s => s.Diagnosis.ToLower().Contains(t));
-            }
-            if (!string.IsNullOrWhiteSpace(filtro.Facultativo))
-            {
-                var t = Norm(filtro.Facultativo);
-                q = q.Where(s => s.ClinicalRequest.DoctorName.ToLower().Contains(t));
-            }
-            if (!string.IsNullOrWhiteSpace(filtro.Servicio))
-            {
-                var t = Norm(filtro.Servicio);
-                q = q.Where(s => s.ClinicalRequest.OriginService.ToLower().Contains(t));
-            }
+            q = AplicarTexto(q, filtro.SospechaClinica, "Sospecha clínica", t =>
+                s => s.Diagnosis.ToLower().Contains(t), errores);
+
+            q = AplicarTexto(q, filtro.Facultativo, "Facultativo solicitante", t =>
+                s => s.ClinicalRequest.DoctorName.ToLower().Contains(t), errores);
+
+            q = AplicarTexto(q, filtro.Servicio, "Servicio de procedencia", t =>
+                s => s.ClinicalRequest.OriginService.ToLower().Contains(t), errores);
 
             // --- Marcadores --------------------------------------------------------------
-            if (!string.IsNullOrWhiteSpace(filtro.Marcador))
-            {
-                var t = Norm(filtro.Marcador);
-                // Los marcadores viven en dos sitios: la tabla de valores del informe (cuando
-                // se usa plantilla) y el resumen en texto (redactado a mano). Buscar solo en
-                // uno perdería la mitad de los estudios.
-                q = q.Where(s => s.Report != null &&
+            // Los marcadores viven en dos sitios: la tabla de valores del informe (cuando se
+            // usa plantilla) y el resumen en texto (redactado a mano). Buscar solo en uno
+            // perdería la mitad de los estudios.
+            //
+            // El resumen es el que permite buscar la INTENSIDAD ("CD34 -", "CD117 +"), porque
+            // la tabla de valores guarda nombre e intensidad en columnas separadas y el nombre
+            // por sí solo no distingue "CD34 -" de "CD34 ++".
+            q = AplicarTexto(q, filtro.Marcador, "Marcador", t =>
+                s => s.Report != null &&
                     (s.Report.MarkerValues.Any(mv => mv.Marker.Name.ToLower().Contains(t)) ||
-                     (s.Report.MarkersSummary != null && s.Report.MarkersSummary.ToLower().Contains(t))));
-            }
+                     (s.Report.MarkersSummary != null && s.Report.MarkersSummary.ToLower().Contains(t))), errores);
 
             // --- Paneles -----------------------------------------------------------------
-            if (!string.IsNullOrWhiteSpace(filtro.Panel))
-            {
-                var t = Norm(filtro.Panel);
-                // Panels es el dato vigente; StudyPanel es el campo de texto heredado que
-                // conservan las muestras antiguas. Se buscan ambos para no perder histórico.
-                q = q.Where(s =>
-                    s.Panels.Any(sp => sp.Panel != null && sp.Panel.Name.ToLower().Contains(t)) ||
-                    s.StudyPanel.ToLower().Contains(t));
-            }
+            // Panels es el dato vigente; StudyPanel es el campo de texto heredado que
+            // conservan las muestras antiguas. Se buscan ambos para no perder histórico.
+            q = AplicarTexto(q, filtro.Panel, "Panel realizado", t =>
+                s => s.Panels.Any(sp => sp.Panel != null && sp.Panel.Name.ToLower().Contains(t)) ||
+                     s.StudyPanel.ToLower().Contains(t), errores);
 
             // --- Paciente / muestra ------------------------------------------------------
-            if (!string.IsNullOrWhiteSpace(filtro.Paciente))
-            {
-                var t = Norm(filtro.Paciente);
-                q = q.Where(s =>
-                    s.SampleNumber.ToLower().Contains(t) ||
-                    s.ClinicalRequest.Patient.FullName.ToLower().Contains(t) ||
-                    s.ClinicalRequest.Patient.NHC.ToLower().Contains(t) ||
-                    s.ClinicalRequest.Patient.NASI.ToLower().Contains(t));
-            }
+            q = AplicarTexto(q, filtro.Paciente, "Paciente o nº de muestra", t =>
+                s => s.SampleNumber.ToLower().Contains(t) ||
+                     s.ClinicalRequest.Patient.FullName.ToLower().Contains(t) ||
+                     s.ClinicalRequest.Patient.NHC.ToLower().Contains(t) ||
+                     s.ClinicalRequest.Patient.NASI.ToLower().Contains(t), errores);
 
             // --- Clasificación -----------------------------------------------------------
             if (filtro.TipoMuestra.HasValue)
@@ -194,7 +269,8 @@ namespace MiniLIS.Infrastructure.Services
             {
                 Items = items,
                 TotalMatches = total,
-                Truncated = total > items.Count
+                Truncated = total > items.Count,
+                Avisos = errores
             };
         }
 

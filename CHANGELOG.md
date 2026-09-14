@@ -30,6 +30,41 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.2.0
+
+### El buscador combina varios términos dentro de un mismo campo
+
+Antes cada campo hacía **una sola búsqueda literal**: escribir `CD34 - CD117 +` en Marcador
+buscaba esa cadena entera y no encontraba nada. La combinación con Y existía solo *entre*
+campos, no *dentro* de uno.
+
+Ahora, en cualquier campo de texto:
+
+| Se escribe | Significa |
+|---|---|
+| `CD34 - & CD117 +` | **los dos** |
+| `CD34 - \| CD117 +` | **cualquiera** de los dos |
+| `CD34 -` | el texto entero y literal, como siempre |
+
+**Por qué `&` y `\|` y no otros símbolos.** Las cadenas reales de marcadores son del estilo
+`CD117 -/+d, HLA-DR -/+, MPO +d/+`: «+», «−», «/» y el espacio **forman parte del dato** y
+no pueden separar términos. Tampoco valen las palabras «y»/«o», que aparecen a cada línea
+en el cuerpo del informe. Se comprobó sobre los datos que ni `&` ni `\|` aparecen en ningún
+campo buscable.
+
+Sin operador, el comportamiento es idéntico al anterior: quien no conozca la sintaxis no
+se ve afectado.
+
+**Mezclar ambos operadores avisa en vez de adivinar.** Resolver `A & B \| C` con una
+precedencia implícita daría un resultado que el usuario no espera y no podría detectar;
+se muestra un aviso indicando que ese campo no se ha tenido en cuenta. Callarlo sería peor:
+el resultado parecería completo sin serlo.
+
+Aplica a conclusión diagnóstica, cuerpo del informe, sospecha clínica, facultativo,
+servicio, marcador, panel y paciente.
+
+---
+
 ## v3.1.0
 
 > **Altera el informe emitido** cuando se selecciona un citómetro. Sin selección, el

@@ -24,6 +24,16 @@
             Todos los campos son opcionales y se combinan entre sí: rellenar dos estrecha el
             resultado. Las fechas se aplican sobre la fecha de recepción de la muestra.
         </p>
+        <p class="bus-sintaxis">
+            Dentro de un mismo campo puede buscar varios términos:
+            <code>CD34 - &amp; CD117 +</code> exige <strong>los dos</strong>;
+            <code>CD34 - | CD117 +</code> admite <strong>cualquiera</strong>.
+            Sin <code>&amp;</code> ni <code>|</code>, el texto se busca entero y tal cual.
+            <span class="bus-sintaxis-nota">
+                Se usan esos dos símbolos porque «+», «−», «/» y los espacios forman parte de
+                los propios marcadores («CD117 -/+d»).
+            </span>
+        </p>
     </div>
 
     <div class="bus-form">
@@ -122,6 +132,22 @@
     @if (mensaje != null)
     {
         <div class="bus-msg"><i class="bi bi-info-circle me-2"></i>@mensaje</div>
+    }
+
+    @* Un campo con sintaxis inválida se ignora, así que el resultado parece completo sin
+       serlo. El aviso no puede faltar. *@
+    @if (resultado != null && resultado.Avisos.Any())
+    {
+        <div class="bus-aviso">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <div>
+                @foreach (var a in resultado.Avisos)
+                {
+                    <div>@a</div>
+                }
+                <div class="bus-aviso-nota">Ese campo no se ha tenido en cuenta en esta búsqueda.</div>
+            </div>
+        </div>
     }
 
     @if (resultado != null)
@@ -232,6 +258,24 @@
     .bus-btn-clear:hover:not(:disabled) { background: #f1f5f9; }
     .bus-btn-csv { margin-left: auto; background: #fff; border: 1px solid #bbf7d0; color: #15803d; font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 5px; cursor: pointer; }
     .bus-btn-csv:hover { background: #f0fdf4; border-color: #86efac; }
+
+    .bus-sintaxis {
+        font-size: 12.5px; color: #475569; margin: 6px 0 0; max-width: 860px; line-height: 1.6;
+    }
+    .bus-sintaxis code {
+        background: #eef2f7; border: 1px solid #dbe3ec; border-radius: 3px;
+        padding: 1px 5px; font-size: 12px; color: #1e3a5f; white-space: nowrap;
+    }
+    .bus-sintaxis-nota { display: block; color: #94a3b8; font-size: 11.5px; margin-top: 2px; }
+
+    .bus-aviso {
+        display: flex; gap: 8px; align-items: flex-start;
+        margin-top: 14px; padding: 9px 13px;
+        background: #fffbeb; border: 1px solid #fde68a; border-left: 3px solid #d97706;
+        border-radius: 5px; font-size: 13px; color: #92400e;
+    }
+    .bus-aviso > i { padding-top: 2px; }
+    .bus-aviso-nota { color: #a16207; font-size: 12px; margin-top: 3px; }
 
     .bus-msg { margin-top: 14px; padding: 9px 13px; background: #eff6ff; border: 1px solid #bfdbfe; border-left: 3px solid #3b82f6; border-radius: 5px; font-size: 13px; color: #1e40af; }
     .bus-empty { margin-top: 24px; text-align: center; color: #94a3b8; }

@@ -233,5 +233,141 @@ namespace MiniLIS.Tests
             lineas[0].Should().Contain("Nº muestra").And.Contain("Conclusión");
             lineas.Length.Should().Be(r.Items.Count + 1);
         }
+
+        // ── Combinación de varios términos dentro de un mismo campo ──────────────────
+        //
+        // Los datos sembrados tienen resúmenes de marcadores realistas:
+        //   26-00001 → "CD38+ CD138+"      (ni CD34 ni CD117)
+        //   26-00002 → "CD20+ CD5-"        (ni CD34 ni CD117)
+        // Se añaden dos estudios más para poder distinguir Y de O.
+
+        private static async Task SeedMarcadoresAsync(TestDb db)
+        {
+            using var ctx = db.CreateContext();
+
+            async Task<int> Nuevo(string numero, string resumen)
+            {
+                var p = EntityBuilders.NewPatient(nhc: $"NHC-{numero}", fullName: $"Paciente {numero}");
+                var r = EntityBuilders.NewRequest(p, requestNumber: $"REQ-{numero}");
+                var m = EntityBuilders.NewSample(r, sampleNumber: numero);
+                m.ReceptionDate = new DateTime(2026, 5, 5, 9, 0, 0, DateTimeKind.Utc);
+                ctx.Samples.Add(m);
+                await ctx.SaveChangesAsync();
+                ctx.SampleReports.Add(new SampleReport
+                {
+                    SampleId = m.Id, MarkersSummary = resumen,
+                    ReportBody = "Cuerpo", Conclusions = "Conclusión", CreatedBy = 1
+                });
+                await ctx.SaveChangesAsync();
+                return m.Id;
+            }
+
+            await Nuevo("26-00101", "CD34 -, CD117 +, CD45 ++");   // los dos
+            await Nuevo("26-00102", "CD34 -, CD13 +, CD45 ++");    // solo CD34 -
+            await Nuevo("26-00103", "CD117 +, CD33 +");            // solo CD117 +
+        }
+
+        [Fact]
+        public async Task El_operador_Y_exige_que_se_cumplan_todos_los_terminos()
+        {
+            using var db = new TestDb();
+            await SeedAsync(db);
+            await SeedMarcadoresAsync(db);
+            var svc = NewService(db, out var ctx);
+            using var _ = ctx;
+
+            var r = await svc.SearchAsync(new ReportSearchFilter { Marcador = "CD34 - & CD117 +" });
+
+            r.Items.Should().ContainSingle("solo un estudio tiene ambos marcadores");
+            r.Items[0].SampleNumber.Should().Be("26-00101");
+            r.Avisos.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task El_operador_O_admite_cualquiera_de_los_terminos()
+        {
+            using var db = new TestDb();
+            await SeedAsync(db);
+            await SeedMarcadoresAsync(db);
+            var svc = NewService(db, out var ctx);
+            using var _ = ctx;
+
+            var r = await svc.SearchAsync(new ReportSearchFilter { Marcador = "CD34 - | CD117 +" });
+
+            r.Items.Select(x => x.SampleNumber).Should()
+                .BeEquivalentTo(new[] { "26-00101", "26-00102", "26-00103" });
+        }
+
+        [Fact]
+        public async Task Sin_operador_el_texto_se_busca_entero_y_literal()
+        {
+            // Quien no conozca la sintaxis debe obtener el comportamiento de siempre, y no
+            // una búsqueda partida por espacios que devolvería cosas inesperadas.
+            using var db = new TestDb();
+            await SeedAsync(db);
+            await SeedMarcadoresAsync(db);
+            var svc = NewService(db, out var ctx);
+            using var _ = ctx;
+
+            var exacto = await svc.SearchAsync(new ReportSearchFilter { Marcador = "CD34 -, CD117 +" });
+            exacto.Items.Should().ContainSingle().Which.SampleNumber.Should().Be("26-00101");
+
+            // La misma cadena sin la coma no existe literalmente en ningún resumen.
+            var inexistente = await svc.SearchAsync(new ReportSearchFilter { Marcador = "CD34 - CD117 +" });
+            inexistente.Items.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task Mezclar_los_dos_operadores_avisa_en_vez_de_adivinar()
+        {
+            // Resolverlo en silencio con una precedencia implícita daría un resultado que el
+            // usuario no espera y no podría detectar.
+            using var db = new TestDb();
+            await SeedAsync(db);
+            await SeedMarcadoresAsync(db);
+            var svc = NewService(db, out var ctx);
+            using var _ = ctx;
+
+            var r = await svc.SearchAsync(new ReportSearchFilter
+            {
+                Marcador = "CD34 - & CD117 + | CD33 +",
+                Servicio = "Hematología"
+            });
+
+            r.Avisos.Should().ContainSingle().Which.Should().Contain("Marcador");
+            // El resto de criterios sí se aplica: la búsqueda no se aborta entera.
+            r.Items.Should().NotBeEmpty();
+        }
+
+        [Fact]
+        public async Task La_combinacion_funciona_tambien_en_el_cuerpo_del_informe()
+        {
+            using var db = new TestDb();
+            await SeedAsync(db);
+            var svc = NewService(db, out var ctx);
+            using var _ = ctx;
+
+            // A: "población plasmocitaria aberrante" · B: "poblaciones linfoides de fenotipo conservado"
+            var ambos = await svc.SearchAsync(new ReportSearchFilter { CuerpoInforme = "población & aberrante" });
+            ambos.Items.Should().ContainSingle().Which.SampleNumber.Should().Be("26-00001");
+
+            var cualquiera = await svc.SearchAsync(new ReportSearchFilter { CuerpoInforme = "aberrante | linfoides" });
+            cualquiera.Items.Should().HaveCount(2);
+        }
+
+        [Fact]
+        public async Task Los_terminos_se_recortan_y_se_ignoran_los_vacios()
+        {
+            using var db = new TestDb();
+            await SeedAsync(db);
+            await SeedMarcadoresAsync(db);
+            var svc = NewService(db, out var ctx);
+            using var _ = ctx;
+
+            var r = await svc.SearchAsync(new ReportSearchFilter { Marcador = "  CD34 -  &&  CD117 +  " });
+
+            r.Items.Should().ContainSingle().Which.SampleNumber.Should().Be("26-00101");
+            r.Avisos.Should().BeEmpty();
+        }
     }
 }
