@@ -30,6 +30,56 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.4.0
+
+### Dos formatos de etiqueta de muestra, a elegir en Configuración
+
+**Configuración → Etiquetas** permite elegir el formato de la etiqueta de **muestra**, con
+una vista previa de ambos. Las etiquetas de tubo y de alícuota no cambian.
+
+**Tipo 1** (el de siempre, reorganizado): un código de barras con el nº de muestra; la
+fecha pasa a la misma línea que el NHC, a su derecha, y en la línea que ocupaba se ponen
+el NASI y el Nº LAB.
+
+```
+[código de barras del nº de muestra]
+26-00010                           MO
+NHC: 2444337         21/08/2026 10:09
+NASI: 172846  Nº LAB: 12345678
+```
+
+**Tipo 2**: dos códigos de barras de media altura, el del nº de muestra y el del Nº LAB,
+con sus propios tamaños de fuente y altura de código, configurables aparte.
+
+```
+[código de barras del nº de muestra]
+26-00010                           MO
+NHC: 2444337         21/08/2026 10:09
+Nº LAB: 12345678
+[código de barras del Nº LAB]
+```
+
+**El Nº LAB puede venir vacío o con caracteres no codificables**, porque lo teclea el
+usuario, y el codificador Code 128B lanza una excepción en ambos casos. Sin protección,
+una sola muestra así habría tumbado **la pantalla de impresión entera**, no solo su
+etiqueta. Ya había una en la base de pruebas: la 26-00009, sin Nº LAB. Ahora se marca en
+la etiqueta —«SIN Nº LAB» o «Nº LAB NO CODIFICABLE», con el número en texto— y el resto se
+imprime con normalidad.
+
+**Un solo generador de etiquetas.** El marcado se ha sacado de la pantalla de impresión a
+`MiniLIS.Web/Services/LabelRenderer.cs`, y sus estilos a `app.css`, para que la vista
+previa de Configuración sea literalmente lo que se imprime. Mantener dos plantillas
+separadas fue la causa de varios fallos de impresión anteriores en esa misma pantalla.
+
+La vista previa **avisa si el contenido no cabe** en el alto de la etiqueta con las
+medidas elegidas, porque la etiqueta recorta lo que sobra sin dar ningún error.
+
+Una configuración guardada antes de esta versión sigue funcionando sin cambios: se abre
+en Tipo 1. Quince pruebas nuevas; entre ellas, que ningún Nº LAB vacío o no codificable
+pueda romper la impresión.
+
+---
+
 ## v3.3.4
 
 ### La pantalla de acceso no avisaba del bloqueo de cuenta

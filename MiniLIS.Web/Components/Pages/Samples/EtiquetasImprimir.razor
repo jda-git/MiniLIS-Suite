@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
 @using System.Net
+@using MiniLIS.Web.Services
 @attribute [Authorize]
 @inject ISampleService SampleService
 @inject IStorageService StorageService
@@ -132,36 +133,8 @@ else
         .labels-sheet.print-only { display: flex; padding: 0; gap: 0; }
     }
 
-    .label {
-        box-sizing: border-box;
-        border: 1px solid #cbd5e1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        font-family: Arial, sans-serif;
-        overflow: hidden;
-        line-height: 1;
-    }
-    /* Altura de línea fija (1) en vez de "normal": la altura de línea "normal" del
-       navegador no está estandarizada -- Chrome en pantalla y el motor de impresión de
-       Adobe PDF (u otros drivers que no pasan por el renderer del navegador) la calculan
-       de forma distinta. Con la altura por defecto de la etiqueta (25mm) ese margen extra
-       bastaba para que el contenido se saliera del recuadro al imprimir aunque en pantalla
-       cupiera bien. Con line-height:1 la altura real es predecible y cabe con margen.
-       Ver también BuildBarcodeSvg, que ya calcula su alto a partir de settings.BarcodeHeightMm. */
-    .label-main-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.5mm; }
-    .label-number { font-weight: 700; color: #0f172a; }
-    .label-type { font-weight: 700; color: #0f172a; }
-    .label-id { color: #1e293b; margin-top: 0.3mm; }
-    .label-date { color: #475569; margin-top: 0.3mm; }
-    .label-date-row { display: flex; justify-content: space-between; align-items: baseline; color: #475569; margin-top: 0.3mm; gap: 2mm; }
-    .label-date-row span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; margin-top: 0.3mm; }
-    /* Lista de monoclonales del tubo (en vez de NHC/NASI en las etiquetas de tubo): una
-       sola línea, cortada con puntos suspensivos si no cabe en el ancho de la etiqueta,
-       en vez de desbordar o pasar a una segunda línea (la etiqueta no tiene alto de sobra). */
-    .label-tube { color: #1e293b; margin-top: 0.3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-
+    /* Los estilos de la etiqueta (.label, .label-*) están en wwwroot/app.css: los comparte
+       la vista previa de Configuración, y así no pueden divergir de lo que se imprime. */
     @@media print {
         .label { border: none; }
     }
@@ -188,24 +161,8 @@ else
     private int totalLabels => (sampleItems.Count(i => i.Selected) + tubeItems.Count(i => i.Selected) + specimenItems.Count(i => i.Selected)) * settings.CopiesPerSample;
     private bool allTubesSelected => tubeItems.Count > 0 && tubeItems.All(i => i.Selected);
 
-    private class LabelItem
-    {
-        public bool Selected;
-        public string SampleNumber = "";
-        public string TypeCode = "";
-        public string? IdLine;
-        public string? DateLine;
-        public string? TubeLine;
-        public string? AliquotTypeLine;
-        /// <summary>Nombre completo del tipo de alícuota (Células, Pellet, DNA...), mostrado
-        /// junto a la fecha de almacenamiento -- AliquotTypeLine ya lleva el código de 3
-        /// letras (TUB, CEL...) en la línea de arriba, este es el nombre legible.</summary>
-        public string? TypeName;
-        /// <summary>Dato codificado en el código de barras -- por defecto SampleNumber
-        /// (muestras/tubos, donde el número de muestra ya es único); las alícuotas necesitan
-        /// algo más específico, porque varias comparten SampleNumber (F-7).</summary>
-        public string? BarcodeData;
-    }
+    // LabelItem y el marcado viven en MiniLIS.Web/Services/LabelRenderer.cs (compartido con
+    // la vista previa de Configuración).
 
     protected override async Task OnInitializedAsync()
     {
@@ -238,16 +195,16 @@ else
         foreach (var s in samples)
         {
             var patient = s.ClinicalRequest?.Patient;
-            var hasNhc = !string.IsNullOrWhiteSpace(patient?.NHC);
-            var hasNasi = !string.IsNullOrWhiteSpace(patient?.NASI);
-            var idLine = hasNhc ? $"NHC: {patient!.NHC}" : (hasNasi ? $"NASI: {patient!.NASI}" : null);
 
             sampleItems.Add(new LabelItem
             {
+                Kind = LabelKind.Sample,
                 Selected = true,
                 SampleNumber = s.SampleNumber,
                 TypeCode = s.SampleType.ToCode(),
-                IdLine = idLine,
+                Nhc = patient?.NHC,
+                Nasi = patient?.NASI,
+                LabNumber = s.ClinicalRequest?.RequestNumber,
                 DateLine = LocalTimeService.ToLocal(s.ReceivedAtUtc ?? s.ReceptionDate).ToString("dd/MM/yyyy HH:mm")
             });
 
@@ -257,6 +214,7 @@ else
                 {
                     tubeItems.Add(new LabelItem
                     {
+                        Kind = LabelKind.Tube,
                         Selected = false,
                         SampleNumber = s.SampleNumber,
                         TypeCode = s.SampleType.ToCode(),
@@ -272,6 +230,7 @@ else
             var typeCode = sp.Type.ToCode();
             specimenItems.Add(new LabelItem
             {
+                Kind = LabelKind.Aliquot,
                 Selected = true,
                 SampleNumber = sampleNumber,
                 TypeCode = typeCode,
@@ -314,101 +273,7 @@ else
         }
     }
 
-    // Construye el mismo marcado para el selector en pantalla y para la hoja de impresión
-    // (.labels-sheet): así lo que se selecciona es exactamente lo que se imprime, en vez de
-    // mantener dos plantillas separadas que puedan divergir (ver el historial de bugs de
-    // impresión de esta misma página).
-    private MarkupString BuildLabelMarkup(LabelItem item)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.Append($@"<div class=""label"" style=""width:{settings.WidthMm.ToString(CultureInfo.InvariantCulture)}mm; height:{settings.HeightMm.ToString(CultureInfo.InvariantCulture)}mm; padding:{settings.MarginMm.ToString(CultureInfo.InvariantCulture)}mm;"">");
-        sb.Append(BuildBarcodeSvg(item.BarcodeData ?? item.SampleNumber));
-        sb.Append(@"<div class=""label-main-row"">");
-        sb.Append($@"<span class=""label-number"" style=""font-size:{settings.MainFontPt}pt;"">{WebUtility.HtmlEncode(item.SampleNumber)}</span>");
-        if (settings.ShowSampleType && item.AliquotTypeLine == null)
-        {
-            sb.Append($@"<span class=""label-type"" style=""font-size:{settings.MainFontPt}pt;"">{WebUtility.HtmlEncode(item.TypeCode)}</span>");
-        }
-        sb.Append("</div>");
-
-        if (item.TubeLine != null)
-        {
-            sb.Append($@"<div class=""label-tube"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.TubeLine)}</div>");
-        }
-        else if (item.AliquotTypeLine != null)
-        {
-            sb.Append($@"<div class=""label-tube"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.AliquotTypeLine)}</div>");
-        }
-        else if (item.IdLine != null)
-        {
-            sb.Append($@"<div class=""label-id"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.IdLine)}</div>");
-        }
-        else
-        {
-            sb.Append($@"<div class=""label-noid"" style=""font-size:{settings.SecondaryFontPt}pt;"">SIN IDENTIFICADOR</div>");
-        }
-
-        // Para alícuotas la fecha de almacenamiento siempre se muestra -- es su propio dato de
-        // trazabilidad, no la "fecha de recepción" que gobierna settings.ShowReceptionDate (esa
-        // casilla es específica de las etiquetas de muestra, ver ConfigIndex.razor).
-        if (item.TubeLine == null && item.DateLine != null && (item.AliquotTypeLine != null || settings.ShowReceptionDate))
-        {
-            if (item.TypeName != null)
-            {
-                // Fecha a la izquierda, tipo de alícuota (Células, Pellet, DNA...) a la
-                // derecha, en la misma línea -- mismo patrón flex que label-main-row.
-                sb.Append($@"<div class=""label-date-row"" style=""font-size:{settings.SecondaryFontPt}pt;"">");
-                sb.Append($@"<span>{WebUtility.HtmlEncode(item.DateLine)}</span>");
-                sb.Append($@"<span>{WebUtility.HtmlEncode(item.TypeName)}</span>");
-                sb.Append("</div>");
-            }
-            else
-            {
-                sb.Append($@"<div class=""label-date"" style=""font-size:{settings.SecondaryFontPt}pt;"">{WebUtility.HtmlEncode(item.DateLine)}</div>");
-            }
-        }
-
-        sb.Append("</div>");
-        return (MarkupString)sb.ToString();
-    }
-
-    // Code 128B renderizado directamente a SVG (F-5): sin dependencia de generación de
-    // imágenes (SkiaSharp/ImageSharp), coherente con el resto de gráficos del proyecto (F-1).
-    private string BuildBarcodeSvg(string data)
-    {
-        var widths = Code128Encoder.EncodeToModuleWidths(data);
-        var totalModules = widths.Sum();
-
-        // Ancho de módulo (X-dimension) FIJO, no "el que haga falta para llenar el ancho
-        // disponible": con datos cortos (p. ej. el Id de una alícuota, muchos menos módulos
-        // que un número de muestra) estirar el código para ocupar todo el ancho produce
-        // barras anormalmente gruesas -- deja de parecerse a un Code128 real y un lector de
-        // mano no lo decodifica (comprobado: "no es legible por el lector"). 0.33mm es un
-        // ancho de módulo cómodo y habitual para lectores estándar a la distancia de uso en
-        // laboratorio. Solo se reduce (nunca se amplía) si el código no cupiera en la
-        // etiqueta con ese ancho -- eso sí puede pasar con datos largos, no con datos cortos.
-        const double targetModuleWidthMm = 0.33;
-        double svgHeightMm = settings.BarcodeHeightMm;
-        double availableWidthMm = settings.WidthMm - 2 * settings.MarginMm;
-        double moduleWidthMm = Math.Min(targetModuleWidthMm, Math.Max(0.25, availableWidthMm / totalModules));
-        double svgWidthMm = moduleWidthMm * totalModules;
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append($"<svg width=\"{svgWidthMm.ToString(System.Globalization.CultureInfo.InvariantCulture)}mm\" height=\"{svgHeightMm.ToString(System.Globalization.CultureInfo.InvariantCulture)}mm\" viewBox=\"0 0 {totalModules} 1\" preserveAspectRatio=\"none\" xmlns=\"http://www.w3.org/2000/svg\">");
-        sb.Append("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"white\"/>");
-
-        double x = 0;
-        var isBar = true;
-        foreach (var w in widths)
-        {
-            if (isBar)
-            {
-                sb.Append($"<rect x=\"{x.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" y=\"0\" width=\"{w}\" height=\"1\" fill=\"black\"/>");
-            }
-            x += w;
-            isBar = !isBar;
-        }
-        sb.Append("</svg>");
-        return sb.ToString();
-    }
+    // Mismo marcado para el selector en pantalla y para la hoja de impresión: así lo que se
+    // selecciona es exactamente lo que se imprime.
+    private MarkupString BuildLabelMarkup(LabelItem item) => (MarkupString)LabelRenderer.Render(item, settings);
 }

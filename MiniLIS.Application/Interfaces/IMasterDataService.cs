@@ -84,6 +84,12 @@ namespace MiniLIS.Application.Interfaces
     /// <summary>Configuración de impresión de etiquetas (F-5). Persistida como un único
     /// SystemSetting JSON ("Label:Settings"), mismo patrón que otras configuraciones
     /// estructuradas — no necesita su propia tabla.</summary>
+    public static class LabelFormats
+    {
+        public const string Tipo1 = "Tipo1";
+        public const string Tipo2 = "Tipo2";
+    }
+
     public class LabelSettings
     {
         public double WidthMm { get; set; } = 50;
@@ -95,6 +101,21 @@ namespace MiniLIS.Application.Interfaces
         public bool ShowSampleType { get; set; } = true;
         public bool ShowReceptionDate { get; set; } = true;
         public int CopiesPerSample { get; set; } = 1;
+
+        // --- Formato de la etiqueta de MUESTRA (las de tubo y alícuota no cambian) ---------
+        // Los ajustes se guardan como JSON en SystemSettings: una configuración guardada antes
+        // de existir estos campos los recibe con su valor por defecto, sin migración.
+
+        /// <summary>"Tipo1": un código de barras (nº de muestra), NHC y fecha en una línea,
+        /// NASI y Nº LAB en la siguiente. "Tipo2": dos códigos de barras de media altura, el
+        /// del nº de muestra y el del Nº LAB.</summary>
+        public string SampleLabelFormat { get; set; } = LabelFormats.Tipo1;
+
+        /// <summary>Altura de CADA uno de los dos códigos de la etiqueta Tipo 2. Por defecto la
+        /// mitad que la del Tipo 1: caben dos en la misma etiqueta.</summary>
+        public double Type2BarcodeHeightMm { get; set; } = 4;
+        public int Type2MainFontPt { get; set; } = 12;
+        public int Type2SecondaryFontPt { get; set; } = 7;
         /// <summary>"Html" (único implementado) | "Zpl" (fuera de alcance: exige confirmar
         /// modelo Zebra concreto, ver F-5).</summary>
         public string Renderer { get; set; } = "Html";

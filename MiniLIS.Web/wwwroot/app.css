@@ -177,3 +177,38 @@ body {
     background-color: #0284c7;
     color: white;
 }
+
+/* ═══ Etiquetas (compartido por la impresión y la vista previa de Configuración) ═══
+   Altura de línea fija (1) en vez de "normal": la "normal" no está estandarizada y el motor
+   de impresión de algunos controladores la calcula distinto que el navegador; con la etiqueta
+   de 25 mm eso bastaba para que el contenido se saliera al imprimir aunque en pantalla
+   cupiera. Con line-height:1 el alto real es predecible. */
+.label {
+    box-sizing: border-box;
+    border: 1px solid #cbd5e1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    font-family: Arial, sans-serif;
+    overflow: hidden;
+    line-height: 1;
+    background: #fff;
+}
+.label .label-barcode { display: block; flex-shrink: 0; }
+/* El segundo código de barras de la etiqueta Tipo 2 no debe pegarse al texto de encima. */
+.label .label-barcode:not(:first-child) { margin-top: 0.5mm; }
+.label-main-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.5mm; }
+.label-number { font-weight: 700; color: #0f172a; }
+.label-type { font-weight: 700; color: #0f172a; }
+.label-id { color: #1e293b; margin-top: 0.3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-id-text { color: #1e293b; }
+.label-date { color: #475569; margin-top: 0.3mm; }
+/* Dos datos en la misma línea, uno a cada extremo (NHC ··· fecha). */
+.label-date-row { display: flex; justify-content: space-between; align-items: baseline; color: #475569; margin-top: 0.3mm; gap: 2mm; }
+.label-date-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-date-row .label-id-text { color: #1e293b; }
+/* Dos datos seguidos, separados por un pequeño hueco (NASI  Nº LAB). */
+.label-pair { display: flex; gap: 2.5mm; color: #1e293b; margin-top: 0.3mm; white-space: nowrap; overflow: hidden; }
+.label-pair span { overflow: hidden; text-overflow: ellipsis; }
+.label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; margin-top: 0.3mm; }
+.label-tube { color: #1e293b; margin-top: 0.3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

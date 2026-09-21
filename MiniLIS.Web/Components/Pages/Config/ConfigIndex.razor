@@ -11,6 +11,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @using MiniLIS.Web.Components.Shared
+@using MiniLIS.Web.Services
 
 <PageTitle>Configuración - MiniLIS Suite</PageTitle>
 
@@ -823,6 +824,7 @@
                     <div class="form-field">
                         <label class="field-label">Altura del código de barras (mm)</label>
                         <input type="number" step="0.5" class="field-input" @bind="labelSettings.BarcodeHeightMm" />
+                        <span class="lbl-hint">Tipo 1, tubos y alícuotas</span>
                     </div>
                 </div>
                 <div class="inline-form-grid">
@@ -849,6 +851,68 @@
                         <input type="checkbox" @bind="labelSettings.ShowReceptionDate" />
                     </div>
                 </div>
+                @* ── Formato de la etiqueta de MUESTRA ──
+                   La vista previa sale del mismo generador que la impresión
+                   (MiniLIS.Web/Services/LabelRenderer.cs): lo que se ve aquí es lo que se imprime. *@
+                <h3 class="lbl-subtitle">Formato de la etiqueta de muestra</h3>
+                <p class="section-subtitle">
+                    Solo afecta a la etiqueta de muestra; las de tubo y alícuota no cambian.
+                    Pulse sobre el formato que quiera usar. La vista previa se actualiza al cambiar
+                    cualquier medida.
+                </p>
+
+                <div class="lbl-formatos">
+                    @foreach (var (formato, titulo, descripcion) in FormatosEtiqueta)
+                    {
+                        var elegido = labelSettings.SampleLabelFormat == formato;
+                        var ajustes = ConFormato(formato);
+                        var alto = LabelRenderer.AltoContenidoMuestraMm(ajustes);
+                        var util = LabelRenderer.AltoDisponibleMm(ajustes);
+                        <div class="lbl-formato @(elegido ? "lbl-formato-activo" : "")"
+                             role="radio" aria-checked="@(elegido ? "true" : "false")" tabindex="0"
+                             @onclick="@(() => labelSettings.SampleLabelFormat = formato)">
+                            <div class="lbl-formato-cab">
+                                <i class="bi @(elegido ? "bi-record-circle-fill" : "bi-circle")"></i>
+                                <strong>@titulo</strong>
+                                @if (elegido) { <span class="lbl-en-uso">En uso</span> }
+                            </div>
+                            <div class="lbl-formato-desc">@descripcion</div>
+                            <div class="lbl-preview">
+                                @((MarkupString)LabelRenderer.Render(EtiquetaEjemplo, ajustes))
+                            </div>
+                            @if (alto > util)
+                            {
+                                <div class="lbl-aviso">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                    El contenido (~@alto.ToString("0.0") mm) supera el alto útil de la
+                                    etiqueta (@util.ToString("0.0") mm): puede cortarse al imprimir.
+                                    Reduzca fuentes o altura del código de barras.
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <h3 class="lbl-subtitle">Ajustes propios de la etiqueta Tipo 2</h3>
+                <p class="section-subtitle">
+                    La etiqueta Tipo 2 lleva dos códigos de barras, así que tiene sus propios tamaños:
+                    la altura indicada se aplica a los dos por igual.
+                </p>
+                <div class="inline-form-grid">
+                    <div class="form-field">
+                        <label class="field-label">Altura de cada código de barras (mm)</label>
+                        <input type="number" step="0.5" min="2" class="field-input" @bind="labelSettings.Type2BarcodeHeightMm" />
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Fuente principal (pt)</label>
+                        <input type="number" min="5" class="field-input" @bind="labelSettings.Type2MainFontPt" />
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Fuente secundaria (pt)</label>
+                        <input type="number" min="4" class="field-input" @bind="labelSettings.Type2SecondaryFontPt" />
+                    </div>
+                </div>
+
                 <p class="section-subtitle mt-2">
                     Renderizador: HTML + CSS de impresión (funciona con cualquier impresora, sin controlador especial).
                     ZPL (Zebra) queda fuera de alcance hasta confirmar un modelo concreto en la unidad.
@@ -1699,6 +1763,33 @@
         font-size: 16px;
     }
     .status-close:hover { opacity: 1; }
+
+    /* ── Formato de etiqueta de muestra ── */
+    .lbl-subtitle { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 22px 0 4px; }
+    .lbl-hint { display: block; font-size: 11px; color: #94a3b8; margin-top: 3px; }
+    .lbl-formatos { display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0 6px; }
+    .lbl-formato {
+        flex: 1 1 280px; max-width: 420px;
+        border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;
+        background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s;
+    }
+    .lbl-formato:hover { border-color: #93c5fd; }
+    .lbl-formato:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+    .lbl-formato-activo { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+    .lbl-formato-cab { display: flex; align-items: center; gap: 8px; color: #1e293b; }
+    .lbl-formato-cab i { color: #2563eb; }
+    .lbl-en-uso {
+        margin-left: auto; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .04em; color: #1d4ed8; background: #dbeafe; border-radius: 8px; padding: 2px 8px;
+    }
+    .lbl-formato-desc { font-size: 12px; color: #64748b; margin: 4px 0 10px; }
+    /* La etiqueta se dibuja a tamaño real en mm, que en pantalla es muy pequeño; se amplía
+       solo la vista previa, sin tocar las medidas que se imprimen. */
+    .lbl-preview { zoom: 1.6; display: inline-block; }
+    .lbl-aviso {
+        margin-top: 10px; font-size: 12px; color: #92400e;
+        background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 6px 9px;
+    }
 </style>
 
 @code {
@@ -1879,6 +1970,36 @@
         {
             AvisarError($"No se pudo eliminar el citómetro: {ex.Message}");
         }
+    }
+
+    // --- Formato de la etiqueta de muestra ---
+    private static readonly (string Formato, string Titulo, string Descripcion)[] FormatosEtiqueta =
+    {
+        (LabelFormats.Tipo1, "Tipo 1", "Un código de barras. NHC y fecha en una línea; NASI y Nº LAB en la siguiente."),
+        (LabelFormats.Tipo2, "Tipo 2", "Dos códigos de barras de media altura: el del nº de muestra y el del Nº LAB.")
+    };
+
+    /// <summary>Datos de ejemplo para la vista previa: los de un caso real, con todos los
+    /// campos rellenos para que se vea el formato completo.</summary>
+    private static readonly LabelItem EtiquetaEjemplo = new()
+    {
+        Kind = LabelKind.Sample,
+        SampleNumber = "26-00010",
+        TypeCode = "MO",
+        Nhc = "2444337",
+        Nasi = "172846",
+        LabNumber = "12345678",
+        DateLine = "21/08/2026 10:09"
+    };
+
+    /// <summary>Copia de los ajustes actuales con otro formato, para previsualizar los dos a
+    /// la vez. Se clona por JSON y no campo a campo para no olvidar ninguno al añadir más.</summary>
+    private LabelSettings ConFormato(string formato)
+    {
+        var copia = System.Text.Json.JsonSerializer.Deserialize<LabelSettings>(
+            System.Text.Json.JsonSerializer.Serialize(labelSettings))!;
+        copia.SampleLabelFormat = formato;
+        return copia;
     }
 
     private void SetTab(string tab)
