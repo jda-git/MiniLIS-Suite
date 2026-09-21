@@ -30,6 +30,34 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.3.3
+
+### Unificación de las dos líneas de trabajo paralelas
+
+Las versiones 3.3.0 (aviso de incidencias de adquisición) y 3.3.1–3.3.2 (confirmación de
+guardados en Configuración; icono de ordenación de la Bandeja) se hicieron en dos sesiones
+de trabajo distintas sobre el mismo repositorio. La historia quedó lineal y sin conflictos
+—no compartían ningún fichero de código—, pero revisando la unión aparecieron dos cosas.
+
+**La pestaña Citómetros quedó fuera del aviso común.** La v3.3.1 unificó la confirmación
+de guardado de Configuración en un único aviso, pero no conocía esa pestaña. Ahora usa el
+mismo mecanismo: confirmación que se oculta sola, y aviso fijo si falla el sistema. El
+error de nombre duplicado se mantiene junto al formulario, porque es un problema del campo
+con el formulario aún abierto.
+
+**Editar un citómetro existente nunca había funcionado.** Fallo de la v3.1.0, que se
+verificó creando un citómetro pero no editándolo; salió a la luz al comprobar lo anterior.
+El formulario edita una copia —para que «Cancelar» no deje la fila a medias—, y el
+contexto de datos, que en Blazor Server dura todo el circuito, ya rastreaba el original:
+guardar la copia lanzaba *«cannot be tracked»*. Misma causa raíz que la v2.7.3.
+
+Y había un segundo problema detrás del primero: aunque no hubiera fallado, la copia no
+lleva los campos de auditoría, así que **cada edición habría reescrito la fecha y el autor
+del alta** del equipo. Ahora se copian solo los campos editables sobre la instancia
+rastreada. Dos pruebas nuevas reproducen ambos fallos: las dos fallaban antes del arreglo.
+
+---
+
 ## v3.3.2
 
 ### Bandeja Técnica: retirado un icono de ordenación que no hacía nada

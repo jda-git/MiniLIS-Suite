@@ -1843,17 +1843,24 @@
         }
         try
         {
+            var nombre = editandoCitometro.Name.Trim();
             await MasterService.UpsertCytometerAsync(editandoCitometro);
             editandoCitometro = null;
             errorCitometro = null;
             citometros = await MasterService.GetAllCytometersAsync();
+            // Mismo aviso común que el resto de pestañas: antes esta guardaba sin confirmar nada.
+            Avisar($"Citómetro «{nombre}» guardado.");
+        }
+        catch (Exception ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true)
+        {
+            // El nombre es único: dos equipos con el mismo nombre harían ambiguo el informe.
+            // Es un problema del campo con el formulario aún abierto, así que va junto a él.
+            errorCitometro = "Ya existe un citómetro con ese nombre.";
         }
         catch (Exception ex)
         {
-            // El nombre es único: dos equipos con el mismo nombre harían ambiguo el informe.
-            errorCitometro = ex.InnerException?.Message.Contains("UNIQUE") == true
-                ? "Ya existe un citómetro con ese nombre."
-                : $"No se pudo guardar: {ex.Message}";
+            // Fallo inesperado: aviso fijo, que no se pierda que el cambio no se guardó.
+            AvisarError($"No se pudo guardar el citómetro: {ex.Message}");
         }
     }
 
@@ -1862,8 +1869,16 @@
         var ok = await JS.InvokeAsync<bool>("confirm",
             $"¿Eliminar «{c.Name}» del catálogo? Los informes ya emitidos conservan su texto: guardan una copia, no una referencia.");
         if (!ok) return;
-        await MasterService.DeleteCytometerAsync(c.Id);
-        citometros = await MasterService.GetAllCytometersAsync();
+        try
+        {
+            await MasterService.DeleteCytometerAsync(c.Id);
+            citometros = await MasterService.GetAllCytometersAsync();
+            Avisar($"Citómetro «{c.Name}» eliminado del catálogo.");
+        }
+        catch (Exception ex)
+        {
+            AvisarError($"No se pudo eliminar el citómetro: {ex.Message}");
+        }
     }
 
     private void SetTab(string tab)

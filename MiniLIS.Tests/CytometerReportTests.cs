@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Services;
 using MiniLIS.Tests.TestSupport;
@@ -199,6 +200,71 @@ namespace MiniLIS.Tests
             using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
             using var lector = new StreamReader(zip.GetEntry("content.xml")!.Open(), Encoding.UTF8);
             return System.Net.WebUtility.HtmlDecode(lector.ReadToEnd());
+        }
+
+        [Fact]
+        public async Task Se_puede_editar_un_citometro_ya_cargado_en_el_mismo_contexto()
+        {
+            // Reproduce el caso real: Configuración carga la lista (el contexto, que en Blazor
+            // Server dura todo el circuito, queda rastreando cada citómetro) y el formulario
+            // edita una COPIA con el mismo Id. Update() sobre la copia intentaba rastrear dos
+            // instancias con la misma clave y fallaba: editar nunca había funcionado.
+            using var db = new TestDb();
+            using var ctx = db.CreateContext();
+            var svc = new MasterDataService(ctx);
+
+            await svc.UpsertCytometerAsync(NuevoCitometro());
+            var lista = await svc.GetAllCytometersAsync();           // queda rastreado
+            var original = lista.Single();
+
+            var copia = new Cytometer
+            {
+                Id = original.Id,
+                Name = original.Name,
+                AnalysisSoftware = original.AnalysisSoftware,
+                AnalysisSoftwareVersion = "2.1",                     // lo que se edita
+                IsActive = true
+            };
+
+            var accion = async () => await svc.UpsertCytometerAsync(copia);
+            await accion.Should().NotThrowAsync();
+
+            using var check = db.CreateContext();
+            var guardado = await check.Cytometers.SingleAsync();
+            guardado.AnalysisSoftwareVersion.Should().Be("2.1");
+        }
+
+        [Fact]
+        public async Task Editar_no_reescribe_la_fecha_ni_el_autor_de_creacion()
+        {
+            // La copia del formulario no lleva los campos de auditoría. Pasarla entera a la
+            // base habría puesto CreatedAtUtc = ahora (su inicializador) y CreatedBy = 0 en
+            // cada edición, borrando cuándo y quién dio de alta el equipo.
+            using var db = new TestDb();
+            int id;
+            var creado = new DateTime(2026, 1, 15, 8, 0, 0, DateTimeKind.Utc);
+            using (var ctx = db.CreateContext())
+            {
+                var c = NuevoCitometro();
+                ctx.Cytometers.Add(c);
+                await ctx.SaveChangesAsync();
+                c.CreatedAtUtc = creado;
+                c.CreatedBy = 7;
+                await ctx.SaveChangesAsync();
+                id = c.Id;
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                var svc = new MasterDataService(ctx);
+                await svc.GetAllCytometersAsync();
+                await svc.UpsertCytometerAsync(new Cytometer { Id = id, Name = "Navios EX", IsActive = true });
+            }
+
+            using var check = db.CreateContext();
+            var guardado = await check.Cytometers.SingleAsync();
+            guardado.CreatedAtUtc.Should().Be(creado, "la fecha de alta no debe cambiar al editar");
+            guardado.CreatedBy.Should().Be(7, "el autor del alta no debe cambiar al editar");
         }
     }
 }

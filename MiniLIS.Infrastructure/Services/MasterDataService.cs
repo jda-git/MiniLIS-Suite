@@ -103,10 +103,41 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<Cytometer> UpsertCytometerAsync(Cytometer cytometer)
         {
-            if (cytometer.Id == 0) _db.Cytometers.Add(cytometer);
-            else _db.Cytometers.Update(cytometer);
+            if (cytometer.Id == 0)
+            {
+                _db.Cytometers.Add(cytometer);
+                await _db.SaveChangesAsync();
+                return cytometer;
+            }
+
+            // La edición llega como una COPIA (el formulario la usa para que "Cancelar" no deje
+            // la fila de la lista a medio modificar). Update(copia) fallaba por dos motivos:
+            //
+            //  - El contexto es Scoped, que en Blazor Server dura todo el circuito, y ya rastrea
+            //    el citómetro original que cargó la lista: rastrear la copia con la misma clave
+            //    lanza "cannot be tracked". Editar un citómetro nunca había funcionado.
+            //  - Aunque no fallara, la copia no trae los campos de auditoría: habría escrito
+            //    CreatedAtUtc = ahora (su inicializador) y CreatedBy = 0 en cada edición.
+            //
+            // Por eso se buscan la instancia rastreada y se le copian SOLO los campos editables.
+            // No vale SetValues(copia): arrastraría también esos campos de auditoría.
+            var existente = await _db.Cytometers.FindAsync(cytometer.Id)
+                ?? throw new InvalidOperationException("El citómetro ya no existe.");
+
+            existente.Name = cytometer.Name;
+            existente.Manufacturer = cytometer.Manufacturer;
+            existente.SerialNumber = cytometer.SerialNumber;
+            existente.QmsEquipmentCode = cytometer.QmsEquipmentCode;
+            existente.AcquisitionSoftware = cytometer.AcquisitionSoftware;
+            existente.AcquisitionSoftwareVersion = cytometer.AcquisitionSoftwareVersion;
+            existente.AnalysisSoftware = cytometer.AnalysisSoftware;
+            existente.AnalysisSoftwareVersion = cytometer.AnalysisSoftwareVersion;
+            existente.Notes = cytometer.Notes;
+            existente.IsActive = cytometer.IsActive;
+            existente.DisplayOrder = cytometer.DisplayOrder;
+
             await _db.SaveChangesAsync();
-            return cytometer;
+            return existente;
         }
 
         /// <summary>Baja del catálogo. No toca los informes ya emitidos: estos guardan una
