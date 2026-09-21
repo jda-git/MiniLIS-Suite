@@ -30,6 +30,17 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.3.2
+
+### Bandeja Técnica: retirado un icono de ordenación que no hacía nada
+
+La columna «Código» mostraba un icono de ordenar (⇅) que no tenía ninguna acción: era
+puramente decorativo e invitaba a pulsarlo sin resultado. Se retira. La bandeja ya se
+presenta ordenada por fecha, y para localizar una muestra concreta están la búsqueda por
+código, NHC o nombre y los filtros de estado, tipo y fechas.
+
+---
+
 ## v3.3.1
 
 ### Configuración: los guardados ahora se confirman
