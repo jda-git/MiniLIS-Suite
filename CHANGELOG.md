@@ -30,6 +30,30 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.3.4
+
+### La pantalla de acceso no avisaba del bloqueo de cuenta
+
+Tras **5 intentos fallidos** la cuenta queda bloqueada **15 minutos**, y durante ese tiempo
+se rechaza incluso la contraseña correcta. Pero el mensaje era el mismo que el de una
+contraseña errónea, así que quien quedaba bloqueado seguía probando la clave buena,
+convencido de que estaba mal. Así ocurrió: tras cuatro fallos y el bloqueo, hubo seis
+intentos más con la cuenta ya bloqueada.
+
+El mensaje sigue siendo **idéntico para las cuatro causas** de fallo —contraseña errónea,
+usuario inexistente, usuario inactivo y cuenta bloqueada—, porque distinguirlas permitiría
+averiguar qué cuentas existen. Lo que cambia es que ahora menciona el bloqueo en todos los
+casos:
+
+> CREDENCIALES NO VÁLIDAS. TRAS 5 INTENTOS FALLIDOS EL ACCESO QUEDA BLOQUEADO 15 MINUTOS.
+
+Así avisa sin revelar nada. Las cifras se leen de la configuración de Identity, no están
+escritas en el texto, para que no se desfasen si se cambian.
+
+De paso se corrige una errata: decía «CREDENTILES».
+
+---
+
 ## v3.3.3
 
 ### Unificación de las dos líneas de trabajo paralelas

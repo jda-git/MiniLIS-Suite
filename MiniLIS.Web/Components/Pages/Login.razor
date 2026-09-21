@@ -251,8 +251,27 @@
     [SupplyParameterFromQuery]
     public string? Error { get; set; }
 
+    [Inject] private Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Identity.IdentityOptions> IdentityOpts { get; set; } = default!;
+
+    // El mensaje es el MISMO para las cuatro causas de fallo (contraseña errónea, usuario
+    // inexistente, usuario inactivo y cuenta bloqueada): distinguirlas permitiría averiguar
+    // qué cuentas existen. Pero antes no mencionaba el bloqueo, así que quien quedaba
+    // bloqueado seguía probando la contraseña correcta convencido de que estaba mal.
+    // Nombrarlo en el mensaje común avisa sin revelar nada: sale en todos los casos.
+    // Los valores se leen de la configuración de Identity para que el texto no se desfase.
+    private string MensajeCredenciales
+    {
+        get
+        {
+            var l = IdentityOpts.Value.Lockout;
+            var minutos = (int)Math.Round(l.DefaultLockoutTimeSpan.TotalMinutes);
+            return $"CREDENCIALES NO VÁLIDAS. TRAS {l.MaxFailedAccessAttempts} INTENTOS FALLIDOS EL ACCESO " +
+                   $"QUEDA BLOQUEADO {minutos} MINUTOS.";
+        }
+    }
+
     private string? ErrorMessage => Error switch {
-        "Invalid login attempt" => "CREDENTILES NO VÁLIDAS PARA ESTE TERMINAL.",
+        "Invalid login attempt" => MensajeCredenciales,
         "Please provide username and password" => "CAMPOS REQUERIDOS NO DETECTADOS.",
         _ => Error
     };
