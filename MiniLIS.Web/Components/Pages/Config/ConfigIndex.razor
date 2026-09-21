@@ -71,6 +71,17 @@
 
     <!-- Content Area -->
     <div class="config-content-wrap">
+        @* Aviso común a todas las pestañas. Antes solo lo pintaban Cabecera y Firmas, de
+           modo que Etiquetas, Hoja de trabajo, carpeta FCS e Intensidades guardaban sin decir
+           nada y parecía que el botón no hacía efecto. *@
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div class="status-banner @(isError ? "status-error" : "status-ok")" role="status" aria-live="polite">
+                <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle")"></i>
+                <span>@statusMessage</span>
+                <button class="status-close" title="Cerrar" @onclick="() => statusMessage = null"><i class="bi bi-x"></i></button>
+            </div>
+        }
 
         @* ════════ TAB: MARCADORES ════════ *@
         @if (activeTab == "markers")
@@ -1133,15 +1144,6 @@
                 </button>
             </div>
 
-            @if (!string.IsNullOrEmpty(statusMessage))
-            {
-                <div class="status-banner @(isError ? "status-error" : "status-ok")">
-                    <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle")"></i>
-                    <span>@statusMessage</span>
-                    <button class="status-close" @onclick="() => statusMessage = null"><i class="bi bi-x"></i></button>
-                </div>
-            }
-
             <div class="header-layout">
                 <!-- Settings Panel -->
                 <div class="header-settings-panel">
@@ -1227,15 +1229,6 @@
                     <i class="bi bi-save"></i> Guardar Firmas
                 </button>
             </div>
-
-            @if (!string.IsNullOrEmpty(statusMessage))
-            {
-                <div class="status-banner @(isError ? "status-error" : "status-ok")">
-                    <i class="bi @(isError ? "bi-exclamation-triangle" : "bi-check-circle")"></i>
-                    <span>@statusMessage</span>
-                    <button class="status-close" @onclick="() => statusMessage = null"><i class="bi bi-x"></i></button>
-                </div>
-            }
 
             <div class="header-settings-panel" style="max-width: 600px;">
                 <div class="form-field">
@@ -1873,7 +1866,40 @@
         citometros = await MasterService.GetAllCytometersAsync();
     }
 
-    private void SetTab(string tab) => activeTab = tab;
+    private void SetTab(string tab)
+    {
+        activeTab = tab;
+        statusMessage = null;
+    }
+
+    // Contador para que el temporizador de un aviso antiguo no borre uno más reciente.
+    private int avisoSeq;
+
+    /// <summary>Confirmación de guardado. Desaparece sola: es una confirmación, no algo que
+    /// haya que leer con calma.</summary>
+    private void Avisar(string mensaje)
+    {
+        statusMessage = mensaje;
+        isError = false;
+        var seq = ++avisoSeq;
+        _ = Task.Delay(6000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            if (seq == avisoSeq && !isError)
+            {
+                statusMessage = null;
+                StateHasChanged();
+            }
+        }));
+    }
+
+    /// <summary>Error al guardar. Se queda hasta que el usuario lo cierre: si desapareciera
+    /// solo, podría pasar desapercibido que el cambio no se guardó.</summary>
+    private void AvisarError(string mensaje)
+    {
+        statusMessage = mensaje;
+        isError = true;
+        avisoSeq++;
+    }
 
     // ── MARKERS ──
     private async Task SaveMarker()
@@ -1938,8 +1964,15 @@
     // ── ETIQUETAS (F-5) ──
     private async Task SaveLabelSettings()
     {
-        await MasterService.UpsertLabelSettingsAsync(labelSettings);
-        StateHasChanged();
+        try
+        {
+            await MasterService.UpsertLabelSettingsAsync(labelSettings);
+            Avisar("Configuración de etiquetas guardada.");
+        }
+        catch (Exception ex)
+        {
+            AvisarError("No se pudo guardar la configuración de etiquetas: " + ex.Message);
+        }
     }
 
     // ── HOJA DE TRABAJO (F-6) ──
@@ -1958,9 +1991,17 @@
     private async Task SaveWorklistProfile()
     {
         if (editingWorklistProfile == null) return;
-        await WorklistExportService.UpsertProfileAsync(editingWorklistProfile, editingWorklistColumns);
-        worklistProfiles = await WorklistExportService.GetProfilesAsync();
-        await LoadWorklistProfileForEdit(editingWorklistProfile.Id);
+        try
+        {
+            await WorklistExportService.UpsertProfileAsync(editingWorklistProfile, editingWorklistColumns);
+            worklistProfiles = await WorklistExportService.GetProfilesAsync();
+            await LoadWorklistProfileForEdit(editingWorklistProfile.Id);
+            Avisar("Perfil de hoja de trabajo guardado.");
+        }
+        catch (Exception ex)
+        {
+            AvisarError("No se pudo guardar el perfil de hoja de trabajo: " + ex.Message);
+        }
     }
 
     private async Task MarkWorklistProfileValidated()
@@ -1974,7 +2015,15 @@
     // ── FICHEROS FCS (M-6) ──
     private async Task SaveFcsRootPath()
     {
-        await MasterService.SaveSettingAsync("Fcs:RootPath", fcsRootPath ?? "", "Carpeta raíz de los ficheros FCS (M-6)");
+        try
+        {
+            await MasterService.SaveSettingAsync("Fcs:RootPath", fcsRootPath ?? "", "Carpeta raíz de los ficheros FCS (M-6)");
+            Avisar("Carpeta de ficheros FCS guardada.");
+        }
+        catch (Exception ex)
+        {
+            AvisarError("No se pudo guardar la carpeta de ficheros FCS: " + ex.Message);
+        }
     }
 
     private async Task RunFcsVerification()
@@ -2122,8 +2171,15 @@
     // ── INTENSITIES ──
     private async Task SaveIntensities()
     {
-        await MasterService.UpdateIntensitySettingsAsync(intensitySettings);
-        StateHasChanged();
+        try
+        {
+            await MasterService.UpdateIntensitySettingsAsync(intensitySettings);
+            Avisar("Intensidades guardadas.");
+        }
+        catch (Exception ex)
+        {
+            AvisarError("No se pudieron guardar las intensidades: " + ex.Message);
+        }
     }
 
     private void AddIntensity()
@@ -2187,13 +2243,11 @@
             await MasterService.SaveSettingAsync("Header:LogoWidth", logoWidth.ToString(), "Ancho del Logo");
             await MasterService.SaveSettingAsync("Header:Line1", headerLine1, "Cabecera Línea 1");
             await MasterService.SaveSettingAsync("Header:Line2", headerLine2, "Cabecera Línea 2");
-            statusMessage = "Configuración de cabecera guardada con éxito.";
-            isError = false;
+            Avisar("Configuración de cabecera guardada con éxito.");
         }
         catch (Exception ex)
         {
-            statusMessage = "Error al guardar: " + ex.Message;
-            isError = true;
+            AvisarError("Error al guardar: " + ex.Message);
         }
     }
 
@@ -2208,13 +2262,11 @@
         try
         {
             await MasterService.SaveSettingAsync("Signatures:Facultativos", facultativosText, "Lista de Facultativos Firmantes (separados por línea)");
-            statusMessage = "Facultativos guardados con éxito.";
-            isError = false;
+            Avisar("Facultativos guardados con éxito.");
         }
         catch (Exception ex)
         {
-            statusMessage = "Error al guardar: " + ex.Message;
-            isError = true;
+            AvisarError("Error al guardar: " + ex.Message);
         }
     }
 }

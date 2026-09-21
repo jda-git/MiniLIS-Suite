@@ -30,6 +30,27 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.3.1
+
+### Configuración: los guardados ahora se confirman
+
+En **Etiquetas**, al cambiar el tamaño de letra o de etiqueta y pulsar «Guardar», no
+aparecía ningún aviso: los cambios sí se guardaban, pero parecía que el botón no había
+hecho nada. Lo mismo pasaba en **Hoja de trabajo**, **carpeta de ficheros FCS** e
+**Intensidades**. Solo Cabecera y Firmas mostraban confirmación, porque el aviso estaba
+copiado dentro de esas dos pestañas.
+
+Ahora el aviso es común a toda la página de Configuración:
+
+- Al guardar aparece «… guardada», que se oculta solo a los 6 segundos.
+- Si el guardado falla, el error **se queda hasta que se cierra**. Si se ocultara solo,
+  podría pasar desapercibido que el cambio no se guardó. Antes, estas cuatro pestañas ni
+  siquiera capturaban el error.
+- Al cambiar de pestaña, el aviso se borra, para que la confirmación de una pestaña no
+  aparezca en otra.
+
+---
+
 ## v3.3.0
 
 ### El editor avisa de las incidencias de adquisición
