@@ -422,7 +422,9 @@
     .validation-inline { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #dc3545; font-size: 11px; font-weight: 700; pointer-events: none; }
     .validation-inline-radio { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #dc3545; font-size: 11px; font-weight: 700; pointer-events: none; }
     .clin-field label { background: #f8f9fa; color: #555; font-size: 11px; font-weight: 700; padding: 8px 12px; margin: 0; border-right: 1px solid #ced4da; display: flex; align-items: center; white-space: nowrap; letter-spacing: 0.5px; }
-    .clin-input { border: none; padding: 8px 12px; font-size: 13px; color: #333; width: 100%; outline: none; background: transparent; }
+    .clin-input { border: none; padding: 8px 12px; font-size: 13px; color: #333; width: 100%; outline: none; background: transparent; min-width: 0; flex: 1 1 0; }
+    /* flex + min-width:0: sin ello el campo no encoge por debajo de su ancho natural, se sale
+       de la caja (overflow:hidden) y en los de fecha queda cortado el icono del calendario. */
     .clin-field-radio { display: flex; background: #fff; border: 1px solid #ced4da; border-radius: 6px; overflow: hidden; height: 36px; align-items: center; }
     .radio-group-label { background: #f8f9fa; color: #555; font-size: 11px; font-weight: 700; padding: 0 12px; margin: 0; border-right: 1px solid #ced4da; display: flex; align-items: center; letter-spacing: 0.5px; height: 100%; }
     .clin-radio { font-size: 13px; color: #333; cursor: pointer; display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; }

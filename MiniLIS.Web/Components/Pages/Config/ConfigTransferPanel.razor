@@ -1,0 +1,523 @@
+@using MiniLIS.Application.Interfaces
+@using System.Text
+@inject IConfigTransferService ConfigTransfer
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@* Copia de configuración a fichero. Se muestra dentro de Configuración (solo Administrador).
+   La lógica y las comprobaciones están en ConfigTransferService: esta pantalla solo guía los
+   pasos. En particular, la copia previa obligatoria se exige también en el servicio, no solo
+   aquí deshabilitando el botón. *@
+
+<div class="section-header">
+    <div>
+        <h2 class="section-title">Copia de configuración</h2>
+        <p class="section-subtitle">
+            Guarde la configuración en un fichero para trasladarla a otra instalación o como copia de
+            seguridad. No incluye pacientes, muestras, informes, usuarios ni contadores de numeración.
+        </p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="status-banner status-error" role="alert">
+        <i class="bi bi-exclamation-triangle"></i><span>@error</span>
+        <button class="status-close" title="Cerrar" @onclick="() => error = null"><i class="bi bi-x"></i></button>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(info))
+{
+    <div class="status-banner status-ok" role="status" aria-live="polite">
+        <i class="bi bi-check-circle"></i><span>@info</span>
+        <button class="status-close" title="Cerrar" @onclick="() => info = null"><i class="bi bi-x"></i></button>
+    </div>
+}
+
+@* ═══ EXPORTAR ═══ *@
+<div class="ct-block">
+    <h3 class="ct-title"><i class="bi bi-box-arrow-up"></i> Exportar</h3>
+    <p class="section-subtitle">Elija los apartados. Por defecto van todos.</p>
+    <div class="ct-checks">
+        @foreach (var s in ConfigTransfer.Sections)
+        {
+            <label class="ct-check">
+                <input type="checkbox" checked="@exportKeys.Contains(s.Key)" @onchange="e => Toggle(exportKeys, s.Key, e)" />
+                @s.Title
+                @if (s.IsLocal) { <span class="ct-tag" title="Propio de cada equipo: al importar no se aplica salvo que se marque.">local</span> }
+            </label>
+        }
+    </div>
+    <button class="btn-config btn-config-primary" disabled="@(busy || exportKeys.Count == 0)" @onclick="Exportar">
+        <i class="bi @(busy ? "bi-hourglass-split" : "bi-download")"></i> Guardar configuración en un fichero…
+    </button>
+</div>
+
+@* ═══ IMPORTAR ═══ *@
+<div class="ct-block">
+    <h3 class="ct-title"><i class="bi bi-box-arrow-in-down"></i> Importar</h3>
+
+    <div class="ct-step">
+        <div class="ct-step-num">1</div>
+        <div class="ct-step-body">
+            <strong>Seleccione el fichero</strong>
+            <p class="section-subtitle">Fichero <code>.minilis-config.json</code> exportado desde MiniLIS. Todavía no se cambia nada.</p>
+            <InputFile OnChange="CargarFichero" accept=".json,application/json" disabled="@busy" class="field-input ct-file" />
+        </div>
+    </div>
+
+    @if (analysis != null)
+    {
+        <div class="ct-step">
+            <div class="ct-step-num">2</div>
+            <div class="ct-step-body">
+                <strong>Revise qué se aplicaría</strong>
+                <div class="ct-fileinfo">
+                    <span><i class="bi bi-file-earmark-text"></i> @fileName</span>
+                    @if (analysis.File.AppVersion != null) { <span>MiniLIS @analysis.File.AppVersion</span> }
+                    @if (analysis.File.Machine != null) { <span>equipo @analysis.File.Machine</span> }
+                    @if (analysis.File.ExportedAtUtc != null) { <span>@analysis.File.ExportedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span> }
+                    @if (analysis.File.ExportedBy != null) { <span>por @analysis.File.ExportedBy</span> }
+                    @if (analysis.File.IntegrityOk) { <span class="ct-ok"><i class="bi bi-shield-check"></i> huella correcta</span> }
+                </div>
+
+                @if (!analysis.IsValid)
+                {
+                    <div class="status-banner status-error">
+                        <i class="bi bi-x-octagon"></i>
+                        <span>@string.Join(" ", analysis.Errors)</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="ct-mode">
+                        <label class="ct-check">
+                            <input type="radio" name="ct-mode" checked="@(mode == ConfigImportMode.Fusionar)" @onchange="() => CambiarModo(ConfigImportMode.Fusionar)" />
+                            <strong>Fusionar</strong> — añade lo nuevo y actualiza lo existente; no quita nada.
+                        </label>
+                        <label class="ct-check">
+                            <input type="radio" name="ct-mode" checked="@(mode == ConfigImportMode.Reemplazar)" @onchange="() => CambiarModo(ConfigImportMode.Reemplazar)" />
+                            <strong>Reemplazar</strong> — además desactiva lo que no venga en el fichero (nunca borra).
+                        </label>
+                    </div>
+
+                    <div class="config-table-wrap">
+                        <table class="config-table ct-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:36px"></th>
+                                    <th>Apartado</th>
+                                    <th>Compatibilidad</th>
+                                    <th class="text-center">Nuevos</th>
+                                    <th class="text-center">Modificados</th>
+                                    <th class="text-center">Conflictos</th>
+                                    <th class="text-center">Desactivados</th>
+                                    <th class="text-center">Sin cambios</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in analysis.Sections)
+                                {
+                                    var abierto = expanded.Contains(s.Key);
+                                    <tr class="@(s.CanApply ? "" : "ct-row-off")">
+                                        <td>
+                                            <input type="checkbox" disabled="@(!s.CanApply)" checked="@importKeys.Contains(s.Key)"
+                                                   @onchange="e => Toggle(importKeys, s.Key, e)" title="@(s.CanApply ? "Aplicar este apartado" : "No se puede aplicar")" />
+                                        </td>
+                                        <td>
+                                            @s.Title
+                                            @if (s.IsLocal) { <span class="ct-tag">local</span> }
+                                        </td>
+                                        <td><span class="ct-badge ct-@s.Compatibility">@Texto(s.Compatibility)</span></td>
+                                        <td class="text-center">@Num(s, ConfigChangeKind.Nuevo)</td>
+                                        <td class="text-center">@Num(s, ConfigChangeKind.Modificado)</td>
+                                        <td class="text-center @(s.Count(ConfigChangeKind.Conflicto) > 0 ? "ct-warn" : "")">@Num(s, ConfigChangeKind.Conflicto)</td>
+                                        <td class="text-center">@(Num(s, ConfigChangeKind.Desactivado, ConfigChangeKind.Eliminado))</td>
+                                        <td class="text-center ct-muted">@Num(s, ConfigChangeKind.SinCambios)</td>
+                                        <td>
+                                            @if (TieneDetalle(s))
+                                            {
+                                                <button class="btn-config btn-config-ghost ct-small" @onclick="() => ToggleExpand(s.Key)">
+                                                    <i class="bi @(abierto ? "bi-chevron-up" : "bi-chevron-down")"></i> Detalle
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                    @if (abierto)
+                                    {
+                                        <tr class="ct-detail-row">
+                                            <td></td>
+                                            <td colspan="8">
+                                                @foreach (var m in s.Messages) { <div class="ct-msg"><i class="bi bi-info-circle"></i> @m</div> }
+                                                @if (s.IgnoredFields.Count > 0)
+                                                {
+                                                    <div class="ct-msg"><i class="bi bi-eye-slash"></i> Campos ignorados: @string.Join(", ", s.IgnoredFields)</div>
+                                                }
+                                                @foreach (var c in s.Changes.Where(c => c.Kind != ConfigChangeKind.SinCambios))
+                                                {
+                                                    <div class="ct-change">
+                                                        <span class="ct-kind ct-k-@c.Kind">@Texto(c.Kind)</span> <strong>@c.Item</strong>
+                                                        @if (c.Details.Count > 0)
+                                                        {
+                                                            <ul>@foreach (var d in c.Details) { <li>@d</li> }</ul>
+                                                        }
+                                                    </div>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (analysis.IsValid && result == null)
+        {
+            <div class="ct-step">
+                <div class="ct-step-num">3</div>
+                <div class="ct-step-body">
+                    <strong>Guarde la configuración actual</strong>
+                    <p class="section-subtitle">
+                        Obligatorio. Se guarda en el servidor y, además, se le ofrece guardarla en este equipo
+                        (puede cancelar ese segundo guardado: la del servidor ya está hecha). Si algo no queda
+                        como esperaba, se restaura desde «Copias en el servidor».
+                    </p>
+                    @if (safetyBackup == null)
+                    {
+                        <button class="btn-config btn-config-primary" disabled="@busy" @onclick="CopiaPrevia">
+                            <i class="bi bi-shield-lock"></i> Guardar copia de la configuración actual
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="ct-ok"><i class="bi bi-check-circle-fill"></i> Copia guardada y verificada: <code>@safetyBackup</code></div>
+                    }
+                </div>
+            </div>
+
+            <div class="ct-step">
+                <div class="ct-step-num">4</div>
+                <div class="ct-step-body">
+                    <strong>Aplicar</strong>
+                    <p class="section-subtitle">Todo o nada: si falla un apartado, no se aplica ninguno.</p>
+                    <button class="btn-config btn-config-success" disabled="@(busy || safetyBackup == null || !importKeys.Any())" @onclick="Aplicar">
+                        <i class="bi bi-check2-all"></i> Aplicar @importKeys.Count apartado(s) — modo @mode
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (result != null)
+        {
+            <div class="ct-step">
+                <div class="ct-step-num"><i class="bi @(result.Success ? "bi-check-lg" : "bi-x-lg")"></i></div>
+                <div class="ct-step-body">
+                    @if (result.Success)
+                    {
+                        <div class="status-banner status-ok">
+                            <i class="bi bi-check-circle"></i>
+                            <span>
+                                Configuración importada. Copia previa: <code>@result.SafetyBackupFileName</code>.
+                                Recargue la página para ver los cambios en el resto de pestañas.
+                            </span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="status-banner status-error"><i class="bi bi-x-octagon"></i><span>@result.Error</span></div>
+                    }
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn-config btn-config-ghost" @onclick="DescargarInforme"><i class="bi bi-file-text"></i> Descargar informe</button>
+                        @if (result.Success)
+                        {
+                            <button class="btn-config btn-config-primary" @onclick='() => Nav.NavigateTo("/configuracion", forceLoad: true)'>
+                                <i class="bi bi-arrow-clockwise"></i> Recargar la página
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@* ═══ COPIAS EN EL SERVIDOR ═══ *@
+<div class="ct-block">
+    <h3 class="ct-title"><i class="bi bi-hdd-stack"></i> Copias en el servidor</h3>
+    <p class="section-subtitle">Copias previas guardadas antes de cada importación. «Restaurar» la carga en el paso 2, en modo Reemplazar.</p>
+    @if (backups.Count == 0)
+    {
+        <p class="ct-muted">Todavía no hay ninguna.</p>
+    }
+    else
+    {
+        <div class="config-table-wrap">
+            <table class="config-table">
+                <thead><tr><th>Fichero</th><th>Fecha</th><th>Tamaño</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var b in backups.Take(20))
+                    {
+                        <tr>
+                            <td><code>@b.FileName</code></td>
+                            <td>@b.CreatedUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@((b.SizeBytes / 1024.0).ToString("0")) KB</td>
+                            <td class="cell-actions">
+                                <button class="btn-config btn-config-ghost ct-small" disabled="@busy" @onclick="() => DescargarCopia(b.FileName)"><i class="bi bi-download"></i> Descargar</button>
+                                <button class="btn-config btn-config-ghost ct-small" disabled="@busy" @onclick="() => Restaurar(b.FileName)"><i class="bi bi-arrow-counterclockwise"></i> Restaurar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<style>
+    .ct-block { border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
+    .ct-title { font-size: 15px; font-weight: 700; color: #1e293b; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+    .ct-title i { color: #2563eb; }
+    .ct-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 14px; }
+    .ct-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #334155; cursor: pointer; }
+    .ct-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #92400e; background: #fef3c7; border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+    .ct-step { display: flex; gap: 14px; padding: 14px 0; border-top: 1px dashed #e2e8f0; }
+    .ct-step:first-of-type { border-top: none; }
+    .ct-step-num { flex: 0 0 28px; height: 28px; border-radius: 50%; background: #2563eb; color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+    .ct-step-body { flex: 1; min-width: 0; }
+    .ct-file { max-width: 460px; margin-top: 6px; }
+    .ct-fileinfo { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: #64748b; margin: 6px 0 10px; }
+    .ct-ok { color: #047857; font-size: 13px; }
+    .ct-mode { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 12px; }
+    .ct-table td, .ct-table th { vertical-align: middle; }
+    .ct-row-off td { color: #94a3b8; }
+    .ct-muted { color: #94a3b8; }
+    .ct-warn { color: #b45309; font-weight: 700; }
+    .ct-small { padding: 3px 9px !important; font-size: 12px !important; }
+    .ct-badge { font-size: 11px; font-weight: 700; border-radius: 8px; padding: 2px 8px; white-space: nowrap; }
+    .ct-Compatible { background: #dcfce7; color: #166534; }
+    .ct-CompatibleConConversion { background: #dbeafe; color: #1e40af; }
+    .ct-Parcial { background: #fef3c7; color: #92400e; }
+    .ct-NoAplicable { background: #fee2e2; color: #991b1b; }
+    .ct-Desconocido, .ct-NoIncluido { background: #f1f5f9; color: #64748b; }
+    .ct-detail-row td { background: #f8fafc; font-size: 12.5px; }
+    .ct-msg { color: #475569; margin-bottom: 4px; }
+    .ct-change { margin: 6px 0; }
+    .ct-change ul { margin: 2px 0 0 18px; padding: 0; color: #475569; }
+    .ct-kind { font-size: 10.5px; font-weight: 700; text-transform: uppercase; border-radius: 5px; padding: 1px 6px; }
+    .ct-k-Nuevo { background: #dcfce7; color: #166534; }
+    .ct-k-Modificado { background: #dbeafe; color: #1e40af; }
+    .ct-k-Conflicto { background: #fef3c7; color: #92400e; }
+    .ct-k-Desactivado, .ct-k-Eliminado { background: #fee2e2; color: #991b1b; }
+    .ct-k-Omitido { background: #f1f5f9; color: #64748b; }
+</style>
+
+@code {
+    private readonly HashSet<string> exportKeys = new();
+    private HashSet<string> importKeys = new();
+    private readonly HashSet<string> expanded = new();
+
+    private byte[]? fileContent;
+    private string? fileName;
+    private ConfigImportMode mode = ConfigImportMode.Fusionar;
+    private ConfigAnalysis? analysis;
+    private string? safetyBackup;
+    private ConfigImportResult? result;
+    private List<ConfigBackupFile> backups = new();
+    private bool busy;
+    private string? error;
+    private string? info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        foreach (var s in ConfigTransfer.Sections) exportKeys.Add(s.Key);
+        await CargarCopias();
+    }
+
+    private async Task CargarCopias()
+    {
+        try { backups = await ConfigTransfer.ListServerBackupsAsync(); }
+        catch (Exception ex) { error = "No se pudo leer la carpeta de copias: " + ex.Message; }
+    }
+
+    private static void Toggle(HashSet<string> set, string key, ChangeEventArgs e)
+    {
+        if (e.Value is true) set.Add(key); else set.Remove(key);
+    }
+
+    private void ToggleExpand(string key)
+    {
+        if (!expanded.Remove(key)) expanded.Add(key);
+    }
+
+    private async Task Exportar()
+    {
+        await Run(async () =>
+        {
+            var file = await ConfigTransfer.ExportAsync(exportKeys);
+            info = Resultado(await Guardar(file.FileName, file.Content), file.FileName, "Configuración");
+        });
+    }
+
+    private async Task CargarFichero(InputFileChangeEventArgs e)
+    {
+        await Run(async () =>
+        {
+            using var ms = new MemoryStream();
+            await e.File.OpenReadStream(10 * 1024 * 1024).CopyToAsync(ms);
+            await Analizar(ms.ToArray(), e.File.Name, ConfigImportMode.Fusionar);
+        });
+    }
+
+    private async Task Restaurar(string backupName)
+    {
+        await Run(async () => await Analizar(await ConfigTransfer.ReadServerBackupAsync(backupName), backupName, ConfigImportMode.Reemplazar));
+    }
+
+    private async Task Analizar(byte[] content, string name, ConfigImportMode nuevoModo)
+    {
+        fileContent = content;
+        fileName = name;
+        mode = nuevoModo;
+        result = null;
+        expanded.Clear();
+        analysis = await ConfigTransfer.AnalyzeAsync(content, mode);
+        // Por defecto: todo lo aplicable, salvo las rutas propias de cada equipo.
+        importKeys = analysis.Sections.Where(s => s.CanApply && !s.IsLocal).Select(s => s.Key).ToHashSet();
+    }
+
+    private async Task CambiarModo(ConfigImportMode nuevo)
+    {
+        if (fileContent == null || nuevo == mode) return;
+        await Run(async () =>
+        {
+            mode = nuevo;
+            var seleccion = importKeys;
+            analysis = await ConfigTransfer.AnalyzeAsync(fileContent, mode);
+            importKeys = seleccion.Where(k => analysis.Sections.Any(s => s.Key == k && s.CanApply)).ToHashSet();
+        });
+    }
+
+    private async Task CopiaPrevia()
+    {
+        await Run(async () =>
+        {
+            var copia = await ConfigTransfer.CreateSafetyBackupAsync();
+            safetyBackup = copia.FileName;
+            var r = await Guardar(copia.FileName, copia.Content);
+            info = r == "cancelled"
+                ? $"Copia previa guardada en el servidor ({copia.FileName}). No se ha guardado copia en este equipo."
+                : $"Copia previa guardada en el servidor. {Resultado(r, copia.FileName, "Copia en este equipo")}";
+            await CargarCopias();
+        });
+    }
+
+    private async Task Aplicar()
+    {
+        if (fileContent == null || safetyBackup == null) return;
+        await Run(async () =>
+        {
+            result = await ConfigTransfer.ImportAsync(fileContent, new ConfigImportOptions
+            {
+                Mode = mode,
+                SectionKeys = importKeys,
+                SafetyBackupFileName = safetyBackup
+            });
+            // La copia era de la configuración anterior a ESTA importación: para otra
+            // importación hay que hacer una nueva.
+            safetyBackup = null;
+        });
+    }
+
+    private async Task DescargarCopia(string name)
+        => await Run(async () => info = Resultado(await Guardar(name, await ConfigTransfer.ReadServerBackupAsync(name)), name, "Copia"));
+
+    private async Task DescargarInforme()
+    {
+        if (result == null) return;
+        var sb = new StringBuilder();
+        sb.AppendLine("INFORME DE IMPORTACIÓN DE CONFIGURACIÓN — MiniLIS");
+        sb.AppendLine($"Fecha: {DateTime.Now:dd/MM/yyyy HH:mm}");
+        sb.AppendLine($"Fichero: {fileName}  (MiniLIS {analysis?.File.AppVersion}, equipo {analysis?.File.Machine}, huella {analysis?.File.Sha256})");
+        sb.AppendLine($"Modo: {mode}");
+        sb.AppendLine($"Resultado: {(result.Success ? "APLICADA" : "NO APLICADA — " + result.Error)}");
+        sb.AppendLine($"Copia previa: {result.SafetyBackupFileName}");
+        foreach (var s in result.Sections)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"== {s.Title} [{Texto(s.Compatibility)}] ==");
+            foreach (var m in s.Messages) sb.AppendLine("  · " + m);
+            if (s.IgnoredFields.Count > 0) sb.AppendLine("  · Campos ignorados: " + string.Join(", ", s.IgnoredFields));
+            foreach (var c in s.Changes.Where(c => c.Kind != ConfigChangeKind.SinCambios))
+            {
+                sb.AppendLine($"  [{Texto(c.Kind)}] {c.Item}");
+                foreach (var d in c.Details) sb.AppendLine("      - " + d);
+            }
+            var sin = s.Count(ConfigChangeKind.SinCambios);
+            if (sin > 0) sb.AppendLine($"  ({sin} sin cambios)");
+        }
+        var bytes = new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        var nombre = $"informe-importacion-{DateTime.Now:yyyyMMdd-HHmmss}.txt";
+        await Run(async () => info = Resultado(await Guardar(nombre, bytes, "text/plain", "Informe de texto", ".txt"), nombre, "Informe"));
+    }
+
+    /// <summary>Abre el diálogo «Guardar como» del navegador (si lo tiene; si no, descarga a
+    /// la carpeta de descargas). Devuelve "saved:&lt;nombre&gt;", "cancelled" o "downloaded".</summary>
+    private async Task<string> Guardar(string name, byte[] content, string type = "application/json",
+        string description = "Configuración de MiniLIS", string extension = ".json")
+        => await JS.InvokeAsync<string>("saveFileWithPicker", name, Convert.ToBase64String(content), type, description, extension);
+
+    private static string Resultado(string r, string name, string que) => r switch
+    {
+        "cancelled" => $"{que}: guardado cancelado.",
+        "downloaded" => $"{que}: fichero descargado en la carpeta de descargas del navegador ({name}).",
+        _ when r.StartsWith("saved:") => $"{que}: fichero guardado como «{r[6..]}».",
+        _ => $"{que}: {name}"
+    };
+
+    /// <summary>Un error inesperado se muestra y no deja la pantalla bloqueada.</summary>
+    private async Task Run(Func<Task> action)
+    {
+        busy = true;
+        error = null;
+        info = null;
+        try { await action(); }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private static string Num(SectionAnalysis s, params ConfigChangeKind[] kinds)
+    {
+        var n = kinds.Sum(k => s.Count(k));
+        return n == 0 ? "—" : n.ToString();
+    }
+
+    private static bool TieneDetalle(SectionAnalysis s)
+        => s.Messages.Count > 0 || s.IgnoredFields.Count > 0 || s.Changes.Any(c => c.Kind != ConfigChangeKind.SinCambios);
+
+    private static string Texto(SectionCompatibility c) => c switch
+    {
+        SectionCompatibility.Compatible => "Compatible",
+        SectionCompatibility.CompatibleConConversion => "Compatible (convertido)",
+        SectionCompatibility.Parcial => "Parcial",
+        SectionCompatibility.NoAplicable => "No aplicable",
+        SectionCompatibility.Desconocido => "Desconocido",
+        SectionCompatibility.NoIncluido => "No incluido",
+        _ => c.ToString()
+    };
+
+    private static string Texto(ConfigChangeKind k) => k switch
+    {
+        ConfigChangeKind.Nuevo => "Nuevo",
+        ConfigChangeKind.Modificado => "Modificado",
+        ConfigChangeKind.Conflicto => "Conflicto",
+        ConfigChangeKind.Desactivado => "Desactivado",
+        ConfigChangeKind.Eliminado => "Eliminado",
+        ConfigChangeKind.Omitido => "Omitido",
+        _ => "Sin cambios"
+    };
+}

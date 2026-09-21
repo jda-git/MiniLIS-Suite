@@ -68,6 +68,9 @@
         <button class="config-tab @(activeTab == "signatures" ? "active" : "")" @onclick='() => SetTab("signatures")'>
             <i class="bi bi-pen"></i> Firmas
         </button>
+        <button class="config-tab @(activeTab == "transfer" ? "active" : "")" @onclick='() => SetTab("transfer")'>
+            <i class="bi bi-file-earmark-arrow-down"></i> Copia config.
+        </button>
     </div>
 
     <!-- Content Area -->
@@ -1301,6 +1304,10 @@
                 </div>
             </div>
         }
+        else if (activeTab == "transfer")
+        {
+            <ConfigTransferPanel />
+        }
 
     </div>
 </div>
@@ -1392,6 +1399,9 @@
     .section-subtitle { font-size: 13px; color: #94a3b8; margin: 4px 0 0; }
 
     /* ── Buttons ──────────────────────────────────────────── */
+    /* Un botón deshabilitado tiene que parecerlo: sin esto se veía igual que uno activo y
+       parecía que al pulsarlo «no pasaba nada». */
+    .btn-config:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.3); box-shadow: none; }
     .btn-config {
         display: inline-flex;
         align-items: center;

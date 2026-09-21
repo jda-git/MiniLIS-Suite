@@ -30,6 +30,77 @@ entre despliegues de una misma versión.
 
 ---
 
+## v3.5.0
+
+### Copia de configuración a fichero
+
+Nueva pestaña **Configuración → Copia config.** para guardar la configuración del
+laboratorio en un fichero (`.minilis-config.json`) y cargarla en otra instalación, o
+restaurarla. Evita configurar punto a punto un servidor recién instalado cuando ya existe
+una configuración funcional, y sirve como copia de seguridad de la configuración.
+
+**Qué incluye:** marcadores, plantillas de informe, paneles (versión vigente y borradores,
+con sus tubos y notas), umbrales de los indicadores de calidad, etiquetas, perfiles de hoja
+de trabajo, motivos de rechazo, incidencias de lectura, citómetros, intensidades y plazos de
+retención, cabecera del informe (con el logo) y facultativos firmantes. Las rutas propias
+de cada equipo (carpeta FCS, carpeta de copias) se exportan marcadas como *locales* y al
+importar no se aplican salvo que se marquen.
+
+**Qué no incluye nunca:** pacientes, muestras, informes, usuarios, auditoría ni los
+contadores de numeración (importarlos podría duplicar números de muestra). Los ajustes se
+escriben por lista blanca de claves: un fichero no puede escribir ninguna otra.
+
+**Compatibilidad entre versiones.** Cada apartado lleva su propia versión de esquema. Al
+cargar un fichero, cada apartado sale como *Compatible*, *Compatible (convertido)* (de una
+versión anterior, que se convierte), *Parcial* (trae campos que esta versión no conoce y se
+ignoran, con su lista), *No aplicable* (de una versión más nueva de MiniLIS, o con datos no
+válidos) o *Desconocido* (apartado que esta versión no tiene). Los apartados no aplicables
+se saltan; el resto se puede aplicar.
+
+**Seguridad de la carga:**
+
+1. Se comprueba la huella SHA-256 del fichero: uno dañado o editado a mano no se aplica.
+2. Antes de aplicar se muestra qué cambiaría en cada apartado (nuevo, modificado — con el
+   valor anterior y el nuevo —, conflicto, desactivado, sin cambios), sin guardar nada.
+3. **Copia previa obligatoria** de la configuración actual: se guarda en el servidor
+   (carpeta `config-backups`, configurable con `ConfigTransfer:BackupDirectory`), se vuelve
+   a leer para verificarla y se descarga. El servicio rechaza la importación sin ella.
+4. Todo se aplica en una única transacción: si falla un apartado, no se aplica ninguno.
+5. Exportación, copia previa e importación quedan en la auditoría, y se puede descargar un
+   informe de la importación.
+
+**Reglas de aplicación:**
+
+- Los elementos se identifican por nombre o código, nunca por el Id interno.
+- *Fusionar* (por defecto) añade y actualiza; *Reemplazar* además **desactiva** lo que no
+  viene en el fichero. Nunca se borra nada que puedan referenciar los informes emitidos.
+- Paneles (M-4): una versión publicada nunca se modifica. Si el fichero trae otra versión
+  vigente, en un panel que ya tiene estudios se crea como **borrador** para revisarlo y
+  publicarlo a mano (se marca como *Conflicto*); en un panel sin estudios —el caso de una
+  instalación nueva, con los paneles de relleno que siembra MiniLIS— se publica como versión
+  nueva y la anterior queda retirada.
+- Un perfil de hoja de trabajo nuevo o modificado queda **sin validar** frente al
+  instrumento: la validación es de cada instalación.
+- De los indicadores de calidad solo se importan los umbrales; un código que esta versión
+  no conoce se omite.
+
+«Restaurar», en *Copias en el servidor*, carga una copia previa en el mismo flujo, en modo
+Reemplazar.
+
+Los ficheros (configuración, copia previa, informe de importación) se guardan con el
+diálogo **«Guardar como»** del navegador, para elegir carpeta y nombre, en Chrome y Edge; en
+los demás navegadores van a la carpeta de descargas. La pantalla indica siempre el resultado.
+
+### Correcciones
+
+- **Configuración:** los botones deshabilitados ahora se ven atenuados. Antes parecían
+  activos y daba la impresión de que al pulsarlos no pasaba nada.
+- **Ficha de muestra → Nueva alícuota de excedente:** el icono del calendario del campo
+  *Caducidad* quedaba cortado. Los campos de la ficha y de *Nueva muestra* ya no se salen de
+  su recuadro.
+
+---
+
 ## v3.4.0
 
 ### Dos formatos de etiqueta de muestra, a elegir en Configuración

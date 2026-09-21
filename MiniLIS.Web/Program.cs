@@ -78,6 +78,16 @@ builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPatientDataExportPolicy, PatientDataExportPolicy>(); // N-2
 
+// Copia de configuración a fichero: las copias previas a cada importación se guardan en el
+// servidor, por defecto junto a la aplicación (config-backups), o donde indique
+// ConfigTransfer:BackupDirectory.
+builder.Services.AddSingleton(new ConfigTransferOptions
+{
+    BackupDirectory = builder.Configuration["ConfigTransfer:BackupDirectory"]
+        ?? Path.Combine(builder.Environment.ContentRootPath, "config-backups")
+});
+builder.Services.AddScoped<IConfigTransferService, MiniLIS.Infrastructure.Services.ConfigTransfer.ConfigTransferService>();
+
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.BackupWorker>();
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.FcsVerificationWorker>();
 
