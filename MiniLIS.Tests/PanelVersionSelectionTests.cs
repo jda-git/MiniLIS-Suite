@@ -32,7 +32,7 @@ namespace MiniLIS.Tests
             var v1 = new PanelVersion
             {
                 PanelId = panel.Id,
-                VersionNumber = 1,
+                Ordinal = 1, VersionMajor = 1,
                 Status = PanelVersionStatus.Retirada,
                 EffectiveFromUtc = new DateTime(2026, 8, 8, 0, 0, 0, DateTimeKind.Utc),
                 EffectiveToUtc = new DateTime(2026, 9, 6, 0, 0, 0, DateTimeKind.Utc)
@@ -42,7 +42,7 @@ namespace MiniLIS.Tests
             var v2 = new PanelVersion
             {
                 PanelId = panel.Id,
-                VersionNumber = 2,
+                Ordinal = 2, VersionMajor = 2,
                 Status = PanelVersionStatus.Vigente,
                 EffectiveFromUtc = new DateTime(2026, 9, 6, 0, 0, 0, DateTimeKind.Utc)
             };
@@ -65,8 +65,8 @@ namespace MiniLIS.Tests
             var panels = await svc.GetPanelsForSelectionAsync();
 
             var cd34 = panels.Single(p => p.Panel.Code == "CD34");
-            cd34.VigenteVersion!.VersionNumber.Should().Be(2);
-            cd34.DisplayCode.Should().Be("CD34-v02");
+            cd34.VigenteVersion!.VersionMajor.Should().Be(2);
+            cd34.DisplayCode.Should().Be("CD34 · v2.0");
         }
 
         [Fact]
@@ -89,9 +89,9 @@ namespace MiniLIS.Tests
             var panels = await svc.GetPanelsForSelectionAsync();
 
             var cd34 = panels.Single(p => p.Panel.Code == "CD34");
-            cd34.VigenteVersion!.VersionNumber.Should().Be(2,
+            cd34.VigenteVersion!.VersionMajor.Should().Be(2,
                 "una version retirada no puede ofrecerse para registrar una muestra nueva");
-            cd34.DisplayCode.Should().Be("CD34-v02");
+            cd34.DisplayCode.Should().Be("CD34 · v2.0");
             cd34.Tubes.Should().ContainSingle().Which.MarkerList.Should().Be("CD34 nuevo",
                 "los tubos deben ser los de la version vigente, no los de la retirada");
         }

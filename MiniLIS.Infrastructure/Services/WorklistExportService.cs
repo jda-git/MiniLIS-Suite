@@ -161,7 +161,9 @@ namespace MiniLIS.Infrastructure.Services
             var sampleTypeCode = sample.SampleType.ToCode();
             var panelCode = panel.PanelVersion!.Panel?.Code ?? string.Empty;
             var panelName = panel.PanelVersion.Panel?.Name ?? string.Empty;
-            var panelVersionStr = panel.PanelVersion.VersionNumber.ToString("D2");
+            // v4: "1.0" (mayor.menor). Antes era "02": los perfiles que usen {PanelVersion}
+            // deben revalidarse frente al instrumento.
+            var panelVersionStr = $"{panel.PanelVersion.VersionMajor}.{panel.PanelVersion.VersionMinor}";
 
             // Granularidad PorPanel (BD FACSDiva/BD FACSuite): no hay un tubo concreto que
             // representar -- el panel completo (y sus tubos) los conoce el equipo por su
@@ -169,7 +171,7 @@ namespace MiniLIS.Infrastructure.Services
             var tubeNumber = tube?.TubeNumber ?? 0;
             var tubeNumberPadded = tube != null ? tube.TubeNumber.ToString("D2") : string.Empty;
             var fcsFileName = tube != null
-                ? FcsFileNaming.GenerateFileName(sample.SampleNumber, sampleTypeCode, tube.TubeNumber, panelCode, panel.PanelVersion.VersionNumber)
+                ? tube.FcsFileName ?? FcsFileNaming.GenerateFileName(sample.SampleNumber, sampleTypeCode, tube.TubeNumber, panelCode, panel.PanelVersion.FileToken)
                 : string.Empty;
             var markerListRaw = tube != null
                 ? tube.MarkerList

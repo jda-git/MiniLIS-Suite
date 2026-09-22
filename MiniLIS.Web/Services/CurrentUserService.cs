@@ -66,6 +66,22 @@ namespace MiniLIS.Web.Services
             }
         }
 
+        public async Task<bool> IsInRoleAsync(string role)
+        {
+            var httpUser = _httpContextAccessor.HttpContext?.User;
+            if (httpUser?.Identity?.IsAuthenticated == true) return httpUser.IsInRole(role);
+
+            try
+            {
+                var authState = await _authStateProvider.GetAuthenticationStateAsync();
+                return authState.User?.IsInRole(role) == true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public string? ActionContext
         {
             get => _actionContext;

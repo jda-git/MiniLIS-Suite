@@ -12,7 +12,9 @@ namespace MiniLIS.Domain.Entities
 
         public int TubeNumber { get; set; } // 1, 2, 3…
 
-        /// <summary>Combinación de anticuerpos tal como se escribía en TubeListText, una línea.</summary>
+        /// <summary>Resumen de la combinación de anticuerpos ("16/13/34/11b/45/117/DR/10"). Solo
+        /// orientativo: no identifica por sí solo una fórmula (clon, fluorocromo, volumen). La
+        /// identificación inequívoca es FormulaCode + FormulaRevision, que remiten al QMS.</summary>
         [Required]
         [MaxLength(300)]
         public string MarkerList { get; set; } = string.Empty; // "8+lambda/56+kappa/5/3/19/20+4/45/38"
@@ -22,5 +24,11 @@ namespace MiniLIS.Domain.Entities
 
         /// <summary>Tubo de ampliación, no siempre necesario para completar el estudio.</summary>
         public bool IsOptional { get; set; } = false;
+
+        /// <summary>Fórmula del cóctel del tubo en el QMS y su revisión (v4).</summary>
+        [MaxLength(50)]
+        public string? FormulaCode { get; set; }
+        [MaxLength(20)]
+        public string? FormulaRevision { get; set; }
     }
 }

@@ -1,13 +1,55 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Identity;
 using MiniLIS.Infrastructure.Persistence;
 using MiniLIS.Infrastructure.Services;
 using MiniLIS.Web.Components;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    // Instalado como servicio de Windows, el directorio de trabajo es System32: el contenido
+    // (wwwroot, appsettings.json) se busca junto al ejecutable. Fuera de un servicio no cambia.
+    ContentRootPath = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : null
+});
+
+// Servicio de Windows (instalador, ver installer/): arranque y parada los gestiona el
+// Administrador de servicios, y los avisos van al Visor de eventos (origen "MiniLIS", que
+// registra el instalador). Si no se ejecuta como servicio, no hace nada.
+builder.Services.AddWindowsService(o => o.ServiceName = "MiniLIS");
+builder.Services.Configure<Microsoft.Extensions.Logging.EventLog.EventLogSettings>(o =>
+{
+    if (OperatingSystem.IsWindows()) o.SourceName = "MiniLIS";
+});
+
+// Configuración propia de la máquina, fuera de la carpeta del programa para que una
+// actualización nunca la pise: cadena de conexión, clave de las copias, certificado,
+// dominios permitidos... La escribe el instalador y el servicio recibe su ruta en la
+// variable MINILIS_SETTINGS. Si la variable está pero el fichero no, no se arranca (mejor
+// un fallo evidente que arrancar con la configuración de desarrollo). Las variables de
+// entorno se vuelven a añadir detrás para que sigan teniendo prioridad sobre el fichero.
+var machineSettings = Environment.GetEnvironmentVariable("MINILIS_SETTINGS");
+if (!string.IsNullOrWhiteSpace(machineSettings))
+{
+    builder.Configuration.AddJsonFile(machineSettings, optional: false, reloadOnChange: false);
+    builder.Configuration.AddEnvironmentVariables();
+}
+
+// Claves de Data Protection (cookies de sesión, antiforgery) persistidas en disco y cifradas
+// con DPAPI de la máquina. Sin esto, la cuenta virtual del servicio no tiene perfil donde
+// guardarlas: se regenerarían en cada reinicio y todas las sesiones abiertas caducarían.
+var dataProtectionKeys = builder.Configuration["DataProtection:KeysDirectory"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeys))
+{
+    var dp = builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeys))
+        .SetApplicationName("MiniLIS");
+    if (OperatingSystem.IsWindows()) dp.ProtectKeysWithDpapi(protectToLocalMachine: true);
+}
 
 // Add services to the container.
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
@@ -78,6 +120,12 @@ builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPatientDataExportPolicy, PatientDataExportPolicy>(); // N-2
 
+// Permisos por rol configurables (Configuración → Permisos): las políticas "perm:<código>"
+// que usan páginas, controladores y componentes se resuelven contra esa matriz.
+builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, MiniLIS.Web.Services.PermissionPolicyProvider>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, MiniLIS.Web.Services.PermissionHandler>();
+
 // Copia de configuración a fichero: las copias previas a cada importación se guardan en el
 // servidor, por defecto junto a la aplicación (config-backups), o donde indique
 // ConfigTransfer:BackupDirectory.
@@ -90,6 +138,7 @@ builder.Services.AddScoped<IConfigTransferService, MiniLIS.Infrastructure.Servic
 
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.BackupWorker>();
 builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.FcsVerificationWorker>();
+builder.Services.AddHostedService<MiniLIS.Infrastructure.Workers.PanelVersionActivationWorker>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()

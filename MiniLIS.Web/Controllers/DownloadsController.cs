@@ -26,11 +26,12 @@ namespace MiniLIS.Web.Controllers
         private readonly IExcedenteService _excedenteService;
         private readonly INotificationService _notificationService;
         private readonly IPatientDataExportPolicy _exportPolicy;
+        private readonly IPermissionService _permissions;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, IExcedenteService excedenteService, INotificationService notificationService, IPatientDataExportPolicy exportPolicy, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, IExcedenteService excedenteService, INotificationService notificationService, IPatientDataExportPolicy exportPolicy, IPermissionService permissions, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
@@ -43,6 +44,7 @@ namespace MiniLIS.Web.Controllers
             _excedenteService = excedenteService;
             _notificationService = notificationService;
             _exportPolicy = exportPolicy;
+            _permissions = permissions;
             _userManager = userManager;
             _logger = logger;
             _configuration = configuration;
@@ -53,8 +55,10 @@ namespace MiniLIS.Web.Controllers
         /// tanto si el informe no existe como si el rol no corresponde, para no dar pistas
         /// de enumeración a quien prueba GUIDs al azar (C-3).
         /// </summary>
-        private bool CanAccessReports() =>
-            User.IsInRole("Administrador") || User.IsInRole("Facultativo");
+        /// <summary>v4.1: los permisos salen de la matriz por rol (Configuración → Permisos),
+        /// no de roles escritos aquí. Se sigue devolviendo 404 y no 403 cuando falta el permiso
+        /// de descarga, para no dar pistas a quien prueba identificadores al azar (C-3).</summary>
+        private Task<bool> CanAccessReportsAsync() => _permissions.HasAsync(User, Permissions.InformesDescargar);
 
         private async Task LogReportDownloadAsync(SampleReport report, string actionContext)
         {
@@ -82,7 +86,7 @@ namespace MiniLIS.Web.Controllers
                     .Include(r => r.Sample)
                     .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
-                if (report == null || !CanAccessReports()) return NotFound();
+                if (report == null || !await CanAccessReportsAsync()) return NotFound();
 
                 var bytes = await _documentService.GeneratePdfAsync(report);
 
@@ -127,7 +131,7 @@ namespace MiniLIS.Web.Controllers
                     .Include(r => r.Sample)
                     .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
-                if (report == null || !CanAccessReports()) return NotFound();
+                if (report == null || !await CanAccessReportsAsync()) return NotFound();
 
                 var bytes = await _documentService.GenerateOdtAsync(report);
 
@@ -171,7 +175,9 @@ namespace MiniLIS.Web.Controllers
                 .Include(r => r.Sample)
                 .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
-            if (report == null || !CanAccessReports()) return NotFound();
+            if (report == null || !await CanAccessReportsAsync()) return NotFound();
+            if (!await _permissions.HasAsync(User, Permissions.InformesValidar))
+                return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-permiso");
             // El botón que llama aquí es un <form> HTML normal (navegación completa, no fetch):
             // devolver Problem()/Conflict() dejaría al usuario viendo el JSON crudo de la
             // respuesta en vez del editor. Se redirige de vuelta con un código de error que la
@@ -181,6 +187,22 @@ namespace MiniLIS.Web.Controllers
                 return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-conclusion");
             if (string.IsNullOrWhiteSpace(report.SelectedSignatures))
                 return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-firma");
+
+            // v4: cada tubo de los paneles solicitados debe estar leído, justificado como no
+            // realizado o anulado. Un tubo sin leer y sin explicación deja el estudio sin
+            // constancia de si se hizo o no.
+            if ((await _sampleService.GetTubesPendingJustificationAsync(report.SampleId)).Any())
+                return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=tubos-pendientes");
+
+            // v4: el texto de versiones de panel se congela al validar (ver
+            // DocumentService.PanelVersionsTextFor): reimprimir el informe dará siempre esto.
+            var sampleForVersions = await _db.Samples
+                .Include(s => s.Panels).ThenInclude(sp => sp.PanelVersion).ThenInclude(v => v!.Panel)
+                .Include(s => s.Panels).ThenInclude(sp => sp.Tubes)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == report.SampleId);
+            var versionsText = MiniLIS.Infrastructure.Services.DocumentService.ComputePanelVersionsText(sampleForVersions);
+            report.PanelVersionsText = versionsText.Length > 500 ? versionsText[..500] : versionsText;
 
             var user = await _userManager.GetUserAsync(User);
             report.IsFinalized = true;
@@ -229,7 +251,9 @@ namespace MiniLIS.Web.Controllers
                 .Include(r => r.Sample)
                 .FirstOrDefaultAsync(r => r.PublicId == publicId);
 
-            if (report == null || !CanAccessReports()) return NotFound();
+            if (report == null || !await CanAccessReportsAsync()) return NotFound();
+            if (!await _permissions.HasAsync(User, Permissions.InformesReabrir))
+                return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-permiso");
             // Mismo motivo que en ValidarInforme: el <form> HTML navega de verdad, así que los
             // errores se redirigen de vuelta al editor con un código en vez de devolver el
             // JSON/texto crudo de Problem()/Conflict() como si fuera la página.
@@ -264,17 +288,18 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("muestras/csv")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador,Facultativo")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.ExportMuestras)]
         public async Task<IActionResult> ExportMuestras(
             [FromQuery] DateTime? desde,
             [FromQuery] DateTime? hasta,
-            [FromQuery] bool incluirIdentificadores = false)
+            [FromQuery] bool incluirIdentificadores = false,
+            [FromQuery] string? justificacion = null)
         {
             // N-2: las comprobaciones vivían aquí incrustadas -- ahora pasan por
             // IPatientDataExportPolicy, el mismo punto que usan también /excedente/csv y
             // /notificaciones/csv, para que esta implementación de referencia no vuelva a
             // divergir de las otras dos exportaciones de datos de paciente.
-            var decision = _exportPolicy.Evaluate(User, desde, hasta, incluirIdentificadores);
+            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta, incluirIdentificadores, justificacion);
             if (!decision.Allowed)
                 return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
 
@@ -300,7 +325,8 @@ namespace MiniLIS.Web.Controllers
                 Username = user?.UserName,
                 IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
                 ActionContext = $"Exportación CSV de muestras {(decision.IncludeIdentifiers ? "con identificadores" : "seudonimizada")}: " +
-                    $"{start:yyyy-MM-dd} a {hasta.Value.Date:yyyy-MM-dd}, {samples.Count} fila(s)",
+                    $"{start:yyyy-MM-dd} a {hasta.Value.Date:yyyy-MM-dd}, {samples.Count} fila(s)" +
+                    (decision.Justification != null ? $" — Justificación: {decision.Justification}" : ""),
                 TimestampUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();
@@ -313,15 +339,16 @@ namespace MiniLIS.Web.Controllers
         /// ExcedenteService.ExportToCsvAsync directamente desde el componente Blazor sin pasar
         /// por ningún control de rango, rol para identificadores ni registro de IP.</summary>
         [HttpGet("excedente/csv")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador,Facultativo")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.ExcedenteVer)]
         public async Task<IActionResult> ExportExcedente(
             [FromQuery] DateTime? desde,
             [FromQuery] DateTime? hasta,
             [FromQuery] bool incluirIdentificadores = false,
+            [FromQuery] string? justificacion = null,
             [FromQuery] string destinationType = "Todos",
             [FromQuery] string? searchTerm = null)
         {
-            var decision = _exportPolicy.Evaluate(User, desde, hasta, incluirIdentificadores);
+            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta, incluirIdentificadores, justificacion);
             if (!decision.Allowed)
                 return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
 
@@ -338,15 +365,16 @@ namespace MiniLIS.Web.Controllers
         /// peticionario, con identidad completa u opcionalmente seudonimizada (N-2). Mismo
         /// reemplazo que ExportExcedente.</summary>
         [HttpGet("notificaciones/csv")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador,Facultativo")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.NotificacionesVer)]
         public async Task<IActionResult> ExportNotificaciones(
             [FromQuery] DateTime? desde,
             [FromQuery] DateTime? hasta,
             [FromQuery] bool incluirIdentificadores = false,
+            [FromQuery] string? justificacion = null,
             [FromQuery] string alertType = "Todos",
             [FromQuery] string? searchTerm = null)
         {
-            var decision = _exportPolicy.Evaluate(User, desde, hasta, incluirIdentificadores);
+            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta, incluirIdentificadores, justificacion);
             if (!decision.Allowed)
                 return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
 
@@ -360,7 +388,7 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("indicadores/pdf")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.IndicadoresVer)]
         public async Task<IActionResult> ExportIndicadoresPdf(
             [FromQuery] DateTime desde,
             [FromQuery] DateTime hasta,
@@ -479,6 +507,7 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("hoja-trabajo")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.HojaTrabajoGenerar)]
         public async Task<IActionResult> ExportHojaTrabajo([FromQuery] string sampleIds, [FromQuery] int profileId)
         {
             try
@@ -512,7 +541,7 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("contingencia/pendientes/pdf")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.ContingenciaGestionar)]
         public async Task<IActionResult> ExportContingenciaPendientes()
         {
             try
@@ -545,7 +574,7 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("contingencia/hojas/pdf")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.ContingenciaGestionar)]
         public async Task<IActionResult> ExportContingenciaHojas([FromQuery] int blockId)
         {
             try
@@ -581,7 +610,7 @@ namespace MiniLIS.Web.Controllers
         }
 
         [HttpGet("evidencias/zip")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Administrador")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.EvidenciasGenerar)]
         public async Task<IActionResult> ExportAuditPackage(
             [FromQuery] DateTime desde,
             [FromQuery] DateTime hasta,

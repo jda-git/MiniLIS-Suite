@@ -78,7 +78,7 @@ namespace MiniLIS.Application.Interfaces
         public PanelVersion? VigenteVersion { get; init; }
         public IReadOnlyList<PanelTube> Tubes { get; init; } = System.Array.Empty<PanelTube>();
 
-        public string DisplayCode => VigenteVersion is null ? Panel.Name : $"{Panel.Code}-v{VigenteVersion.VersionNumber:D2}";
+        public string DisplayCode => VigenteVersion is null ? Panel.Name : $"{Panel.Code} · {VigenteVersion.VersionLabel}";
     }
 
     /// <summary>Configuración de impresión de etiquetas (F-5). Persistida como un único

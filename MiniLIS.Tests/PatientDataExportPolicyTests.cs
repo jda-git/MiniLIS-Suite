@@ -33,63 +33,79 @@ namespace MiniLIS.Tests
             var configValues = new Dictionary<string, string?>();
             if (maxRangoDias.HasValue) configValues["Export:MaxRangoDias"] = maxRangoDias.Value.ToString();
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
-            return new PatientDataExportPolicy(configuration);
+            return new PatientDataExportPolicy(configuration, new FakePermissionService());
         }
 
         [Fact]
-        public void Politica_deniega_exportacion_a_rol_Tecnico()
+        public async Task Politica_deniega_exportacion_a_rol_Tecnico()
         {
             var policy = CreatePolicy();
-            var decision = policy.Evaluate(UserWithRole("Técnico"), DateTime.Today.AddDays(-1), DateTime.Today, false);
+            var decision = await policy.EvaluateAsync(UserWithRole("Técnico"), DateTime.Today.AddDays(-1), DateTime.Today, false);
 
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeTrue("un rol sin permiso debe traducirse en 403, no en un 400 de validación");
         }
 
         [Fact]
-        public void Politica_deniega_sin_rango_de_fechas()
+        public async Task Politica_deniega_sin_rango_de_fechas()
         {
             var policy = CreatePolicy();
 
-            policy.Evaluate(UserWithRole("Administrador"), null, DateTime.Today, false).Allowed.Should().BeFalse();
-            policy.Evaluate(UserWithRole("Administrador"), DateTime.Today, null, false).Allowed.Should().BeFalse();
+            (await policy.EvaluateAsync(UserWithRole("Administrador"), null, DateTime.Today, false)).Allowed.Should().BeFalse();
+            (await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today, null, false)).Allowed.Should().BeFalse();
         }
 
         [Fact]
-        public void Politica_deniega_rango_superior_al_maximo()
+        public async Task Politica_deniega_rango_superior_al_maximo()
         {
             var policy = CreatePolicy(maxRangoDias: 30);
-            var decision = policy.Evaluate(UserWithRole("Administrador"), DateTime.Today.AddDays(-31), DateTime.Today, false);
+            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today.AddDays(-31), DateTime.Today, false);
 
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeFalse("un rango excesivo es un error de petición (400), no de autorización");
         }
 
         [Fact]
-        public void Politica_deniega_identificadores_a_rol_Facultativo()
+        public async Task El_facultativo_incluye_identificadores_solo_con_justificacion()
         {
+            // v4: el facultativo puede exportar con identificadores, pero justificándolo; la
+            // justificación viaja en la decisión para quedar en la auditoría.
             var policy = CreatePolicy();
-            var decision = policy.Evaluate(UserWithRole("Facultativo"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true);
 
+            var sin = await policy.EvaluateAsync(UserWithRole("Facultativo"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true);
+            sin.Allowed.Should().BeFalse();
+            sin.IsForbidden.Should().BeFalse("no es falta de permiso sino de justificación");
+
+            var con = await policy.EvaluateAsync(UserWithRole("Facultativo"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true,
+                justificacion: "Envío a biobanco solicitado por el comité");
+            con.Allowed.Should().BeTrue();
+            con.IncludeIdentifiers.Should().BeTrue();
+            con.Justification.Should().Be("Envío a biobanco solicitado por el comité");
+        }
+
+        [Fact]
+        public async Task El_tecnico_no_exporta_datos_de_pacientes_ni_con_justificacion()
+        {
+            var decision = await CreatePolicy().EvaluateAsync(UserWithRole("Técnico"), DateTime.Today.AddDays(-1), DateTime.Today, true, "Justificación larga cualquiera");
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeTrue();
         }
 
         [Fact]
-        public void Politica_permite_identificadores_a_rol_Administrador()
+        public async Task Politica_permite_identificadores_a_rol_Administrador()
         {
             var policy = CreatePolicy();
-            var decision = policy.Evaluate(UserWithRole("Administrador"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true);
+            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true);
 
             decision.Allowed.Should().BeTrue();
             decision.IncludeIdentifiers.Should().BeTrue();
         }
 
         [Fact]
-        public void Politica_deniega_hasta_anterior_a_desde()
+        public async Task Politica_deniega_hasta_anterior_a_desde()
         {
             var policy = CreatePolicy();
-            var decision = policy.Evaluate(UserWithRole("Administrador"), DateTime.Today, DateTime.Today.AddDays(-1), false);
+            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today, DateTime.Today.AddDays(-1), false);
 
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeFalse();

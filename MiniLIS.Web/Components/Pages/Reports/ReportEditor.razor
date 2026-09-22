@@ -5,7 +5,8 @@
 @using MiniLIS.Domain.Identity
 @using MiniLIS.Web.Components.Shared
 @using MiniLIS.Infrastructure.Services
-@attribute [Authorize]
+@* Quién entra lo decide el permiso "informes.abrir" (Configuración → Permisos), no el rol. *@
+@attribute [Authorize(Policy = Permissions.Policies.InformesAbrir)]
 @inject NavigationManager Nav
 @inject IReportService ReportService
 @inject IMasterDataService MasterService
@@ -34,6 +35,32 @@
        apartado de paneles a propósito: el objetivo es que el facultativo no pueda validar sin
        haberlas visto, y el apartado de paneles queda muy abajo en un formulario largo.
        No se imprimen en el informe: son información para decidir si procede un comentario. *@
+    @if (tubosPendientes.Any())
+    {
+        <div class="rpt-incidencias rpt-pendientes">
+            <div class="rpt-incidencias-head">
+                <i class="bi bi-hourglass-split"></i>
+                <span>
+                    @tubosPendientes.Count tubo@(tubosPendientes.Count == 1 ? "" : "s") sin leer y sin justificar:
+                    no se puede validar hasta resolverlo
+                </span>
+            </div>
+            <ul class="rpt-incidencias-lista">
+                @foreach (var t in tubosPendientes)
+                {
+                    <li>
+                        <span class="rpt-inc-tubo">@t.PanelName — T@(t.TubeNumber)</span>
+                        <span class="rpt-inc-motivo">@t.MarkerList</span>
+                        @if (t.IsOptional) { <span class="rpt-inc-resolucion rpt-res-salvedad">opcional</span> }
+                    </li>
+                }
+            </ul>
+            <div class="rpt-incidencias-pie">
+                Márquelos como leídos o justifique por qué no se realizan en la lectura de tubos de la
+                <a href="/muestras">Bandeja técnica</a>.
+            </div>
+        </div>
+    }
     @if (incidenciasTubo.Any())
     {
         <div class="rpt-incidencias">
@@ -69,6 +96,17 @@
         </div>
     }
 
+    @* v4: un informe validado es de solo lectura. <fieldset disabled> desactiva todos los
+       controles de dentro; la sección de Validación (con «Reabrir») queda fuera. El servidor
+       también rechaza guardarlo (ReportService.SaveReportAsync). *@
+    @if (report?.IsFinalized == true)
+    {
+        <div class="alert alert-secondary py-2 small">
+            <i class="bi bi-lock-fill me-1"></i>Informe validado: solo lectura. Para modificarlo, un facultativo
+            debe reabrirlo (abajo, en «Validación») indicando el motivo.
+        </div>
+    }
+    <fieldset class="rpt-lock" disabled="@(report?.IsFinalized == true)">
     <!-- ═══════════════  SECCIÓN 1 · IDENTIFICACIÓN  ═══════════════ -->
     <fieldset class="rpt-fieldset">
         <legend>Identificación</legend>
@@ -371,6 +409,9 @@
                     <input type="checkbox" @bind="report.ShowPreviousMarkers" /> Marcadores
                 </label>
                 <label class="d-flex align-items-center gap-2 mb-0">
+                    <input type="checkbox" @bind="report.ShowPreviousAdditionalText" /> Texto adicional
+                </label>
+                <label class="d-flex align-items-center gap-2 mb-0">
                     <input type="checkbox" @bind="report.ShowPreviousConclusions" /> Conclusión
                 </label>
             </div>
@@ -420,6 +461,8 @@
         </div>
     </fieldset>
 
+    </fieldset>
+
     <!-- ═══════════════  VALIDACIÓN  ═══════════════ -->
     @if (report?.Id > 0)
     {
@@ -438,7 +481,7 @@
                     Validado por <strong>@(report.ValidatedByUser?.FullName ?? report.ValidatedByUser?.UserName ?? "—")</strong>
                     el @(LocalTimeService.ToLocal(report.ValidatedAtUtc)?.ToString("dd/MM/yyyy HH:mm") ?? "—")
                 </p>
-                <AuthorizeView Roles="Administrador,Facultativo">
+                <AuthorizeView Policy="@Permissions.Policies.InformesReabrir">
                     <Authorized>
                         <form method="post" action="/api/downloads/informe/@report.PublicId/reabrir" class="d-flex gap-2 align-items-start"
                               onsubmit="return confirm('¿Reabrir este informe validado? El estado de la muestra volverá a reportada parcial.');">
@@ -460,7 +503,7 @@
                     <i class="bi bi-hourglass-split text-warning me-2"></i>
                     Pendiente de validación
                 </p>
-                <AuthorizeView Roles="Administrador,Facultativo">
+                <AuthorizeView Policy="@Permissions.Policies.InformesValidar">
                     <Authorized>
                         @* Formulario oculto: se envía por JS solo tras guardar (ValidateReport), no
                            directamente al pulsar -- así el servidor valida siempre sobre lo que hay
@@ -507,7 +550,7 @@
         <div class="rpt-actionbar-main">
             @if (report?.Id > 0)
             {
-                <AuthorizeView Roles="Administrador,Facultativo">
+                <AuthorizeView Policy="@Permissions.Policies.InformesDescargar">
                     <Authorized>
                         <!-- Guardan antes de generar (PreviewPdf/DownloadPdf/DownloadOdt): eran
                              enlaces <a href> directos, así que cualquier cambio sin guardar
@@ -525,10 +568,17 @@
                     </Authorized>
                 </AuthorizeView>
             }
-            <button class="btn btn-primary px-4 fw-bold shadow-sm" disabled="@isSaving" @onclick="SaveAndNotify">
-                @if (isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
-                <i class="bi bi-check-lg me-2"></i>Guardar Informe
-            </button>
+            @if (report?.IsFinalized != true)
+            {
+                <AuthorizeView Policy="@Permissions.Policies.InformesGuardar" Context="guardarCtx">
+                    <Authorized>
+                <button class="btn btn-primary px-4 fw-bold shadow-sm" disabled="@isSaving" @onclick="SaveAndNotify">
+                    @if (isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                    <i class="bi bi-check-lg me-2"></i>Guardar Informe
+                </button>
+                    </Authorized>
+                </AuthorizeView>
+            }
 
             @if (report != null)
             {
@@ -545,7 +595,7 @@
                 }
                 else
                 {
-                    <AuthorizeView Roles="Administrador,Facultativo">
+                    <AuthorizeView Policy="@Permissions.Policies.InformesValidar">
                         <Authorized>
                             <button type="button" class="btn btn-success px-4 fw-bold shadow-sm" @onclick="ValidateReport"
                                     disabled="@(isSaving || !selectedFacultativos.Any())"
@@ -601,6 +651,7 @@
     .rpt-textarea { font-size: 13px; width: 100%; border: 1px solid #ccc; border-radius: 3px; padding: 8px 10px; font-family: 'Consolas', 'Courier New', monospace; resize: vertical; }
 
     /* Incidencias de adquisición: aviso al facultativo, no contenido del informe */
+    .rpt-lock { border: 0; padding: 0; margin: 0; min-width: 0; }
     .rpt-incidencias {
         background: #fff7ed;
         border: 1px solid #fed7aa;
@@ -609,6 +660,8 @@
         padding: 11px 14px;
         margin-bottom: 14px;
     }
+    /* Tubos sin leer ni justificar (v4): bloquean la validación, así que en rojo. */
+    .rpt-incidencias.rpt-pendientes { background: #fef2f2; border-color: #fecaca; border-left-color: #dc2626; }
     .rpt-incidencias-head {
         display: flex; align-items: center; gap: 8px;
         font-size: 13.5px; font-weight: 700; color: #9a3412; margin-bottom: 7px;
@@ -778,6 +831,9 @@
     {
         "sin-conclusion" => "Debe completar la conclusión antes de validar el informe.",
         "sin-firma" => "Debe seleccionar al menos un facultativo firmante antes de validar el informe.",
+        "sin-permiso" => "Su rol no tiene permiso para validar o reabrir informes (Configuración → Permisos).",
+        "tubos-pendientes" => "Hay tubos de los paneles solicitados sin leer y sin justificar (ver el aviso de arriba). " +
+                              "Justifique por qué no se realizan, o márquelos como leídos, desde la lectura de tubos de la Bandeja técnica.",
         "ya-validado" => "El informe ya está validado.",
         "no-validado" => "El informe no está validado, no se puede reabrir.",
         "motivo-corto" => "Debe indicar un motivo de al menos 10 caracteres para reabrir el informe.",
@@ -810,7 +866,7 @@
         report.HasGenomics.ToString(), report.HasNgs.ToString(), report.HasNewDiagnosisAlert.ToString(),
         report.ShowPreviousStudies.ToString(), report.ShowPreviousConclusions.ToString(),
         report.ShowPreviousMarkers.ToString(), report.ShowPreviousMotivo.ToString(),
-        report.ShowPreviousReportBody.ToString(),
+        report.ShowPreviousReportBody.ToString(), report.ShowPreviousAdditionalText.ToString(),
         report.EquipmentCytometer, report.EquipmentAcquisitionSoftware, report.EquipmentAnalysisSoftware,
         reportDate.ToString("O"),
         patientName, peticionElectronica, servicioSolicitante, medicoSolicitante, motivoSolicitud,
@@ -848,6 +904,9 @@
     }
 
     private List<IncidenciaTubo> incidenciasTubo = new();
+
+    /// <summary>Tubos sin leer ni justificar (v4): impiden validar.</summary>
+    private List<PendingTube> tubosPendientes = new();
 
     private static string TextoResolucion(TubeReadIncidentResolution? r) => r switch
     {
@@ -906,8 +965,9 @@
 
     private static string BuildPanelsUsedText(List<SamplePanel> samplePanels) =>
         string.Join("\n", samplePanels
+            .Where(sp => !sp.IsVoided)
             .SelectMany(sp => sp.Tubes
-                .Where(t => t.IsRead)
+                .Where(t => t.IsRead && !t.IsVoided)
                 .OrderBy(t => t.TubeNumber)
                 .Select(t => $"{sp.Panel?.Name ?? sp.CustomText ?? "—"} — T{t.TubeNumber}: {t.MarkerList}")));
 
@@ -992,7 +1052,7 @@
 
         // Auto-import read panels from the sample
         var samplePanels = await SampleService.GetSamplePanelsAsync(SampleId);
-        var readPanels = samplePanels.Where(sp => sp.IsRead).ToList();
+        var readPanels = samplePanels.Where(sp => sp.IsRead && !sp.IsVoided).ToList();
         readPanelNames = readPanels.Select(sp => sp.Panel?.Name ?? sp.CustomText ?? "—").ToList();
 
         // Listado de tubos realmente leídos en ESTE estudio (SamplePanel.Tubes, congelados
@@ -1020,6 +1080,25 @@
                     Cuando = LocalTimeService.ToLocal(t.ReadIncidentAtUtc)
                 }))
             .ToList();
+
+        // v4: tubos justificados como no realizados y anulaciones, en el mismo aviso: el
+        // facultativo debe verlos antes de validar, aunque tampoco van en el informe.
+        incidenciasTubo.AddRange(samplePanels.SelectMany(sp => sp.Tubes
+            .Where(t => t.IsVoided || t.NotPerformedReason != null)
+            .OrderBy(t => t.TubeNumber)
+            .Select(t => new IncidenciaTubo
+            {
+                Panel = sp.Panel?.Name ?? sp.CustomText ?? "—",
+                TubeNumber = t.TubeNumber,
+                Motivo = t.IsVoided ? (t.VoidReason ?? "") : (t.NotPerformedReason ?? ""),
+                Resolucion = t.IsVoided ? "Anulado" : (t.IsOptional ? "Opcional no realizado" : "No realizado"),
+                ResolucionClase = t.IsVoided ? "anula" : "repetir",
+                Notas = t.IsVoided && t.VoidNonConformityRef != null ? "No conformidad: " + t.VoidNonConformityRef : null,
+                Quien = "",
+                Cuando = LocalTimeService.ToLocal(t.IsVoided ? t.VoidedAtUtc : t.NotPerformedAtUtc)
+            })));
+
+        tubosPendientes = await SampleService.GetTubesPendingJustificationAsync(SampleId);
 
         // Solo se rellena solo cuando está vacío: el campo es editable y el texto final es
         // responsabilidad del facultativo, así que no se le sobrescribe lo que haya escrito.
@@ -1267,6 +1346,9 @@
     /// acción que el usuario pidió. Devuelve false (y ya ha avisado del error) si falla.</summary>
     private async Task<bool> TrySaveSilently()
     {
+        // Validado: no hay nada que guardar (y el servidor lo rechazaría). Previsualizar o
+        // descargar genera el documento con lo ya guardado.
+        if (report?.IsFinalized == true) return true;
         try
         {
             await Save();

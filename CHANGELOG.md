@@ -30,6 +30,125 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.0.0
+
+Versión **MAYOR**: cambia cómo figura la versión de panel en los informes nuevos y exige
+revalidar los perfiles de hoja de trabajo que usen `{PanelVersion}` o `{PanelDisplayCode}`
+(ver más abajo). Los estudios e informes anteriores no cambian.
+
+### Versiones de panel homogéneas con el QMS
+
+**Identificación.** El código estable del panel se separa de la versión local, que pasa a
+tener dos componentes enteros, mayor y menor: `LEUCEMIA-AGUDA · v1.0`. El número lo elige
+quien prepara la versión (un cambio menor puede ser 1.1; uno mayor, 2.0), siempre posterior a
+todas las existentes: una versión no se reutiliza ni se intercala.
+
+**Correspondencia con el QMS.** Cada versión registra la revisión de la ficha maestra de
+paneles (`ANX-CIT-REA-003-01`, configurable con `Qms:PanelMasterSheetCode`), el PNT técnico,
+la referencia externa (p. ej. EuroFlow) separada de la versión local, la evaluación del
+cambio, y quién aprobó, cuándo, y desde cuándo y hasta cuándo estuvo en vigor.
+
+**Composición de los tubos.** Cada tubo lleva su **fórmula y revisión** del QMS. La
+combinación de anticuerpos (`16/13/34/…`) se mantiene como resumen.
+
+**Circuito.** Borrador → En revisión → Aprobada → Vigente → Retirada, en la nueva pantalla
+**Versiones de paneles** (menú lateral; Administrador y Facultativo).
+
+- Preparan los borradores el Administrador y el Facultativo. Aprueba, devuelve a borrador y
+  retira el Facultativo (se comprueba en el servidor, no solo en la pantalla).
+- Para enviar a revisión hacen falta la revisión de la ficha maestra y la fórmula y revisión
+  de cada tubo. Si sube la versión mayor, también la evaluación del cambio.
+- Al aprobar se confirma que la composición coincide con la ficha maestra y se programa la
+  **entrada en vigor** (día y hora). Llegado ese momento la versión entra en vigor sola y la
+  anterior se retira.
+- Fuera de borrador una versión no se modifica. Las notas que no explican el cambio («nada»,
+  «cambio», «-»…) se rechazan; en versiones ya aprobadas se añade una **aclaración** aparte,
+  sin reescribir la original.
+
+**Trazabilidad de los tubos del estudio.**
+
+- Cada tubo de un estudio queda enlazado a su definición exacta (con su fórmula) y con el
+  nombre de su fichero FCS fijado al crearlo.
+- **Una lectura registrada queda bloqueada**: el interruptor ya no se puede desmarcar.
+- **Un panel con tubos leídos no se puede quitar** de la muestra.
+- Si algo se registró por error, un **facultativo o administrador lo anula** (tubo o panel completo) con
+  justificación obligatoria y, si procede, el código de la **no conformidad** del QMS (la
+  pantalla lo recomienda). La lectura original se conserva; lo anulado sale del informe.
+- **Un tubo de un panel solicitado que no se lee se tiene que justificar**. Mientras haya
+  tubos sin leer ni justificar, el informe no se puede validar (el editor los muestra arriba).
+
+**Informes validados.** El texto «Versión de panel» se congela al validar: reimprimir un
+informe emitido da siempre el mismo texto, aunque luego cambien el formato o los datos.
+
+### Permisos por rol, configurables
+
+Nueva pestaña **Configuración → Permisos**: una tabla de funciones por rol con casillas. Lo
+que se marca ahí es lo que comprueban las pantallas, los botones, las descargas y los
+servicios; en el código ya no hay ningún rol escrito. Cambiarlo afecta también a las sesiones
+abiertas.
+
+- Un permiso que no exista aún en lo guardado toma su valor de fábrica, así que al actualizar
+  MiniLIS los permisos nuevos llegan con el reparto previsto y no sin nadie.
+- El Administrador conserva siempre **Permisos** y **Usuarios** (casillas fijas): sin ellos
+  nadie podría volver a repartir permisos.
+- Quitar una marca cierra también la vía directa (URL o descarga), no solo el botón.
+- La pantalla de Permisos la abren de fábrica Administrador y Facultativo.
+
+Valores de fábrica:
+
+
+| Función | Admin | Facultativo | Técnico |
+|---|:-:|:-:|:-:|
+| Trabajo diario (bandeja, registro, ficha de muestra, etiquetas, hoja del citómetro) | ✅ | ✅ | ✅ |
+| Registro diferido; actualizar datos de paciente al registrar | ✅ | ✅ | ❌ |
+| Marcar tubo leído, incidencia «con salvedad», justificar tubo no realizado | ✅ | ✅ | ✅ |
+| Desmarcar un tubo leído (con motivo, queda en la auditoría) | ❌ | ✅ | ❌ |
+| Incidencia que anula o repite un tubo leído; anular tubo o panel | ✅ | ✅ | ❌ |
+| Editor de informes: abrir, guardar, PDF/ODT | ✅ | ✅ | ❌ |
+| Validar y reabrir informes | ❌ | ✅ | ❌ |
+| Buscador, Notificaciones, Excedente, Indicadores | ✅ | ✅ | ❌ |
+| Exportar CSV con identificadores del paciente | ✅ | ✅ con justificación | ❌ |
+| Versiones de paneles: preparar borradores | ✅ | ✅ | ❌ |
+| Versiones de paneles: aprobar, devolver, retirar | ❌ | ✅ | ❌ |
+| Configuración, copia de configuración, Usuarios, Auditoría, Backup, Contingencia, Evidencias | ✅ | ✅ | ❌ |
+
+Además:
+
+- **Un informe validado es de solo lectura**: el editor lo muestra bloqueado y el servidor
+  rechaza guardarlo. Para cambiarlo, un facultativo lo reabre con motivo.
+- **Importar configuración nunca pone en vigor una versión de panel**: entra como borrador y
+  la aprueba un facultativo.
+- El **menú lateral** muestra solo lo que cada rol puede abrir (el técnico, el trabajo diario).
+- Cada usuario sigue teniendo un único rol.
+
+### Migración (automática al arrancar)
+
+- `vNN` pasa a `vN.0` (`v01` → `v1.0`, `v02` → `v2.0`) y se guarda el código anterior. El
+  identificador interno de cada versión y el vínculo de cada estudio con su versión no cambian.
+- Los informes ya validados conservan su texto de versiones en el formato anterior
+  (`LEUCEMIA-AGUDA-v02`), y los tubos ya registrados, su nombre de fichero FCS (`…-v02.fcs`).
+- Las versiones migradas quedan con la ficha maestra, las fórmulas y la aprobación **sin
+  rellenar** («no registrada en MiniLIS»): no se inventan. Hay que completarlas desde el QMS
+  al preparar la siguiente versión de cada panel.
+- La copia de configuración sube a la versión 2 del apartado Paneles; los ficheros de
+  MiniLIS 3.x se convierten solos al importarlos.
+
+### Revalidar
+
+- **Perfiles de hoja de trabajo** que usen `{PanelVersion}` (ahora `1.0` en vez de `02`) o
+  `{PanelDisplayCode}`: revalidarlos frente al citómetro antes de usarlos.
+- Los ficheros FCS de los estudios nuevos se llaman `…_LEUCEMIA-AGUDA-v1-0.fcs`.
+
+### Otros cambios desde 3.5.0
+
+- **Estudios previos → Texto adicional**: nueva casilla para incluir en el informe el texto
+  adicional de los estudios previos seleccionados, entre los marcadores y la conclusión.
+- **Instalador de Windows** (`installer\Build-Installer.ps1`): comprueba requisitos, lleva su
+  propio .NET 9, instala MiniLIS como servicio de Windows con HTTPS y deja los datos fuera de
+  la carpeta del programa. Guía: `docs/INSTALACION.md`.
+
+---
+
 ## v3.5.0
 
 ### Copia de configuración a fichero

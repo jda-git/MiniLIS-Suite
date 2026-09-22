@@ -3,7 +3,7 @@
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize]
+@attribute [Authorize(Policy = Permissions.Policies.MuestrasVer)]
 @implements IDisposable
 @inject IDashboardService DashService
 @inject ILocalTimeService LocalTimeService

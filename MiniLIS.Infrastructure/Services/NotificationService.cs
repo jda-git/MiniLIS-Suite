@@ -109,7 +109,8 @@ namespace MiniLIS.Infrastructure.Services
                 Username = username,
                 IpAddress = ipAddress,
                 ActionContext = $"Exportación CSV de notificaciones {(decision.IncludeIdentifiers ? "con identificadores" : "seudonimizada")}: " +
-                    $"{desde:yyyy-MM-dd} a {hasta:yyyy-MM-dd}, {reports.Count} fila(s)",
+                    $"{desde:yyyy-MM-dd} a {hasta:yyyy-MM-dd}, {reports.Count} fila(s)" +
+                    (decision.Justification != null ? $" — Justificación: {decision.Justification}" : ""),
                 TimestampUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();

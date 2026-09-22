@@ -64,8 +64,10 @@ namespace MiniLIS.Infrastructure.Services
             {
                 var sample = tube.SamplePanel.Sample;
                 var panel = tube.SamplePanel.PanelVersion!.Panel!;
-                var version = tube.SamplePanel.PanelVersion.VersionNumber;
-                var expectedName = FcsFileNaming.GenerateFileName(sample.SampleNumber, sample.SampleType.ToCode(), tube.TubeNumber, panel.Code, version);
+                // v4: el nombre esperado se fija al crear el tubo (FcsFileName); solo se calcula
+                // para tubos antiguos que no lo tengan (lo rellena PanelVersioningMigrator).
+                var expectedName = tube.FcsFileName
+                    ?? FcsFileNaming.GenerateFileName(sample.SampleNumber, sample.SampleType.ToCode(), tube.TubeNumber, panel.Code, tube.SamplePanel.PanelVersion.FileToken);
                 expectedNameToTube[expectedName] = tube;
             }
 

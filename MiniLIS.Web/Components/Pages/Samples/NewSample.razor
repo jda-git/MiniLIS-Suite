@@ -3,7 +3,7 @@
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @using System.ComponentModel.DataAnnotations
-@attribute [Authorize]
+@attribute [Authorize(Policy = Permissions.Policies.MuestrasRegistrar)]
 @inject IPatientService PatientService
 @inject INumberingService NumberingService
 @inject ISampleService SampleRegistry
@@ -59,7 +59,7 @@
                     <button type="button" class="btn btn-primary" autofocus @onclick="KeepStoredPatient">Mantener los almacenados</button>
                 </div>
 
-                <AuthorizeView Roles="Administrador,Facultativo">
+                <AuthorizeView Policy="@Permissions.Policies.PacienteActualizarEnRegistro">
                     <Authorized>
                         <div class="border-top pt-3">
                             <label class="small fw-semibold mb-1">Motivo de la actualización (obligatorio)</label>
@@ -74,7 +74,7 @@
         </div>
     }
 
-    <AuthorizeView Roles="Administrador,Facultativo">
+    <AuthorizeView Policy="@Permissions.Policies.MuestrasRegistroDiferido">
         <Authorized>
             <div class="d-flex align-items-center mb-3">
                 <div class="form-check form-switch">

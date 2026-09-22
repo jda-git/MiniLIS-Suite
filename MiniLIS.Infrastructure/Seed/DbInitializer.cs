@@ -274,6 +274,11 @@ namespace MiniLIS.Infrastructure.Seed
             // individuales con estado propio (F-7, idempotente: solo BatchId == Guid.Empty).
             await StoredSpecimenBatchMigrator.RunAsync(context, logger);
 
+            // 6.75 Versiones de panel v4: fija el nombre FCS de los tubos existentes y congela
+            // el texto de versiones de los informes ya validados, ambos en el formato anterior
+            // (idempotente: solo rellena lo vacío).
+            await PanelVersioningMigrator.RunAsync(context, logger);
+
             // 6.8 Retira del catálogo los indicadores dados de baja (idempotente). Quitarlos de
             // la lista de más abajo solo evita sembrarlos en instalaciones nuevas; en una base
             // ya sembrada la fila persiste y el cuadro de mando la seguiría pintando.

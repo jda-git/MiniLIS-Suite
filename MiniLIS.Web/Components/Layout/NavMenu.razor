@@ -1,3 +1,4 @@
+@using MiniLIS.Application.Interfaces
 <div class="iso-sidebar-header">
     <div class="iso-logo">
         <i class="bi bi-shield-check text-info me-2 h5 mb-0"></i> 
@@ -6,58 +7,102 @@
 </div>
 
 <nav class="iso-nav">
-    <NavLink class="iso-nav-link" href="" Match="NavLinkMatch.All">
-        <i class="bi bi-grid-1x2"></i> Dashboard
-    </NavLink>
-    
-    <NavLink class="iso-nav-link" href="muestras">
-        <i class="bi bi-calendar3"></i> Bandeja Técnica
-    </NavLink>
-
-    <NavLink class="iso-nav-link" href="trabajo">
-        <i class="bi bi-kanban"></i> Lista de Trabajo
-    </NavLink>
-
-    <NavLink class="iso-nav-link" href="hoja-trabajo">
-        <i class="bi bi-file-earmark-arrow-down"></i> Hoja del Citómetro
-    </NavLink>
-
-    <div class="nav-section-title">ADMINISTRACIÓN</div>
-    
-    <NavLink class="iso-nav-link" href="configuracion">
-        <i class="bi bi-gear"></i> Configuración
-    </NavLink>
-    
-    <NavLink class="iso-nav-link" href="notificaciones">
-        <i class="bi bi-bell"></i> Notificaciones
-    </NavLink>
-    
-    <NavLink class="iso-nav-link" href="excedente">
-        <i class="bi bi-box-seam"></i> Excedente
-    </NavLink>
-    
-    <div class="nav-section-title">PANEL AVANZADO</div>
-
-    <AuthorizeView Roles="Administrador">
+    @* v4.1: cada entrada aparece si el rol tiene el permiso correspondiente
+       (Configuración → Permisos). *@
+    <AuthorizeView Policy="@Permissions.Policies.MuestrasVer">
         <Authorized>
+            <NavLink class="iso-nav-link" href="" Match="NavLinkMatch.All">
+                <i class="bi bi-grid-1x2"></i> Dashboard
+            </NavLink>
+            <NavLink class="iso-nav-link" href="muestras">
+                <i class="bi bi-calendar3"></i> Bandeja Técnica
+            </NavLink>
+            <NavLink class="iso-nav-link" href="trabajo">
+                <i class="bi bi-kanban"></i> Lista de Trabajo
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.HojaTrabajoGenerar">
+        <Authorized>
+            <NavLink class="iso-nav-link" href="hoja-trabajo">
+                <i class="bi bi-file-earmark-arrow-down"></i> Hoja del Citómetro
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+
+    <AuthorizeView Policy="@Permissions.Policies.ConfiguracionVer">
+        <Authorized><div class="nav-section-title">ADMINISTRACIÓN</div>
+            <NavLink class="iso-nav-link" href="configuracion">
+                <i class="bi bi-gear"></i> Configuración
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.PanelVersionesVer">
+        <Authorized>
+            <NavLink class="iso-nav-link" href="paneles/versiones">
+                <i class="bi bi-clock-history"></i> Versiones de paneles
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.NotificacionesVer">
+        <Authorized>
+            <NavLink class="iso-nav-link" href="notificaciones">
+                <i class="bi bi-bell"></i> Notificaciones
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.ExcedenteVer">
+        <Authorized>
+            <NavLink class="iso-nav-link" href="excedente">
+                <i class="bi bi-box-seam"></i> Excedente
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+
+    <AuthorizeView Policy="@Permissions.Policies.UsuariosGestionar">
+        <Authorized><div class="nav-section-title">PANEL AVANZADO</div>
             <NavLink class="iso-nav-link" href="usuarios">
                 <i class="bi bi-people"></i> Usuarios
             </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.BuscadorVer">
+        <Authorized>
             <NavLink class="iso-nav-link" href="buscador">
                 <i class="bi bi-search"></i> Buscador
             </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.IndicadoresVer">
+        <Authorized>
             <NavLink class="iso-nav-link" href="indicadores">
                 <i class="bi bi-graph-up-arrow"></i> Indicadores
             </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.AuditoriaVer">
+        <Authorized>
             <NavLink class="iso-nav-link" href="auditoria">
                 <i class="bi bi-shield-lock"></i> Auditoría
             </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.BackupGestionar">
+        <Authorized>
             <NavLink class="iso-nav-link" href="backup">
                 <i class="bi bi-cloud-arrow-up"></i> Backup
             </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.ContingenciaGestionar">
+        <Authorized>
             <NavLink class="iso-nav-link" href="contingencia">
                 <i class="bi bi-shield-exclamation"></i> Contingencia
             </NavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Policy="@Permissions.Policies.EvidenciasGenerar">
+        <Authorized>
             <NavLink class="iso-nav-link" href="evidencias">
                 <i class="bi bi-archive"></i> Evidencias
             </NavLink>

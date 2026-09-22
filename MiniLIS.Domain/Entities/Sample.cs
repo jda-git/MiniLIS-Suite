@@ -169,9 +169,20 @@ namespace MiniLIS.Domain.Entities
 
         public ICollection<SampleTube> Tubes { get; set; } = new List<SampleTube>();
 
-        /// <summary>Verdadero si todos los tubos no opcionales están leídos (M-4).</summary>
+        /// <summary>Anulación por un facultativo de un panel con tubos ya leídos, registrado
+        /// por error (v4). No se borra: queda con su motivo, fuera del informe.</summary>
+        public bool IsVoided { get; set; }
+        [MaxLength(500)]
+        public string? VoidReason { get; set; }
+        [MaxLength(50)]
+        public string? VoidNonConformityRef { get; set; }
+        public int? VoidedByUserId { get; set; }
+        public DateTime? VoidedAtUtc { get; set; }
+
+        /// <summary>Verdadero si todos los tubos obligatorios están resueltos: leídos, o bien
+        /// anulados o justificados como no realizados (M-4, v4).</summary>
         [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-        public bool IsRead => Tubes.Any() && Tubes.Where(t => !t.IsOptional).All(t => t.IsRead);
+        public bool IsRead => Tubes.Any() && Tubes.Where(t => !t.IsOptional && !t.IsVoided && t.NotPerformedReason == null).All(t => t.IsRead);
     }
 
     /// <summary>Cómo queda resuelta una incidencia de lectura de tubo. No hay una cuarta
@@ -195,6 +206,11 @@ namespace MiniLIS.Domain.Entities
         public SamplePanel SamplePanel { get; set; } = null!;
 
         public int TubeNumber { get; set; }
+
+        /// <summary>Definición exacta del tubo en la versión de panel empleada (con su fórmula y
+        /// revisión). Nulo en paneles personalizados sin versión.</summary>
+        public int? PanelTubeId { get; set; }
+        public PanelTube? PanelTube { get; set; }
 
         /// <summary>Copia congelada de PanelTube.MarkerList en el momento de solicitar el panel.</summary>
         [MaxLength(300)]
@@ -224,8 +240,26 @@ namespace MiniLIS.Domain.Entities
         [MaxLength(50)]
         public string? AcquiredOnEquipmentCode { get; set; }
 
-        /// <summary>Nombre normalizado del fichero FCS. Lo rellenará un ticket futuro (M-6).</summary>
+        /// <summary>Nombre normalizado esperado del fichero FCS, fijado al crear el tubo (v4):
+        /// así no cambia aunque cambie el formato de versión de los paneles (M-6).</summary>
         [MaxLength(200)]
         public string? FcsFileName { get; set; }
+
+        /// <summary>Justificación de un tubo del panel que no se ha leído (v4). Sin ella no se
+        /// puede validar el informe.</summary>
+        [MaxLength(300)]
+        public string? NotPerformedReason { get; set; }
+        public int? NotPerformedByUserId { get; set; }
+        public DateTime? NotPerformedAtUtc { get; set; }
+
+        /// <summary>Anulación por un facultativo de un tubo leído por error (v4). La lectura se
+        /// conserva (quién y cuándo) para la trazabilidad; el tubo queda fuera del informe.</summary>
+        public bool IsVoided { get; set; }
+        [MaxLength(500)]
+        public string? VoidReason { get; set; }
+        [MaxLength(50)]
+        public string? VoidNonConformityRef { get; set; }
+        public int? VoidedByUserId { get; set; }
+        public DateTime? VoidedAtUtc { get; set; }
     }
 }

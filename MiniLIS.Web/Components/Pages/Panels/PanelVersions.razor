@@ -1,0 +1,614 @@
+@page "/paneles/versiones"
+@page "/paneles/versiones/{PanelId:int}"
+@using MiniLIS.Application.Interfaces
+@using MiniLIS.Domain.Entities
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MiniLIS.Web.Components.Shared
+@attribute [Authorize(Policy = Permissions.Policies.PanelVersionesVer)]
+@inject IPanelCatalogService Catalog
+@inject IMasterDataService MasterService
+@inject ILocalTimeService LocalTime
+@inject NavigationManager Nav
+@inject IConfiguration Configuration
+@inject IPermissionService Permisos
+
+<PageTitle>Versiones de paneles - MiniLIS Suite</PageTitle>
+
+@* Control de versiones de paneles (v4). Circuito: Borrador → En revisión → Aprobada (con
+   fecha y hora de entrada en vigor) → Vigente → Retirada. Preparan borradores el
+   Administrador y el Facultativo; aprueba, devuelve y retira el Facultativo. Las reglas se
+   aplican en PanelCatalogService: aquí solo se ocultan los botones que no corresponden. *@
+
+<div class="pv-page">
+    <div class="pv-header">
+        <div>
+            <h1 class="pv-title"><i class="bi bi-clock-history"></i> Versiones de paneles</h1>
+            <p class="pv-sub">
+                La composición maestra está en el QMS (ficha <strong>@Catalog_MasterSheet</strong>). Cada versión
+                enlaza la revisión de esa ficha, el PNT y la fórmula de cada tubo.
+                Circuito: Borrador → En revisión → Aprobada → Vigente → Retirada.
+            </p>
+        </div>
+    </div>
+
+    <div class="pv-layout">
+        <aside class="pv-panels">
+            @foreach (var p in panels)
+            {
+                <button class="pv-panel-btn @(p.Id == PanelId ? "active" : "")" @onclick='() => Nav.NavigateTo($"/paneles/versiones/{p.Id}")'>
+                    <span class="pv-panel-code">@p.Code</span>
+                    <span class="pv-panel-name">@p.Name</span>
+                    @if (!p.IsActive) { <span class="pv-tag">inactivo</span> }
+                </button>
+            }
+        </aside>
+
+        <section class="pv-main">
+            @if (!string.IsNullOrEmpty(error))
+            {
+                <div class="alert alert-danger py-2 d-flex justify-content-between align-items-start">
+                    <span><i class="bi bi-exclamation-triangle-fill me-2"></i>@error</span>
+                    <button class="btn-close btn-sm" @onclick="() => error = null"></button>
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(info))
+            {
+                <div class="alert alert-success py-2 d-flex justify-content-between align-items-start">
+                    <span><i class="bi bi-check-circle-fill me-2"></i>@info</span>
+                    <button class="btn-close btn-sm" @onclick="() => info = null"></button>
+                </div>
+            }
+
+            @if (panel == null)
+            {
+                <p class="text-muted mt-3">Elija un panel.</p>
+            }
+            else
+            {
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="pv-h2">@panel.Code <span class="text-muted fw-normal">— @panel.Name</span></h2>
+                    @if (!HasOpenDraft && !showNew)
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="StartNew"><i class="bi bi-plus-lg me-1"></i>Nueva versión</button>
+                    }
+                </div>
+
+                @if (showNew)
+                {
+                    <div class="pv-card">
+                        <h3 class="pv-h3">Nueva versión (borrador)</h3>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">Tipo de cambio</label>
+                                <select class="form-select form-select-sm" value="@newKind" @onchange="e => SetNewKind(e.Value?.ToString())">
+                                    <option value="menor">Menor → v@(suggestion?.NextMinorMajor).@(suggestion?.NextMinorMinor)</option>
+                                    <option value="mayor">Mayor → v@(suggestion?.NextMajorMajor).@(suggestion?.NextMajorMinor)</option>
+                                    <option value="otra">Otro número</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold">Mayor</label>
+                                <input type="number" min="1" class="form-control form-control-sm" @bind="newMajor" disabled="@(newKind != "otra")" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold">Menor</label>
+                                <input type="number" min="0" class="form-control form-control-sm" @bind="newMinor" disabled="@(newKind != "otra")" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">Partir de</label>
+                                <select class="form-select form-select-sm" @bind="newCopyFrom">
+                                    <option value="0">— Vacía —</option>
+                                    @foreach (var v in versions)
+                                    {
+                                        <option value="@v.Id">@v.VersionLabel (@StatusText(v.Status))</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <p class="small text-muted mt-2 mb-1">
+                            Mayor: cambia la composición de forma que afecta al resultado (anticuerpos, clones, fluorocromos, tubos).
+                            Menor: cambios que no alteran el resultado (notas, referencias, correcciones). Una versión no se
+                            puede reutilizar ni intercalar: siempre es posterior a la @(suggestion?.Highest ?? "última").
+                        </p>
+                        <label class="form-label small fw-bold mt-1">Descripción del cambio</label>
+                        <textarea class="form-control form-control-sm" rows="2" @bind="newNotes"
+                                  placeholder="Qué cambia respecto a la versión anterior y por qué (p. ej. «Sustitución de CD117 PE por CD117 PC7 en T2 por cambio de proveedor»)"></textarea>
+                        <div class="mt-2 d-flex gap-2">
+                            <button class="btn btn-success btn-sm" disabled="@busy" @onclick="CreateDraft">Crear borrador</button>
+                            <button class="btn btn-light btn-sm border" @onclick="() => showNew = false">Cancelar</button>
+                        </div>
+                    </div>
+                }
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle pv-table">
+                        <thead>
+                            <tr>
+                                <th>Versión</th>
+                                <th>Estado</th>
+                                <th>Ficha maestra</th>
+                                <th>Vigencia</th>
+                                <th>Aprobación</th>
+                                <th class="text-center">Estudios</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var v in versions)
+                            {
+                                <tr class="@(selected?.Id == v.Id ? "table-active" : "")">
+                                    <td>
+                                        <span class="pv-chip">@v.DisplayCode</span>
+                                        @if (v.LegacyCode != null) { <div class="small text-muted">antes @v.LegacyCode</div> }
+                                    </td>
+                                    <td><span class="pv-status pv-st-@v.Status">@StatusText(v.Status)</span></td>
+                                    <td class="small">@(v.MasterSheetRevision != null ? $"{v.MasterSheetCode} rev. {v.MasterSheetRevision}" : "—")</td>
+                                    <td class="small">@Vigencia(v)</td>
+                                    <td class="small">@Aprobacion(v)</td>
+                                    <td class="text-center">@(usage.TryGetValue(v.Id, out var n) ? n : 0)</td>
+                                    <td class="text-end">
+                                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => Select(v)">
+                                            <i class="bi @(v.Status == PanelVersionStatus.Borrador && canEdit ? "bi-pencil" : "bi-eye")"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (selected != null)
+                {
+                    var editable = selected.Status == PanelVersionStatus.Borrador && canEdit;
+                    <div class="pv-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h3 class="pv-h3 mb-0">@selected.DisplayCode <span class="pv-status pv-st-@selected.Status ms-2">@StatusText(selected.Status)</span></h3>
+                            <button class="btn btn-light btn-sm border" @onclick="() => selected = null">Cerrar</button>
+                        </div>
+
+                        @if (editable)
+                        {
+                            <div class="row g-2 mt-1">
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold">Versión mayor</label>
+                                    <input type="number" min="1" class="form-control form-control-sm" @bind="draft.VersionMajor" />
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold">Versión menor</label>
+                                    <input type="number" min="0" class="form-control form-control-sm" @bind="draft.VersionMinor" />
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label small fw-bold">Ficha maestra (QMS)</label>
+                                    <input class="form-control form-control-sm" @bind="draft.MasterSheetCode" placeholder="ANX-CIT-REA-003-01" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small fw-bold">Revisión de la ficha</label>
+                                    <input class="form-control form-control-sm" @bind="draft.MasterSheetRevision" placeholder="p. ej. 04" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">PNT técnico</label>
+                                    <QmsReferenceInput @bind-Value="draft.QmsDocumentRefCode" PatternKey="DocumentRefPattern" Placeholder="PNT-CIT-ANA-012 v3" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Evaluación del cambio (QMS)</label>
+                                    <input class="form-control form-control-sm" @bind="draft.ChangeEvaluationRef" placeholder="Obligatoria si sube la versión mayor" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold">Referencia externa</label>
+                                    <input class="form-control form-control-sm" @bind="draft.ExternalSource" placeholder="EuroFlow" />
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label small fw-bold">Panel externo</label>
+                                    <input class="form-control form-control-sm" @bind="draft.ExternalName" placeholder="ALOT" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small fw-bold">Versión externa</label>
+                                    <input class="form-control form-control-sm" @bind="draft.ExternalVersion" placeholder="2012" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small fw-bold">Descripción del cambio</label>
+                                    <textarea class="form-control form-control-sm" rows="2" @bind="draft.ChangeNotes"></textarea>
+                                </div>
+                            </div>
+
+                            <table class="table table-sm mt-3 pv-tubes">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px">Nº</th>
+                                        <th>Combinación (resumen)</th>
+                                        <th style="width:150px">Fórmula (QMS)</th>
+                                        <th style="width:90px">Revisión</th>
+                                        <th>Notas (p. ej. alcance de acreditación)</th>
+                                        <th style="width:70px">Opcional</th>
+                                        <th style="width:40px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < draft.Tubes.Count; i++)
+                                    {
+                                        var t = draft.Tubes[i];
+                                        var n = i + 1;
+                                        <tr>
+                                            <td>@n</td>
+                                            <td><input class="form-control form-control-sm" @bind="t.MarkerList" placeholder="16/13/34/11b/45/117/DR/10" /></td>
+                                            <td><input class="form-control form-control-sm" @bind="t.FormulaCode" /></td>
+                                            <td><input class="form-control form-control-sm" @bind="t.FormulaRevision" /></td>
+                                            <td><input class="form-control form-control-sm" @bind="t.Notes" /></td>
+                                            <td class="text-center"><input type="checkbox" class="form-check-input" @bind="t.IsOptional" /></td>
+                                            <td><button class="btn btn-link text-danger btn-sm p-0" title="Quitar tubo" @onclick="() => draft.Tubes.Remove(t)"><i class="bi bi-trash"></i></button></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-light btn-sm border" @onclick="() => draft.Tubes.Add(new PanelTubeInput())"><i class="bi bi-plus-lg me-1"></i>Añadir tubo</button>
+                                <button class="btn btn-success btn-sm" disabled="@busy" @onclick="SaveDraft"><i class="bi bi-save me-1"></i>Guardar borrador</button>
+                                <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="Submit"><i class="bi bi-send me-1"></i>Enviar a revisión</button>
+                                <button class="btn btn-outline-danger btn-sm ms-auto" disabled="@busy" @onclick="DiscardDraft"><i class="bi bi-trash me-1"></i>Descartar borrador</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <dl class="row small mt-2 mb-1 pv-dl">
+                                <dt class="col-sm-3">Ficha maestra</dt><dd class="col-sm-9">@Or(selected.MasterSheetCode) @(selected.MasterSheetRevision != null ? $"rev. {selected.MasterSheetRevision}" : "")</dd>
+                                <dt class="col-sm-3">PNT técnico</dt><dd class="col-sm-9">@Or(selected.QmsDocumentRef?.Code)</dd>
+                                <dt class="col-sm-3">Referencia externa</dt><dd class="col-sm-9">@Or(string.Join(" / ", new[] { selected.ExternalSource, selected.ExternalName, selected.ExternalVersion }.Where(x => !string.IsNullOrWhiteSpace(x))))</dd>
+                                <dt class="col-sm-3">Descripción del cambio</dt>
+                                <dd class="col-sm-9">
+                                    @Or(selected.ChangeNotes)
+                                    @if (ChangeNoteRules.Validate(selected.ChangeNotes) != null && selected.Status != PanelVersionStatus.Borrador)
+                                    {
+                                        <div class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>No describe el cambio. Añada una aclaración (abajo): la descripción original no se modifica.</div>
+                                    }
+                                </dd>
+                                <dt class="col-sm-3">Evaluación del cambio</dt><dd class="col-sm-9">@Or(selected.ChangeEvaluationRef)</dd>
+                                <dt class="col-sm-3">Aprobación</dt><dd class="col-sm-9">@Aprobacion(selected)@(selected.CompositionVerified ? " · composición verificada frente a la ficha maestra" : "")</dd>
+                                <dt class="col-sm-3">Vigencia</dt><dd class="col-sm-9">@Vigencia(selected)@(selected.RetirementReason != null ? $" · {selected.RetirementReason}" : "")</dd>
+                            </dl>
+                            <table class="table table-sm pv-tubes">
+                                <thead><tr><th>Nº</th><th>Combinación (resumen)</th><th>Fórmula</th><th>Revisión</th><th>Notas</th><th>Opcional</th></tr></thead>
+                                <tbody>
+                                    @foreach (var t in selected.Tubes.OrderBy(t => t.TubeNumber))
+                                    {
+                                        <tr>
+                                            <td>@t.TubeNumber</td>
+                                            <td class="pv-mono">@t.MarkerList</td>
+                                            <td>@Or(t.FormulaCode)</td>
+                                            <td>@Or(t.FormulaRevision)</td>
+                                            <td>@Or(t.Notes)</td>
+                                            <td>@(t.IsOptional ? "Sí" : "No")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+
+                        @* ── Acciones del circuito ── *@
+                        @if (selected.Status == PanelVersionStatus.EnRevision && isFacultativo)
+                        {
+                            <div class="pv-action">
+                                <h4 class="pv-h4">Aprobación</h4>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold">Entrada en vigor</label>
+                                        <input type="datetime-local" class="form-control form-control-sm" @bind="effectiveLocal" />
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="chkVerif" @bind="compositionVerified" />
+                                            <label class="form-check-label small" for="chkVerif">
+                                                He comprobado que la composición y las fórmulas coinciden con la ficha maestra
+                                                <strong>@selected.MasterSheetCode rev. @selected.MasterSheetRevision</strong>.
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2 mt-2">
+                                    <button class="btn btn-success btn-sm" disabled="@(busy || !compositionVerified)" @onclick="Approve"><i class="bi bi-check2-circle me-1"></i>Aprobar</button>
+                                </div>
+                            </div>
+                        }
+                        @if (selected.Status == PanelVersionStatus.EnRevision && !isFacultativo)
+                        {
+                            <div class="pv-action">
+                                <div class="alert alert-info py-2 small mb-0">
+                                    <i class="bi bi-hourglass-split me-1"></i>
+                                    Pendiente de aprobación. Su rol no tiene el permiso <strong>«Aprobar, devolver a
+                                    borrador, retirar»</strong>: lo reparte Configuración → Permisos, y de fábrica lo
+                                    tiene el facultativo.
+                                </div>
+                            </div>
+                        }
+                        @if ((selected.Status == PanelVersionStatus.EnRevision || selected.Status == PanelVersionStatus.Aprobada) && isFacultativo)
+                        {
+                            <div class="pv-action">
+                                <h4 class="pv-h4">@(selected.Status == PanelVersionStatus.Aprobada ? "Anular la aprobación (aún no está en vigor)" : "Devolver a borrador")</h4>
+                                <div class="d-flex gap-2">
+                                    <input class="form-control form-control-sm" @bind="returnReason" placeholder="Motivo" />
+                                    <button class="btn btn-outline-warning btn-sm text-nowrap" disabled="@busy" @onclick="ReturnToDraft">Devolver a borrador</button>
+                                </div>
+                            </div>
+                        }
+                        @if (selected.Status == PanelVersionStatus.Vigente && isFacultativo)
+                        {
+                            <div class="pv-action">
+                                <h4 class="pv-h4">Retirar sin sustituta</h4>
+                                <p class="small text-muted mb-1">El panel dejará de poder solicitarse hasta que entre en vigor otra versión. Los estudios que la usaron la conservan.</p>
+                                <div class="d-flex gap-2">
+                                    <input class="form-control form-control-sm" @bind="retireReason" placeholder="Motivo de la retirada" />
+                                    <button class="btn btn-outline-danger btn-sm text-nowrap" disabled="@busy" @onclick="Retire">Retirar</button>
+                                </div>
+                            </div>
+                        }
+
+                        @if (selected.Status != PanelVersionStatus.Borrador)
+                        {
+                            <div class="pv-action">
+                                <h4 class="pv-h4">Aclaraciones</h4>
+                                @if (!selected.Clarifications.Any()) { <p class="small text-muted mb-1">Ninguna.</p> }
+                                @foreach (var c in selected.Clarifications.OrderBy(c => c.CreatedAtUtc))
+                                {
+                                    <div class="small mb-1"><span class="text-muted">@(LocalTime.ToLocal(c.CreatedAtUtc).ToString("dd/MM/yyyy HH:mm")) · @c.AuthorName:</span> @c.Text</div>
+                                }
+                                @if (canEdit)
+                                {
+                                    <div class="d-flex gap-2 mt-1">
+                                        <input class="form-control form-control-sm" @bind="clarification" placeholder="Aclaración (no modifica la descripción original)" />
+                                        <button class="btn btn-light btn-sm border text-nowrap" disabled="@busy" @onclick="AddClarification">Añadir</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </section>
+    </div>
+</div>
+
+<style>
+    .pv-page { padding: 24px 28px; background: #f4f6f9; min-height: calc(100vh - 56px); }
+    .pv-title { font-size: 21px; font-weight: 800; color: #1e293b; margin: 0; display: flex; gap: 10px; align-items: center; }
+    .pv-title i { color: #3b82f6; }
+    .pv-sub { color: #64748b; font-size: 13px; margin: 4px 0 16px; max-width: 900px; }
+    .pv-layout { display: grid; grid-template-columns: 230px 1fr; gap: 16px; align-items: start; }
+    .pv-panels { display: flex; flex-direction: column; gap: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; }
+    .pv-panel-btn { text-align: left; border: none; background: transparent; border-radius: 7px; padding: 7px 10px; display: flex; flex-direction: column; }
+    .pv-panel-btn:hover { background: #f1f5f9; }
+    .pv-panel-btn.active { background: #eff6ff; box-shadow: inset 3px 0 0 #2563eb; }
+    .pv-panel-code { font-weight: 700; font-size: 13px; color: #1e293b; }
+    .pv-panel-name { font-size: 12px; color: #64748b; }
+    .pv-tag { font-size: 10px; color: #92400e; background: #fef3c7; border-radius: 6px; padding: 0 6px; align-self: flex-start; }
+    .pv-main { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; min-width: 0; }
+    .pv-h2 { font-size: 18px; font-weight: 700; color: #1e293b; margin: 0; }
+    .pv-h3 { font-size: 15px; font-weight: 700; color: #1e293b; }
+    .pv-h4 { font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 6px; }
+    .pv-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin: 12px 0; background: #fcfdff; }
+    .pv-action { border-top: 1px dashed #e2e8f0; margin-top: 12px; padding-top: 10px; }
+    .pv-chip { font-weight: 700; font-size: 12.5px; background: #eef2ff; color: #3730a3; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+    .pv-status { font-size: 11px; font-weight: 700; border-radius: 8px; padding: 2px 8px; white-space: nowrap; }
+    .pv-st-Borrador { background: #f1f5f9; color: #475569; }
+    .pv-st-EnRevision { background: #fef3c7; color: #92400e; }
+    .pv-st-Aprobada { background: #dbeafe; color: #1e40af; }
+    .pv-st-Vigente { background: #dcfce7; color: #166534; }
+    .pv-st-Retirada { background: #fee2e2; color: #991b1b; }
+    .pv-mono { font-family: Consolas, monospace; font-size: 12px; }
+    .pv-table td, .pv-tubes td { vertical-align: middle; }
+    .pv-dl dt { color: #64748b; font-weight: 600; }
+    @@media (max-width: 900px) { .pv-layout { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    [Parameter] public int? PanelId { get; set; }
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string Catalog_MasterSheet => Configuration["Qms:PanelMasterSheetCode"] ?? MiniLIS.Infrastructure.Services.PanelCatalogService.DefaultMasterSheetCode;
+
+    private List<Panel> panels = new();
+    private Panel? panel;
+    private List<PanelVersion> versions = new();
+    private Dictionary<int, int> usage = new();
+    private PanelVersion? selected;
+    private PanelVersionDraftInput draft = new();
+
+    private bool isFacultativo;
+    private bool canEdit;
+    private bool busy;
+    private string? error;
+    private string? info;
+
+    // Nueva versión
+    private bool showNew;
+    private PanelVersionNumberSuggestion? suggestion;
+    private string newKind = "menor";
+    private int newMajor = 1, newMinor = 0;
+    private int newCopyFrom;
+    private string newNotes = "";
+
+    // Circuito
+    private DateTime effectiveLocal = DateTime.Now;
+    private bool compositionVerified;
+    private string returnReason = "";
+    private string retireReason = "";
+    private string clarification = "";
+
+    private bool HasOpenDraft => versions.Any(v => v.Status is PanelVersionStatus.Borrador or PanelVersionStatus.EnRevision);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // v4.1: aprobar y preparar son permisos propios (Configuración → Permisos).
+        isFacultativo = await Permisos.HasAsync(Permissions.PanelVersionesAprobar);
+        canEdit = await Permisos.HasAsync(Permissions.PanelVersionesEditar);
+        panels = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Code).ToList();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        selected = null;
+        showNew = false;
+        panel = PanelId.HasValue ? panels.FirstOrDefault(p => p.Id == PanelId.Value) : null;
+        await Reload();
+    }
+
+    private async Task Reload(int? keepSelectedId = null)
+    {
+        if (panel == null) { versions = new(); return; }
+        versions = await Catalog.GetVersionsForPanelAsync(panel.Id);
+        usage.Clear();
+        foreach (var v in versions) usage[v.Id] = await Catalog.CountSamplePanelsUsingVersionAsync(v.Id);
+        if (keepSelectedId.HasValue)
+        {
+            var v = versions.FirstOrDefault(x => x.Id == keepSelectedId.Value);
+            if (v != null) Select(v); else selected = null;
+        }
+    }
+
+    private void Select(PanelVersion v)
+    {
+        selected = v;
+        compositionVerified = false;
+        returnReason = retireReason = clarification = "";
+        effectiveLocal = DateTime.Now;
+        draft = new PanelVersionDraftInput
+        {
+            VersionMajor = v.VersionMajor,
+            VersionMinor = v.VersionMinor,
+            ChangeNotes = v.ChangeNotes,
+            ChangeEvaluationRef = v.ChangeEvaluationRef,
+            QmsDocumentRefCode = v.QmsDocumentRef?.Code,
+            MasterSheetCode = v.MasterSheetCode,
+            MasterSheetRevision = v.MasterSheetRevision,
+            ExternalSource = v.ExternalSource,
+            ExternalName = v.ExternalName,
+            ExternalVersion = v.ExternalVersion,
+            Tubes = v.Tubes.OrderBy(t => t.TubeNumber).Select(t => new PanelTubeInput
+            {
+                MarkerList = t.MarkerList, Notes = t.Notes, IsOptional = t.IsOptional,
+                FormulaCode = t.FormulaCode, FormulaRevision = t.FormulaRevision
+            }).ToList()
+        };
+    }
+
+    private async Task StartNew()
+    {
+        if (panel == null) return;
+        suggestion = await Catalog.SuggestNextVersionAsync(panel.Id);
+        SetNewKind("menor");
+        newCopyFrom = versions.FirstOrDefault(v => v.Status == PanelVersionStatus.Vigente)?.Id ?? versions.FirstOrDefault()?.Id ?? 0;
+        newNotes = "";
+        showNew = true;
+    }
+
+    private void SetNewKind(string? kind)
+    {
+        newKind = kind ?? "menor";
+        if (suggestion == null) return;
+        if (newKind == "mayor") { newMajor = suggestion.NextMajorMajor; newMinor = suggestion.NextMajorMinor; }
+        else if (newKind == "menor") { newMajor = suggestion.NextMinorMajor; newMinor = suggestion.NextMinorMinor; }
+    }
+
+    private Task CreateDraft() => Run(async () =>
+    {
+        var d = await Catalog.CreateDraftVersionAsync(panel!.Id, newMajor, newMinor, newNotes, newCopyFrom == 0 ? null : newCopyFrom);
+        showNew = false;
+        await Reload(d.Id);
+        info = $"Borrador v{newMajor}.{newMinor} creado. Complete la ficha maestra y la fórmula de cada tubo, y envíelo a revisión.";
+    });
+
+    private Task SaveDraft() => Run(async () =>
+    {
+        await Catalog.SaveDraftVersionAsync(selected!.Id, draft);
+        await Reload(selected.Id);
+        info = "Borrador guardado.";
+    });
+
+    private Task Submit() => Run(async () =>
+    {
+        await Catalog.SaveDraftVersionAsync(selected!.Id, draft);
+        await Catalog.SubmitForReviewAsync(selected.Id);
+        await Reload(selected.Id);
+        info = "Versión enviada a revisión: queda bloqueada hasta que un facultativo la apruebe o la devuelva.";
+    });
+
+    private Task DiscardDraft() => Run(async () =>
+    {
+        await Catalog.DeleteDraftAsync(selected!.Id);
+        selected = null;
+        await Reload();
+        info = "Borrador descartado.";
+    });
+
+    private Task Approve() => Run(async () =>
+    {
+        var utc = LocalTime.ToUtc(effectiveLocal);
+        await Catalog.ApproveAsync(selected!.Id, utc, compositionVerified);
+        await Reload(selected.Id);
+        info = selected?.Status == PanelVersionStatus.Vigente
+            ? "Versión aprobada y en vigor: los estudios nuevos la usarán. Los anteriores conservan la suya."
+            : $"Versión aprobada. Entrará en vigor el {effectiveLocal:dd/MM/yyyy HH:mm}.";
+    });
+
+    private Task ReturnToDraft() => Run(async () =>
+    {
+        await Catalog.ReturnToDraftAsync(selected!.Id, returnReason);
+        await Reload(selected.Id);
+        info = "Versión devuelta a borrador.";
+    });
+
+    private Task Retire() => Run(async () =>
+    {
+        await Catalog.RetireAsync(selected!.Id, retireReason);
+        await Reload(selected.Id);
+        info = "Versión retirada.";
+    });
+
+    private Task AddClarification() => Run(async () =>
+    {
+        await Catalog.AddClarificationAsync(selected!.Id, clarification);
+        await Reload(selected.Id);
+        info = "Aclaración añadida.";
+    });
+
+    private async Task Run(Func<Task> action)
+    {
+        busy = true; error = null; info = null;
+        try { await action(); }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private static string StatusText(PanelVersionStatus s) => s switch
+    {
+        PanelVersionStatus.Borrador => "Borrador",
+        PanelVersionStatus.EnRevision => "En revisión",
+        PanelVersionStatus.Aprobada => "Aprobada",
+        PanelVersionStatus.Vigente => "Vigente",
+        PanelVersionStatus.Retirada => "Retirada",
+        _ => s.ToString()
+    };
+
+    private string Vigencia(PanelVersion v)
+    {
+        string F(DateTime? d) => d.HasValue ? LocalTime.ToLocal(d.Value).ToString("dd/MM/yyyy HH:mm") : "";
+        return v.Status switch
+        {
+            PanelVersionStatus.Aprobada => $"Entra en vigor el {F(v.EffectiveFromUtc)}",
+            PanelVersionStatus.Vigente => $"Desde {F(v.EffectiveFromUtc)}",
+            PanelVersionStatus.Retirada => v.EffectiveFromUtc.HasValue ? $"{F(v.EffectiveFromUtc)} – {F(v.EffectiveToUtc)}" : $"Retirada {F(v.EffectiveToUtc)}",
+            _ => "—"
+        };
+    }
+
+    private string Aprobacion(PanelVersion v)
+    {
+        if (v.ApprovedAtUtc.HasValue) return $"{v.ApprovedByName} · {LocalTime.ToLocal(v.ApprovedAtUtc.Value):dd/MM/yyyy HH:mm}";
+        if (v.ApprovedByName != null) return v.ApprovedByName;
+        if (v.LegacyCode != null && v.Status is PanelVersionStatus.Vigente or PanelVersionStatus.Retirada)
+            return "No registrada en MiniLIS (versión anterior a 4.0: consultar QMS)";
+        return "—";
+    }
+
+    private static string Or(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+}

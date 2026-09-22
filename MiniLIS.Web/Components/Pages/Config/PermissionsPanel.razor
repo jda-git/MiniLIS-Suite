@@ -1,0 +1,165 @@
+@using MiniLIS.Application.Interfaces
+@inject IPermissionService Permisos
+
+@* Permisos por rol (v4.1). Lo que se marca aquí es lo que comprueban las páginas, los botones
+   y los servicios: no hay ningún rol escrito en el código. Guardar afecta también a las
+   sesiones que ya estén abiertas. *@
+
+<div class="section-header">
+    <div>
+        <h2 class="section-title">Permisos por rol</h2>
+        <p class="section-subtitle">
+            Marque qué puede hacer cada rol. Se aplica a las pantallas, a los botones y al servidor:
+            quitar una marca cierra también la vía directa, no solo el botón.
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn-config btn-config-ghost" disabled="@busy" @onclick="Restaurar">
+            <i class="bi bi-arrow-counterclockwise"></i> Valores de fábrica
+        </button>
+        <button class="btn-config btn-config-success" disabled="@(busy || !HayCambios)" @onclick="Guardar">
+            <i class="bi bi-save"></i> Guardar permisos
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="status-banner status-error" role="alert">
+        <i class="bi bi-exclamation-triangle"></i><span>@error</span>
+        <button class="status-close" title="Cerrar" @onclick="() => error = null"><i class="bi bi-x"></i></button>
+    </div>
+}
+
+<div class="perm-note">
+    <i class="bi bi-info-circle me-1"></i>
+    Cada usuario tiene un único rol (Usuarios). <strong>Cambiar la propia contraseña</strong> siempre está
+    permitido y no se configura. Las casillas atenuadas no se pueden desmarcar: sin ellas, nadie podría
+    volver a repartir permisos ni dar de alta usuarios.
+</div>
+
+@if (matriz != null)
+{
+    <div class="config-table-wrap">
+        <table class="config-table perm-table">
+            <thead>
+                <tr>
+                    <th>Función</th>
+                    @foreach (var rol in PermissionCatalog.Roles)
+                    {
+                        <th class="text-center perm-col">@rol</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var grupo in PermissionCatalog.Groups)
+                {
+                    <tr class="perm-group">
+                        <td colspan="@(PermissionCatalog.Roles.Length + 1)">@grupo</td>
+                    </tr>
+                    @foreach (var permiso in PermissionCatalog.All.Where(p => p.Group == grupo))
+                    {
+                        <tr>
+                            <td>
+                                @permiso.Title
+                                @if (permiso.Description != null)
+                                {
+                                    <div class="perm-desc">@permiso.Description</div>
+                                }
+                            </td>
+                            @foreach (var rol in PermissionCatalog.Roles)
+                            {
+                                var fijo = EsFijo(permiso.Code, rol);
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input perm-check"
+                                           checked="@matriz.Has(rol, permiso.Code)" disabled="@fijo"
+                                           title="@(fijo ? "Imprescindible: no se puede quitar" : null)"
+                                           @onchange="e => Marcar(rol, permiso.Code, e)" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (HayCambios)
+    {
+        <div class="perm-pending">
+            <i class="bi bi-exclamation-circle me-1"></i>
+            Hay cambios sin guardar (@cambios.Count).
+        </div>
+    }
+}
+
+<style>
+    .perm-note { font-size: 12.5px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+    .perm-table td, .perm-table th { vertical-align: middle; }
+    .perm-col { width: 130px; }
+    .perm-group td { background: #eef2f7; font-weight: 700; color: #334155; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .perm-desc { font-size: 11.5px; color: #94a3b8; }
+    .perm-check { width: 17px; height: 17px; cursor: pointer; }
+    .perm-check:disabled { cursor: not-allowed; opacity: .55; }
+    .perm-pending { margin-top: 10px; font-size: 12.5px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 10px; display: inline-block; }
+</style>
+
+@code {
+    /// <summary>Aviso que pinta la pestaña contenedora (mismo banner que el resto de Configuración).</summary>
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private RolePermissionMatrix? matriz;
+    private RolePermissionMatrix? original;
+    private readonly HashSet<string> cambios = new();
+    private bool busy;
+    private string? error;
+
+    private bool HayCambios => cambios.Count > 0;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        matriz = (await Permisos.GetMatrixAsync()).Clone();
+        original = matriz.Clone();
+        cambios.Clear();
+    }
+
+    private static bool EsFijo(string code, string rol)
+        => PermissionCatalog.Fixed.TryGetValue(code, out var roles) && roles.Contains(rol);
+
+    private void Marcar(string rol, string code, ChangeEventArgs e)
+    {
+        if (matriz == null || original == null) return;
+        matriz.Set(rol, code, e.Value is true);
+        var clave = rol + "|" + code;
+        if (matriz.Has(rol, code) == original.Has(rol, code)) cambios.Remove(clave); else cambios.Add(clave);
+    }
+
+    private async Task Guardar()
+    {
+        if (matriz == null) return;
+        busy = true; error = null;
+        try
+        {
+            await Permisos.SaveMatrixAsync(matriz);
+            await Cargar();
+            await OnSaved.InvokeAsync("Permisos guardados. Se aplican también a las sesiones abiertas.");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidOperationException) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task Restaurar()
+    {
+        busy = true; error = null;
+        try
+        {
+            await Permisos.ResetToDefaultsAsync();
+            await Cargar();
+            await OnSaved.InvokeAsync("Permisos restaurados a los valores de fábrica.");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidOperationException) { error = ex.Message; }
+        finally { busy = false; }
+    }
+}

@@ -109,8 +109,8 @@ namespace MiniLIS.Tests
             await ctx.SaveChangesAsync();
 
             // DisplayCode se deriva de Panel.Code + VersionNumber; no se asigna.
-            var vLeido = new PanelVersion { PanelId = panelLeido.Id, VersionNumber = 1 };
-            var vSinLeer = new PanelVersion { PanelId = panelSinLeer.Id, VersionNumber = 1 };
+            var vLeido = new PanelVersion { PanelId = panelLeido.Id, Ordinal = 1, VersionMajor = 1 };
+            var vSinLeer = new PanelVersion { PanelId = panelSinLeer.Id, Ordinal = 1, VersionMajor = 1 };
             ctx.PanelVersions.AddRange(vLeido, vSinLeer);
             await ctx.SaveChangesAsync();
 
@@ -230,6 +230,65 @@ namespace MiniLIS.Tests
 
             contenido.Should().NotContain("Fuera del alcance",
                 "el panel sin tubos leídos no forma parte de los paneles empleados");
+        }
+
+        /// <summary>Paciente con un estudio previo informado (con texto adicional) y el
+        /// informe actual, que lo selecciona en «Estudios previos».</summary>
+        private static async Task<SampleReport> SeedReportWithPreviousStudyAsync(TestDb db, bool showAdditionalText)
+        {
+            using var ctx = db.CreateContext();
+            var patient = EntityBuilders.NewPatient(nhc: "NHC-PREVIO");
+            var previa = EntityBuilders.NewSample(EntityBuilders.NewRequest(patient, "REQ-1"), sampleNumber: "26-00001");
+            previa.ReceivedAtUtc = DateTime.UtcNow.AddDays(-30);
+            ctx.Samples.Add(previa);
+            await ctx.SaveChangesAsync();
+            ctx.SampleReports.Add(new SampleReport
+            {
+                SampleId = previa.Id, ReportBody = "Cuerpo previo", MarkersSummary = "CD34+ 2%",
+                AdditionalText = "Texto adicional del estudio previo", Conclusions = "Conclusión previa", CreatedBy = 1
+            });
+
+            var actual = EntityBuilders.NewSample(EntityBuilders.NewRequest(patient, "REQ-2"), sampleNumber: "26-00002");
+            ctx.Samples.Add(actual);
+            await ctx.SaveChangesAsync();
+            var report = new SampleReport
+            {
+                SampleId = actual.Id, Sample = actual, ReportBody = "Cuerpo actual", Conclusions = "Conclusión actual", CreatedBy = 1,
+                ShowPreviousStudies = true, PreviousStudiesSelectedSampleIds = previa.Id.ToString(),
+                ShowPreviousMarkers = true, ShowPreviousConclusions = true, ShowPreviousAdditionalText = showAdditionalText
+            };
+            ctx.SampleReports.Add(report);
+            await ctx.SaveChangesAsync();
+            return report;
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task El_texto_adicional_de_un_estudio_previo_sale_solo_si_se_marca(bool marcado)
+        {
+            using var db = new TestDb();
+            var report = await SeedReportWithPreviousStudyAsync(db, marcado);
+
+            using var ctx = db.CreateContext();
+            var service = new DocumentService(ctx, new MasterDataService(ctx), new LocalTimeService(), new PatientService(ctx, new FakeCurrentUserService()));
+            var contenido = LeerContentXml(await service.GenerateOdtAsync(report));
+
+            contenido.Should().Contain("ESTUDIOS PREVIOS");
+            if (marcado)
+            {
+                contenido.Should().Contain("Texto adicional del estudio previo");
+                // Mismo orden que en el informe: marcadores, texto adicional, conclusión.
+                contenido.IndexOf("CD34+ 2%").Should().BeLessThan(contenido.IndexOf("Texto adicional del estudio previo"));
+                contenido.IndexOf("Texto adicional del estudio previo").Should().BeLessThan(contenido.IndexOf("Conclusión previa"));
+            }
+            else
+            {
+                contenido.Should().NotContain("Texto adicional del estudio previo");
+            }
+
+            // El PDF también se genera sin errores con la opción marcada o no.
+            (await service.GeneratePdfAsync(report)).Length.Should().BeGreaterThan(0);
         }
 
         /// <summary>Un ODT es un ZIP; el texto del documento vive en content.xml.</summary>

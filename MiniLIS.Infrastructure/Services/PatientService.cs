@@ -147,6 +147,7 @@ namespace MiniLIS.Infrastructure.Services
                 Diagnosis = s.Diagnosis,
                 ReportBody = s.Report?.ReportBody,
                 MarkersSummary = s.Report?.MarkersSummary,
+                AdditionalText = s.Report?.AdditionalText,
                 Conclusions = s.Report?.Conclusions
             }).ToList();
 

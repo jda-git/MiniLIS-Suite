@@ -87,7 +87,9 @@ namespace MiniLIS.Infrastructure.Seed
                 var version = new PanelVersion
                 {
                     PanelId = panel.Id,
-                    VersionNumber = 1,
+                    Ordinal = 1,
+                    VersionMajor = 1,
+                    VersionMinor = 0,
                     Status = PanelVersionStatus.Vigente,
                     EffectiveFromUtc = panel.CreatedAtUtc
                 };

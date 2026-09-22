@@ -1,5 +1,6 @@
 using System;
 using System.Security.Claims;
+using System.Threading.Tasks;
 
 namespace MiniLIS.Application.Interfaces
 {
@@ -7,7 +8,9 @@ namespace MiniLIS.Application.Interfaces
     /// permite, si el rechazo debe traducirse en 403 (autorización) o 400 (petición inválida),
     /// el motivo legible para mostrar al usuario, y si la exportación resultante debe incluir
     /// identificadores directos (NHC/nombre) o ir seudonimizada.</summary>
-    public record ExportDecision(bool Allowed, string? DenialReason, bool IncludeIdentifiers, bool IsForbidden = false);
+    /// <summary>Justification: motivo indicado para incluir identificadores (obligatorio para el
+    /// facultativo); se guarda en la auditoría de la exportación.</summary>
+    public record ExportDecision(bool Allowed, string? DenialReason, bool IncludeIdentifiers, bool IsForbidden = false, string? Justification = null);
 
     /// <summary>
     /// Punto único de decisión para toda exportación que pueda devolver NHC, NASI o nombre de
@@ -18,6 +21,6 @@ namespace MiniLIS.Application.Interfaces
     /// </summary>
     public interface IPatientDataExportPolicy
     {
-        ExportDecision Evaluate(ClaimsPrincipal user, DateTime? desde, DateTime? hasta, bool incluirIdentificadores);
+        Task<ExportDecision> EvaluateAsync(ClaimsPrincipal user, DateTime? desde, DateTime? hasta, bool incluirIdentificadores, string? justificacion = null);
     }
 }

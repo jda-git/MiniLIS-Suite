@@ -55,6 +55,13 @@ La etiqueta es lo que permite responder *«¿qué código exacto es esta versió
 
 ## Puesta en marcha
 
+**Para instalar MiniLIS en un servidor o en un puesto**, use el instalador de Windows
+(`installer\Build-Installer.ps1` lo genera): comprueba requisitos, lleva su propio .NET, lo
+registra como servicio de Windows con HTTPS y deja los datos fuera de la carpeta del
+programa. Guía completa: [docs/INSTALACION.md](docs/INSTALACION.md).
+
+Lo que sigue es para trabajar con el código fuente (desarrollo).
+
 ### Requisitos
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)

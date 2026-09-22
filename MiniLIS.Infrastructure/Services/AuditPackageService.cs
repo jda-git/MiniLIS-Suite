@@ -375,7 +375,7 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(v => v.Tubes)
                 .Where(v => v.EffectiveFromUtc == null || v.EffectiveFromUtc <= endUtc)
                 .Where(v => v.EffectiveToUtc == null || v.EffectiveToUtc >= startUtc)
-                .OrderBy(v => v.Panel.Code).ThenBy(v => v.VersionNumber)
+                .OrderBy(v => v.Panel.Code).ThenBy(v => v.VersionMajor).ThenBy(v => v.VersionMinor)
                 .ToListAsync();
 
             return BuildSimplePdf("06 — PANELES VIGENTES EN EL PERIODO", desde, hasta, col =>

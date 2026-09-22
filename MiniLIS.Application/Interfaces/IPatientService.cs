@@ -47,6 +47,7 @@ namespace MiniLIS.Application.Interfaces
         /// Solo tiene valor si HasReport es true.</summary>
         public string? ReportBody { get; init; }
         public string? MarkersSummary { get; init; }
+        public string? AdditionalText { get; init; }
         public string? Conclusions { get; init; }
     }
 

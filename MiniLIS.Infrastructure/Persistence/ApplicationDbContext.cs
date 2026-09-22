@@ -31,6 +31,7 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<Panel> Panels => Set<Panel>();
         public DbSet<PanelVersion> PanelVersions => Set<PanelVersion>();
         public DbSet<PanelTube> PanelTubes => Set<PanelTube>();
+        public DbSet<PanelVersionClarification> PanelVersionClarifications => Set<PanelVersionClarification>();
         public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
         public DbSet<Marker> Markers => Set<Marker>();
         public DbSet<ReportTemplate> ReportTemplates => Set<ReportTemplate>();
@@ -117,7 +118,23 @@ namespace MiniLIS.Infrastructure.Persistence
             modelBuilder.Entity<PanelVersion>().OwnsOne(v => v.QmsDocumentRef);
 
             modelBuilder.Entity<Panel>().HasIndex(p => p.Code).IsUnique();
-            modelBuilder.Entity<PanelVersion>().HasIndex(v => new { v.PanelId, v.VersionNumber }).IsUnique();
+            modelBuilder.Entity<PanelVersion>().HasIndex(v => new { v.PanelId, v.Ordinal }).IsUnique();
+            // v4: la versión visible (mayor.menor) no se puede repetir dentro de un panel.
+            modelBuilder.Entity<PanelVersion>().HasIndex(v => new { v.PanelId, v.VersionMajor, v.VersionMinor }).IsUnique();
+
+            modelBuilder.Entity<PanelVersionClarification>()
+                .HasOne(c => c.PanelVersion)
+                .WithMany(v => v.Clarifications)
+                .HasForeignKey(c => c.PanelVersionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Enlace del tubo de un estudio con su definición exacta (v4). Restrict: una
+            // definición usada por un estudio no se puede borrar.
+            modelBuilder.Entity<SampleTube>()
+                .HasOne(t => t.PanelTube)
+                .WithMany()
+                .HasForeignKey(t => t.PanelTubeId)
+                .OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PanelTube>().HasIndex(t => new { t.PanelVersionId, t.TubeNumber }).IsUnique();
             modelBuilder.Entity<SampleTube>().HasIndex(t => new { t.SamplePanelId, t.TubeNumber }).IsUnique();
 

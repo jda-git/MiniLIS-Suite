@@ -85,9 +85,7 @@ namespace MiniLIS.Infrastructure.Services
             // se EMPLEÓ, y debe ser coherente con PanelsUsedText. Incluyendo todos los paneles
             // de la muestra, el informe declaraba la versión de paneles solicitados pero nunca
             // leídos (M-4).
-            var panelVersionsText = string.Join(", ", fullReport.Sample?.Panels
-                .Where(sp => sp.PanelVersion != null && sp.Tubes.Any(t => t.IsRead))
-                .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
+            var panelVersionsText = PanelVersionsTextFor(fullReport);
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
 
@@ -421,6 +419,11 @@ namespace MiniLIS.Infrastructure.Services
                                 {
                                     col.Item().Text(h.MarkersSummary).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
                                 }
+                                // Mismo orden que en el informe: el texto adicional va tras los marcadores.
+                                if (fullReport.ShowPreviousAdditionalText && !string.IsNullOrWhiteSpace(h.AdditionalText))
+                                {
+                                    col.Item().Text(h.AdditionalText).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                                }
                                 if (fullReport.ShowPreviousConclusions && !string.IsNullOrWhiteSpace(h.Conclusions))
                                 {
                                     col.Item().Text(t =>
@@ -715,9 +718,7 @@ namespace MiniLIS.Infrastructure.Services
                 // Trazabilidad de versión exacta (M-4), independiente del texto libre de arriba.
                 // Solo paneles con algún tubo leído, por coherencia con PanelsUsedText: de otro
                 // modo se declaraba la versión de paneles solicitados pero nunca empleados.
-                var panelVersionsText = string.Join(", ", s?.Panels
-                    .Where(sp => sp.PanelVersion != null && sp.Tubes.Any(t => t.IsRead))
-                    .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
+                var panelVersionsText = PanelVersionsTextFor(report);
                 if (!string.IsNullOrWhiteSpace(panelVersionsText))
                 {
                     // "GreyText" es un estilo de familia "text" (solo válido en un <text:span>);
@@ -845,6 +846,9 @@ namespace MiniLIS.Infrastructure.Services
 
                     if (report.ShowPreviousMarkers && !string.IsNullOrWhiteSpace(h.MarkersSummary))
                         sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(h.MarkersSummary)}</text:p>");
+
+                    if (report.ShowPreviousAdditionalText && !string.IsNullOrWhiteSpace(h.AdditionalText))
+                        sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(h.AdditionalText)}</text:p>");
 
                     if (report.ShowPreviousConclusions && !string.IsNullOrWhiteSpace(h.Conclusions))
                         sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""BoldInline"">Conclusión: </text:span>{EncodeForOdt(h.Conclusions)}</text:p>");
@@ -1272,22 +1276,43 @@ namespace MiniLIS.Infrastructure.Services
             return filas;
         }
 
+        /// <summary>
+        /// Versiones de panel empleadas: las de los paneles no anulados con algún tubo leído y
+        /// no anulado. Solo se calcula con los datos actuales mientras el informe no está
+        /// validado; al validar se congela en SampleReport.PanelVersionsText (v4) y a partir de
+        /// ahí se imprime ese texto, de modo que reimprimir un informe emitido da siempre lo
+        /// mismo aunque cambie el formato de versión o se anule algo después.
+        /// </summary>
+        public static string ComputePanelVersionsText(Sample? sample)
+            => string.Join(", ", sample?.Panels
+                .Where(sp => !sp.IsVoided && sp.PanelVersion != null && sp.Tubes.Any(t => t.IsRead && !t.IsVoided))
+                .OrderBy(sp => sp.DisplayOrder)
+                .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
+
+        public static string PanelVersionsTextFor(SampleReport report)
+            => report.IsFinalized && !string.IsNullOrWhiteSpace(report.PanelVersionsText)
+                ? report.PanelVersionsText!
+                : ComputePanelVersionsText(report.Sample);
+
         private static List<(string Descripcion, string Nota)> BuildTubosEmpleados(Sample? sample)
         {
             var filas = new List<(string, string)>();
             if (sample?.Panels == null) return filas;
 
-            foreach (var sp in sample.Panels.OrderBy(x => x.Id))
+            foreach (var sp in sample.Panels.Where(x => !x.IsVoided).OrderBy(x => x.Id))
             {
                 // PanelVersion.Panel es el mismo panel por otra via: sirve de respaldo si la
                 // consulta no trajo sp.Panel, para no imprimir un guion donde va un nombre.
                 var nombrePanel = sp.Panel?.Name ?? sp.PanelVersion?.Panel?.Name ?? sp.CustomText ?? "—";
-                foreach (var tubo in sp.Tubes.Where(t => t.IsRead).OrderBy(t => t.TubeNumber))
+                // Un tubo anulado (leído por error) no se empleó: fuera del informe.
+                foreach (var tubo in sp.Tubes.Where(t => t.IsRead && !t.IsVoided).OrderBy(t => t.TubeNumber))
                 {
-                    // La nota se empareja por número de tubo dentro de la versión fijada en
+                    // La nota viene de la definición exacta del tubo (PanelTubeId, v4) o, en
+                    // tubos anteriores, del mismo número dentro de la versión fijada en
                     // SamplePanel.PanelVersionId, que es la que se empleó de verdad.
-                    var nota = sp.PanelVersion?.Tubes
-                        .FirstOrDefault(pt => pt.TubeNumber == tubo.TubeNumber)?.Notes ?? "";
+                    var definicion = sp.PanelVersion?.Tubes.FirstOrDefault(pt => pt.Id == tubo.PanelTubeId)
+                                     ?? sp.PanelVersion?.Tubes.FirstOrDefault(pt => pt.TubeNumber == tubo.TubeNumber);
+                    var nota = definicion?.Notes ?? "";
                     filas.Add(($"{nombrePanel} — T{tubo.TubeNumber}: {tubo.MarkerList}", nota.Trim()));
                 }
             }

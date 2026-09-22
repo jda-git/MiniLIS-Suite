@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Infrastructure.Persistence;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace MiniLIS.Tests.TestSupport
@@ -42,6 +43,12 @@ namespace MiniLIS.Tests.TestSupport
         public int? UserId { get; set; } = 1;
         public string? Username { get; set; } = "test@minilis.com";
         public string? ActionContext { get; set; }
+
+        /// <summary>Roles del usuario de prueba. Por defecto, todos: las pruebas que comprueban
+        /// una restricción de rol fijan aquí solo los que correspondan.</summary>
+        public HashSet<string> Roles { get; set; } = new() { "Administrador", "Facultativo", "Técnico" };
+
+        public Task<bool> IsInRoleAsync(string role) => Task.FromResult(Roles.Contains(role));
 
         public Task<int?> GetUserIdAsync() => Task.FromResult(UserId);
         public Task<string?> GetUsernameAsync() => Task.FromResult(Username);

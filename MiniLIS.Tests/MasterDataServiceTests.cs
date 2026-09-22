@@ -26,7 +26,7 @@ namespace MiniLIS.Tests
                 ctx.Panels.Add(panel);
                 await ctx.SaveChangesAsync();
 
-                var version = new PanelVersion { PanelId = panel.Id, VersionNumber = 1, Status = PanelVersionStatus.Vigente, CreatedBy = 1 };
+                var version = new PanelVersion { PanelId = panel.Id, Ordinal = 1, VersionMajor = 1, Status = PanelVersionStatus.Vigente, CreatedBy = 1 };
                 version.Tubes.Add(new PanelTube { TubeNumber = 2, MarkerList = "CD3/CD4/CD8" });
                 version.Tubes.Add(new PanelTube { TubeNumber = 1, MarkerList = "CD45/CD34" });
                 ctx.PanelVersions.Add(version);
@@ -42,7 +42,7 @@ namespace MiniLIS.Tests
             item.VigenteVersion.Should().NotBeNull();
             item.Tubes.Should().HaveCount(2);
             item.Tubes.Select(t => t.TubeNumber).Should().ContainInOrder(1, 2); // ordenados por TubeNumber
-            item.DisplayCode.Should().Be("SLPC-v01");
+            item.DisplayCode.Should().Be("SLPC · v1.0");
         }
 
         [Fact]
@@ -60,7 +60,7 @@ namespace MiniLIS.Tests
                 ctx.Panels.Add(panel);
                 await ctx.SaveChangesAsync();
 
-                var version = new PanelVersion { PanelId = panel.Id, VersionNumber = 1, Status = PanelVersionStatus.Vigente, CreatedBy = 1 };
+                var version = new PanelVersion { PanelId = panel.Id, Ordinal = 1, VersionMajor = 1, Status = PanelVersionStatus.Vigente, CreatedBy = 1 };
                 version.Tubes.Add(new PanelTube { TubeNumber = 1, MarkerList = "CD19/CD20" });
                 ctx.PanelVersions.Add(version);
                 await ctx.SaveChangesAsync();
@@ -85,7 +85,7 @@ namespace MiniLIS.Tests
                 ctx.Panels.Add(panel);
                 await ctx.SaveChangesAsync();
 
-                var draft = new PanelVersion { PanelId = panel.Id, VersionNumber = 1, Status = PanelVersionStatus.Borrador, CreatedBy = 1 };
+                var draft = new PanelVersion { PanelId = panel.Id, Ordinal = 1, VersionMajor = 1, Status = PanelVersionStatus.Borrador, CreatedBy = 1 };
                 draft.Tubes.Add(new PanelTube { TubeNumber = 1, MarkerList = "CD3" });
                 ctx.PanelVersions.Add(draft);
                 await ctx.SaveChangesAsync();

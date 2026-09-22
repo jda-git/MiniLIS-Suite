@@ -2,7 +2,8 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
 @using MiniLIS.Domain.Identity
-@attribute [Authorize(Roles = "Administrador")]
+@using MiniLIS.Application.Interfaces
+@attribute [Authorize(Policy = Permissions.Policies.UsuariosGestionar)]
 @inject UserManager<ApplicationUser> UserManager
 @inject RoleManager<ApplicationRole> RoleManager
 

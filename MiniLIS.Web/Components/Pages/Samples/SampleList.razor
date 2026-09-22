@@ -2,7 +2,7 @@
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize]
+@attribute [Authorize(Policy = Permissions.Policies.MuestrasVer)]
 @implements IDisposable
 @inject ISampleService SampleService
 @inject NavigationManager Nav
@@ -234,10 +234,13 @@
                                         @onclick='() => Nav.NavigateTo($"/muestras/editar/{s.Id}")'>
                                     <i class="bi bi-pencil-square"></i>
                                 </button>
-                                <button class="action-icon action-report" title="Informar"
-                                        @onclick='() => Nav.NavigateTo($"/informes/editar/{s.Id}")'>
-                                    <i class="bi bi-file-earmark-medical"></i>
-                                </button>
+                                @if (puedeInformar)
+                                {
+                                    <button class="action-icon action-report" title="Informar"
+                                            @onclick='() => Nav.NavigateTo($"/informes/editar/{s.Id}")'>
+                                        <i class="bi bi-file-earmark-medical"></i>
+                                    </button>
+                                }
                             </td>
                         </tr>
                     }
@@ -333,10 +336,14 @@
                                 {
                                     <tr class="panel-row panel-header-row">
                                         <td class="fw-semibold text-dark ps-3">
-                                            @(sp.Panel?.Name ?? sp.CustomText ?? "—")
+                                            <span class="@(sp.IsVoided ? "text-decoration-line-through text-muted" : "")">@(sp.Panel?.Name ?? sp.CustomText ?? "—")</span>
                                             @if (sp.PanelVersion != null)
                                             {
                                                 <span class="text-muted small ms-1">(@sp.PanelVersion.DisplayCode)</span>
+                                            }
+                                            @if (sp.IsVoided)
+                                            {
+                                                <div class="void-badge" title="@sp.VoidReason"><i class="bi bi-slash-circle me-1"></i>Panel anulado: @sp.VoidReason</div>
                                             }
                                         </td>
                                         <td class="text-center">
@@ -374,31 +381,55 @@
                                         <td class="text-end pe-3">
                                             @* Eliminar un panel borra sus tubos y con ellos la firma de lectura
                                                (quién leyó, cuándo, incidencias). Si hay lecturas, se pide confirmación. *@
-                                            @if (panelPendingDelete == sp)
+                                            @* v4: un panel con lecturas no se borra. Si fue un error, un facultativo
+                                               lo anula con justificación y queda constancia. *@
+                                            @if (sp.IsVoided)
                                             {
-                                                <div class="delete-confirm">
-                                                    <button type="button" class="btn-delete-yes" title="Confirmar: se perderán las lecturas registradas"
-                                                            @onclick="@(() => ConfirmRemovePanel(sp))">Eliminar</button>
-                                                    <button type="button" class="btn-delete-no" title="Cancelar"
-                                                            @onclick="@(() => panelPendingDelete = null)">No</button>
-                                                </div>
+                                            }
+                                            else if (PanelHasReads(sp))
+                                            {
+                                                @if (canVoid && sp.Id != 0)
+                                                {
+                                                    <button type="button" class="btn-void" title="Anular el panel (registrado por error)" @onclick="@(() => OpenVoidForm(sp, null))">
+                                                        <i class="bi bi-slash-circle"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted" title="Tiene tubos leídos: no se puede quitar. Si fue un error, un facultativo o un administrador puede anularlo."><i class="bi bi-lock-fill"></i></span>
+                                                }
                                             }
                                             else
                                             {
-                                                <button type="button" class="btn-delete-panel" @onclick="@(() => RequestRemovePanel(sp))" title="Eliminar panel">
+                                                <button type="button" class="btn-delete-panel" @onclick="@(() => modalPanels.Remove(sp))" title="Eliminar panel">
                                                     <i class="bi bi-trash3-fill"></i>
                                                 </button>
                                             }
                                         </td>
                                     </tr>
+                                    @if (voidPanel == sp && voidTube == null)
+                                    {
+                                        <tr class="incident-form-row"><td colspan="4">@VoidForm()</td></tr>
+                                    }
                                     @foreach (var tube in sp.Tubes.OrderBy(t => t.TubeNumber))
                                     {
-                                        <tr class="tube-row">
+                                        <tr class="tube-row @(tube.IsVoided ? "tube-voided" : "")">
                                             <td class="ps-4 text-secondary small">
                                                 <i class="bi bi-droplet-half me-1"></i>T@(tube.TubeNumber) — @tube.MarkerList
                                                 @if (tube.IsOptional)
                                                 {
                                                     <span class="badge bg-secondary-subtle text-secondary ms-1">opcional</span>
+                                                }
+                                                @if (tube.IsVoided)
+                                                {
+                                                    <div class="void-badge" title="@tube.VoidReason"><i class="bi bi-slash-circle me-1"></i>Anulado: @tube.VoidReason@(tube.VoidNonConformityRef != null ? $" · NC {tube.VoidNonConformityRef}" : "")</div>
+                                                }
+                                                else if (tube.NotPerformedReason != null)
+                                                {
+                                                    <div class="notperf-badge" title="@tube.NotPerformedReason">
+                                                        <i class="bi bi-dash-circle me-1"></i>No realizado: @tube.NotPerformedReason
+                                                        <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Quitar la justificación" @onclick="@(() => ClearNotPerformed(tube))"><i class="bi bi-x"></i></button>
+                                                    </div>
                                                 }
                                             </td>
                                             <td></td>
@@ -409,8 +440,8 @@
                                                 <div class="read-cell">
                                                     <div class="form-check form-switch m-0">
                                                         <input class="form-check-input switch-read cursor-pointer" type="checkbox" role="switch"
-                                                               checked="@tube.IsRead" disabled="@(sp.Id == 0)"
-                                                               title="@(sp.Id == 0 ? "Guarde el panel primero para poder marcar sus tubos" : null)"
+                                                               checked="@tube.IsRead" disabled="@(sp.Id == 0 || tube.IsRead || tube.IsVoided)"
+                                                               title="@(sp.Id == 0 ? "Guarde el panel primero para poder marcar sus tubos" : tube.IsRead ? "Lectura registrada: bloqueada. Si fue un error, un facultativo puede anularla." : null)"
                                                                @onchange="@((ChangeEventArgs e) => ToggleTubeReadInModal(sp, tube, (bool)(e.Value ?? false)))" />
                                                     </div>
                                                     <div class="read-meta">
@@ -437,8 +468,26 @@
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td class="text-end pe-3">
-                                                @if (sp.Id != 0)
+                                            <td class="text-end pe-3 text-nowrap">
+                                                @if (sp.Id != 0 && !tube.IsVoided && !tube.IsRead && tube.NotPerformedReason == null && sp.PanelVersionId != null && puedeJustificar)
+                                                {
+                                                    <button type="button" class="btn-justify" title="Justificar por qué no se realiza este tubo" @onclick="@(() => OpenJustifyForm(tube))">
+                                                        <i class="bi bi-chat-left-text"></i>
+                                                    </button>
+                                                }
+                                                @if (sp.Id != 0 && !tube.IsVoided && tube.IsRead && puedeDesmarcar)
+                                                {
+                                                    <button type="button" class="btn-justify" title="Desmarcar la lectura (solo facultativo, con motivo)" @onclick="@(() => OpenUnmarkForm(tube))">
+                                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                                    </button>
+                                                }
+                                                @if (sp.Id != 0 && !tube.IsVoided && tube.IsRead && canVoid)
+                                                {
+                                                    <button type="button" class="btn-void" title="Anular esta lectura (registrada por error)" @onclick="@(() => OpenVoidForm(sp, tube))">
+                                                        <i class="bi bi-slash-circle"></i>
+                                                    </button>
+                                                }
+                                                @if (sp.Id != 0 && !tube.IsVoided)
                                                 {
                                                     <button type="button" class="btn-incident-toggle @(tube.HasReadIncident ? "has-incident" : "")"
                                                             title="@(tube.HasReadIncident ? "Corregir incidencia" : "Marcar incidencia de lectura")"
@@ -448,6 +497,44 @@
                                                 }
                                             </td>
                                         </tr>
+                                        @if (justifyTube == tube)
+                                        {
+                                            <tr class="incident-form-row">
+                                                <td colspan="4">
+                                                    <div class="incident-form p-3 rounded-3">
+                                                        <label class="form-label-small mb-1 d-block">¿Por qué no se realiza el tubo T@(tube.TubeNumber)?</label>
+                                                        <input type="text" class="form-control form-control-sm" @bind="justifyText" placeholder="Motivo (mínimo 10 caracteres)" />
+                                                        @if (tube.IsOptional)
+                                                        {
+                                                            <button type="button" class="btn btn-link btn-sm p-0 mt-1" @onclick="@(() => justifyText = "Tubo opcional no indicado en este estudio")">Tubo opcional no indicado en este estudio</button>
+                                                        }
+                                                        <div class="d-flex gap-2 mt-2">
+                                                            <button type="button" class="btn btn-sm btn-primary" @onclick="@(() => SaveJustification(tube))">Guardar</button>
+                                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => justifyTube = null)">Cancelar</button>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                        @if (unmarkTube == tube)
+                                        {
+                                            <tr class="incident-form-row">
+                                                <td colspan="4">
+                                                    <div class="incident-form p-3 rounded-3">
+                                                        <label class="form-label-small mb-1 d-block">Desmarcar la lectura del tubo T@(tube.TubeNumber): ¿por qué?</label>
+                                                        <input type="text" class="form-control form-control-sm" @bind="unmarkText" placeholder="Motivo (mínimo 10 caracteres). Queda en la auditoría con quién y cuándo lo había leído." />
+                                                        <div class="d-flex gap-2 mt-2">
+                                                            <button type="button" class="btn btn-sm btn-warning" @onclick="@(() => ConfirmUnmark(tube))">Desmarcar</button>
+                                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => unmarkTube = null)">Cancelar</button>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                        @if (voidTube == tube)
+                                        {
+                                            <tr class="incident-form-row"><td colspan="4">@VoidForm()</td></tr>
+                                        }
                                         @if (incidentFormTubeId == tube.Id)
                                         {
                                             <tr class="incident-form-row">
@@ -1047,6 +1134,22 @@
         white-space: nowrap;
         margin-left: auto;
     }
+    /* v4: justificar / anular */
+    .btn-justify, .btn-void {
+        border: none; background: transparent; color: #64748b; font-size: 15px;
+        padding: 2px 6px; border-radius: 6px; margin-right: 2px;
+    }
+    .btn-justify:hover { background: #eff6ff; color: #2563eb; }
+    .btn-void:hover { background: #fef2f2; color: #dc2626; }
+    .void-badge, .notperf-badge {
+        display: inline-block; margin-top: 3px; font-size: 11.5px; border-radius: 6px; padding: 1px 8px;
+        max-width: 100%; white-space: normal;
+    }
+    .void-badge { background: #fee2e2; color: #991b1b; }
+    .notperf-badge { background: #f1f5f9; color: #475569; }
+    .tube-voided td { opacity: .65; }
+    .void-form { border: 1px solid #fecaca; background: #fff7f7; }
+    .void-warning { font-size: 12px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 9px; }
     .btn-incident-toggle {
         background: transparent;
         border: none;
@@ -1245,25 +1348,160 @@
         }
     }
 
-    // Eliminar un panel arrastra sus tubos y con ellos el registro de lectura (quién, cuándo
-    // e incidencias). Si no hay ninguna lectura no se molesta al usuario; si la hay, se pide
-    // una confirmación explícita antes de perderla.
-    private SamplePanel? panelPendingDelete;
+    // ── v4: bloqueo de lecturas, justificación de tubos no realizados y anulaciones ──
 
-    private void RequestRemovePanel(SamplePanel sp)
+    private bool puedeDesmarcar;
+    private bool puedeJustificar;
+    private bool puedeInformar;
+    /// <summary>Anular tubos o paneles leídos por error (permiso "tubos.anular").</summary>
+    private bool canVoid;
+    [Inject] private IPermissionService Permisos { get; set; } = default!;
+
+    private SampleTube? unmarkTube;
+    private string unmarkText = "";
+
+    private void OpenUnmarkForm(SampleTube tube)
     {
-        if (sp.Tubes.Any(t => t.IsRead || t.HasReadIncident))
-        {
-            panelPendingDelete = sp;
-            return;
-        }
-        modalPanels.Remove(sp);
+        unmarkTube = tube;
+        unmarkText = "";
+        justifyTube = null; voidTube = null; voidPanel = null; incidentFormTubeId = null;
     }
 
-    private void ConfirmRemovePanel(SamplePanel sp)
+    private async Task ConfirmUnmark(SampleTube tube)
     {
-        modalPanels.Remove(sp);
-        panelPendingDelete = null;
+        await EnsureCurrentUser();
+        try
+        {
+            await SampleService.UnmarkTubeReadAsync(tube.Id, unmarkText, currentUserId);
+            tube.IsRead = false;
+            tube.ReadByUserId = null;
+            tube.ReadAtUtc = null;
+            tube.ReadByUser = null;
+            unmarkTube = null;
+            modalErrorMessage = null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { modalErrorMessage = ex.Message; }
+    }
+
+    /// <summary>Un panel con lecturas, incidencias o anulaciones no se puede quitar de la
+    /// muestra (se perdería el registro); un facultativo puede anularlo.</summary>
+    private static bool PanelHasReads(SamplePanel sp) => sp.Tubes.Any(t => t.IsRead || t.HasReadIncident || t.IsVoided);
+
+    private SampleTube? justifyTube;
+    private string justifyText = "";
+
+    private void OpenJustifyForm(SampleTube tube)
+    {
+        justifyTube = tube;
+        justifyText = "";
+        voidTube = null; voidPanel = null; incidentFormTubeId = null;
+    }
+
+    private async Task SaveJustification(SampleTube tube)
+    {
+        await EnsureCurrentUser();
+        try
+        {
+            await SampleService.JustifyTubeNotPerformedAsync(tube.Id, justifyText, currentUserId);
+            tube.NotPerformedReason = justifyText.Trim();
+            tube.NotPerformedAtUtc = DateTime.UtcNow;
+            justifyTube = null;
+            modalErrorMessage = null;
+        }
+        catch (InvalidOperationException ex) { modalErrorMessage = ex.Message; }
+    }
+
+    private async Task ClearNotPerformed(SampleTube tube)
+    {
+        try
+        {
+            await SampleService.ClearTubeNotPerformedAsync(tube.Id);
+            tube.NotPerformedReason = null;
+            tube.NotPerformedAtUtc = null;
+        }
+        catch (InvalidOperationException ex) { modalErrorMessage = ex.Message; }
+    }
+
+    private SamplePanel? voidPanel;
+    private SampleTube? voidTube;
+    private string voidReason = "";
+    private string voidNcRef = "";
+
+    private void OpenVoidForm(SamplePanel sp, SampleTube? tube)
+    {
+        voidPanel = sp;
+        voidTube = tube;
+        voidReason = "";
+        voidNcRef = "";
+        justifyTube = null; incidentFormTubeId = null;
+    }
+
+    private async Task ConfirmVoid()
+    {
+        if (voidPanel == null) return;
+        await EnsureCurrentUser();
+        try
+        {
+            var now = DateTime.UtcNow;
+            var nc = string.IsNullOrWhiteSpace(voidNcRef) ? null : voidNcRef.Trim();
+            if (voidTube != null)
+            {
+                await SampleService.VoidSampleTubeAsync(voidTube.Id, voidReason, nc, currentUserId);
+                MarkVoided(voidTube, now, nc);
+            }
+            else
+            {
+                await SampleService.VoidSamplePanelAsync(voidPanel.Id, voidReason, nc, currentUserId);
+                voidPanel.IsVoided = true;
+                voidPanel.IsRequested = false;
+                voidPanel.VoidReason = voidReason.Trim();
+                voidPanel.VoidNonConformityRef = nc;
+                foreach (var t in voidPanel.Tubes.Where(t => !t.IsVoided)) MarkVoided(t, now, nc);
+            }
+            voidPanel = null;
+            voidTube = null;
+            modalErrorMessage = null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { modalErrorMessage = ex.Message; }
+    }
+
+    private void MarkVoided(SampleTube t, DateTime now, string? nc)
+    {
+        t.IsVoided = true;
+        t.VoidReason = voidReason.Trim();
+        t.VoidNonConformityRef = nc;
+        t.VoidedAtUtc = now;
+    }
+
+    private RenderFragment VoidForm() => __builder =>
+    {
+        <div class="incident-form void-form p-3 rounded-3">
+            <label class="form-label-small mb-1 d-block">
+                @(voidTube != null ? $"Anular la lectura del tubo T{voidTube.TubeNumber}" : "Anular el panel completo")
+            </label>
+            <textarea class="form-control form-control-sm" rows="2" @bind="voidReason"
+                      placeholder="Qué error hubo y cómo se detectó (mínimo 20 caracteres)"></textarea>
+            <div class="void-warning mt-2">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                La lectura original se conserva y la anulación queda registrada a su nombre. Si el error ha podido
+                afectar al resultado o a un informe ya emitido, <strong>abra una no conformidad en el QMS</strong>
+                y anote aquí su código.
+            </div>
+            <input type="text" class="form-control form-control-sm mt-2" @bind="voidNcRef" placeholder="Código de no conformidad (opcional), p. ej. NC-2026-014" />
+            <div class="d-flex gap-2 mt-2">
+                <button type="button" class="btn btn-sm btn-danger" @onclick="ConfirmVoid">Anular</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => { voidPanel = null; voidTube = null; })">Cancelar</button>
+            </div>
+        </div>
+    };
+
+    private async Task EnsureCurrentUser()
+    {
+        if (currentUserId.HasValue) return;
+        var authState = await AuthStateTask;
+        var user = await UserManager.GetUserAsync(authState.User);
+        currentUserId = user?.Id;
+        currentUserName = user?.FullName ?? user?.UserName;
     }
 
     [Inject] private IMasterDataService MasterService { get; set; } = default!;
@@ -1283,6 +1521,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // v4.1: lo que puede hacer cada rol sale de Configuración → Permisos.
+        puedeDesmarcar = await Permisos.HasAsync(Permissions.TubosDesmarcarLeido);
+        canVoid = await Permisos.HasAsync(Permissions.TubosAnular);
+        puedeInformar = await Permisos.HasAsync(Permissions.InformesAbrir);
+        puedeJustificar = await Permisos.HasAsync(Permissions.TubosJustificarNoRealizado);
         allPanelsForModal = (await MasterService.GetAllPanelsAsync()).OrderBy(p => p.DisplayOrder).ThenBy(p => p.Name).ToList();
         fromDate = DateTime.Today.AddMonths(-DefaultWindowMonths);
         defaultWindowActive = true;

@@ -18,8 +18,12 @@ namespace MiniLIS.Infrastructure.Services
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ICurrentUserService _currentUserService;
 
-        public ReportService(ApplicationDbContext db, UserManager<ApplicationUser> userManager, ICurrentUserService currentUserService)
+        private readonly IPermissionService _permissions;
+
+        public ReportService(ApplicationDbContext db, UserManager<ApplicationUser> userManager, ICurrentUserService currentUserService,
+            IPermissionService? permissions = null)
         {
+            _permissions = permissions ?? new PermissionService(db, currentUserService);
             _db = db;
             _userManager = userManager;
             _currentUserService = currentUserService;
@@ -58,6 +62,15 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<SampleReport> SaveReportAsync(SampleReport report, List<ReportMarkerValue> markerValues, List<int> signatoryUserIds)
         {
+            if (!await _permissions.HasAsync(Permissions.InformesGuardar))
+                throw new UnauthorizedAccessException("No tiene permiso para guardar informes.");
+
+            // v4: un informe validado no se modifica. Se comprueba contra lo guardado (no contra
+            // el objeto recibido, que puede venir alterado): para cambiarlo, un facultativo lo
+            // reabre con motivo documentado y luego vuelve a validarlo.
+            if (report.Id != 0 && await _db.SampleReports.AsNoTracking().AnyAsync(r => r.Id == report.Id && r.IsFinalized))
+                throw new InvalidOperationException("El informe está validado y no se puede modificar. Un facultativo debe reabrirlo antes.");
+
             _db.SampleReports.Update(report);
 
             // Actualizar estado de muestra si está en Recibida o Procesando

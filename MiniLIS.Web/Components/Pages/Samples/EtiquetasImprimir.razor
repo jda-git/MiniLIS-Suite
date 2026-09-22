@@ -6,7 +6,7 @@
 @using System.Globalization
 @using System.Net
 @using MiniLIS.Web.Services
-@attribute [Authorize]
+@attribute [Authorize(Policy = Permissions.Policies.EtiquetasImprimir)]
 @inject ISampleService SampleService
 @inject IStorageService StorageService
 @inject IMasterDataService MasterService

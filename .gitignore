@@ -50,3 +50,6 @@ dist/
 
 ## [Copias de configuración (servidor)]
 config-backups/
+
+## [Instalador: salida de compilación]
+installer/out/

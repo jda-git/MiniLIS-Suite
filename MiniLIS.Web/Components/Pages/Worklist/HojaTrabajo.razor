@@ -2,7 +2,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
-@attribute [Authorize]
+@attribute [Authorize(Policy = Permissions.Policies.HojaTrabajoGenerar)]
 @inject IWorklistExportService ExportService
 @inject NavigationManager Nav
 @inject IJSRuntime JS

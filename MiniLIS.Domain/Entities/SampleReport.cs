@@ -120,6 +120,13 @@ namespace MiniLIS.Domain.Entities
         public bool ShowPreviousMotivo { get; set; } = false;
         public bool ShowPreviousReportBody { get; set; } = false;
         public bool ShowPreviousMarkers { get; set; } = false;
+        public bool ShowPreviousAdditionalText { get; set; } = false;
+
+        /// <summary>Texto de versiones de panel empleadas, congelado al validar (v4). Al
+        /// reimprimir un informe validado sale este texto y no el calculado con los datos
+        /// actuales: un cambio de formato o de datos no altera un informe ya emitido.</summary>
+        [MaxLength(500)]
+        public string? PanelVersionsText { get; set; }
         public bool ShowPreviousConclusions { get; set; } = false;
     }
 

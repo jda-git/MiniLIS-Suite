@@ -17,14 +17,17 @@ namespace MiniLIS.Infrastructure.Services
         private readonly ICurrentUserService _currentUserService;
         private readonly IPanelCatalogService _panelCatalogService;
         private readonly ILocalTimeService _localTimeService;
+        private readonly IPermissionService _permissions;
 
         public SampleService(
             ApplicationDbContext db,
             INumberingService numberingService,
             ICurrentUserService currentUserService,
             IPanelCatalogService panelCatalogService,
-            ILocalTimeService localTimeService)
+            ILocalTimeService localTimeService,
+            IPermissionService? permissions = null)
         {
+            _permissions = permissions ?? new PermissionService(db, currentUserService);
             _db = db;
             _numberingService = numberingService;
             _currentUserService = currentUserService;
@@ -184,16 +187,7 @@ namespace MiniLIS.Infrastructure.Services
                             DisplayOrder = order++
                         };
 
-                        int tubeNumber = 1;
-                        foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
-                        {
-                            samplePanel.Tubes.Add(new SampleTube
-                            {
-                                TubeNumber = tubeNumber++,
-                                MarkerList = tube.MarkerList,
-                                IsOptional = tube.IsOptional
-                            });
-                        }
+                        AddTubesFromVersion(samplePanel, version, sample);
 
                         _db.SamplePanels.Add(samplePanel);
                     }
@@ -502,12 +496,23 @@ namespace MiniLIS.Infrastructure.Services
                 {
                     if (incomingExisting.TryGetValue(existing.Id, out var incoming))
                     {
-                        existing.IsRequested = incoming.IsRequested;
+                        // Un panel anulado sigue fuera del estudio aunque la pantalla lo reenvíe.
+                        if (!existing.IsVoided) existing.IsRequested = incoming.IsRequested;
                         existing.CustomText = incoming.CustomText;
                         existing.DisplayOrder = order++;
                     }
                 }
 
+                // v4: un panel con tubos ya leídos (o con incidencias o anulaciones registradas)
+                // no se borra: perdería el registro de lo que se hizo. Si se añadió por error, un
+                // facultativo lo anula con justificación (VoidSamplePanelAsync) y queda constancia.
+                var conLecturas = toRemove.Where(sp => sp.IsVoided || sp.Tubes.Any(t => t.IsRead || t.HasReadIncident || t.IsVoided)).ToList();
+                if (conLecturas.Any())
+                {
+                    throw new InvalidOperationException(
+                        "No se puede quitar un panel con tubos ya leídos. Si se registró por error, " +
+                        "un facultativo puede anularlo con justificación.");
+                }
                 if (toRemove.Any())
                 {
                     _db.SamplePanels.RemoveRange(toRemove); // cascada: borra también sus SampleTube
@@ -533,16 +538,7 @@ namespace MiniLIS.Infrastructure.Services
                         }
 
                         newSp.PanelVersionId = version.Id;
-                        int tubeNumber = 1;
-                        foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
-                        {
-                            newSp.Tubes.Add(new SampleTube
-                            {
-                                TubeNumber = tubeNumber++,
-                                MarkerList = tube.MarkerList,
-                                IsOptional = tube.IsOptional
-                            });
-                        }
+                        AddTubesFromVersion(newSp, version, sample);
                     }
                     else
                     {
@@ -568,18 +564,26 @@ namespace MiniLIS.Infrastructure.Services
             var tube = await _db.SampleTubes.FindAsync(sampleTubeId);
             if (tube != null)
             {
-                tube.IsRead = isRead;
-                if (isRead)
-                {
-                    tube.ReadByUserId = userId;
-                    tube.ReadAtUtc = DateTime.UtcNow;
-                    await StampFirstAcquisitionAsync(tube);
-                }
-                else
-                {
-                    tube.ReadByUserId = null;
-                    tube.ReadAtUtc = null;
-                }
+                if (tube.IsVoided)
+                    throw new InvalidOperationException("El tubo está anulado: no se puede cambiar su lectura.");
+                if (tube.IsRead == isRead) return;
+
+                // v4: una lectura registrada queda bloqueada. Desmarcarla borraría quién y
+                // cuándo leyó el tubo; si fue un error, un facultativo la anula con
+                // justificación (VoidSampleTubeAsync) y la lectura original se conserva.
+                if (!isRead)
+                    throw new InvalidOperationException(
+                        "Un tubo leído no se puede desmarcar sin motivo: un facultativo puede desmarcarlo indicando por qué, o anular la lectura.");
+
+                tube.IsRead = true;
+                tube.ReadByUserId = userId;
+                tube.ReadAtUtc = DateTime.UtcNow;
+                // Si se había justificado como no realizado y al final se lee, la justificación
+                // deja de aplicar (el cambio queda en la auditoría).
+                tube.NotPerformedReason = null;
+                tube.NotPerformedByUserId = null;
+                tube.NotPerformedAtUtc = null;
+                await StampFirstAcquisitionAsync(tube);
                 await _db.SaveChangesAsync();
             }
         }
@@ -615,6 +619,14 @@ namespace MiniLIS.Infrastructure.Services
 
             var reason = await _db.TubeReadIncidentReasons.FindAsync(reasonId);
             if (reason == null) throw new InvalidOperationException("El motivo de incidencia seleccionado no existe.");
+            if (tube.IsVoided) throw new InvalidOperationException("El tubo está anulado: no se pueden registrar incidencias.");
+
+            // v4: "Repetir" o "Anula" sobre un tubo YA leído deshace esa lectura: queda reservado
+            // a facultativos y administradores (el técnico, no).
+            if (tube.IsRead && resolution != TubeReadIncidentResolution.ConSalvedad
+                && !await _permissions.HasAsync(Permissions.TubosIncidenciaAnulaLectura))
+                throw new InvalidOperationException(
+                    "El tubo ya está leído: no tiene permiso para registrar una incidencia que anule o repita esa lectura.");
 
             var now = DateTime.UtcNow;
             tube.HasReadIncident = true;
@@ -679,6 +691,183 @@ namespace MiniLIS.Infrastructure.Services
             });
 
             await _db.SaveChangesAsync();
+        }
+    
+        // ── v4: tubos del panel, justificación de no realizados y anulaciones ──
+
+        public const string RoleFacultativo = "Facultativo";
+        public const int MinJustificationLength = 10;
+        public const int MinVoidReasonLength = 20;
+
+        /// <summary>Copia los tubos de la versión a la muestra: composición congelada, enlace a
+        /// la definición exacta (con su fórmula) y nombre FCS esperado fijado desde ya.</summary>
+        private static void AddTubesFromVersion(SamplePanel samplePanel, PanelVersion version, Sample sample)
+        {
+            int tubeNumber = 1;
+            foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
+            {
+                var n = tubeNumber++;
+                samplePanel.Tubes.Add(new SampleTube
+                {
+                    TubeNumber = n,
+                    MarkerList = tube.MarkerList,
+                    IsOptional = tube.IsOptional,
+                    PanelTubeId = tube.Id,
+                    FcsFileName = version.Panel != null
+                        ? FcsFileNaming.GenerateFileName(sample.SampleNumber, sample.SampleType.ToCode(), n, version.Panel.Code, version.FileToken)
+                        : null
+                });
+            }
+        }
+
+        public async Task JustifyTubeNotPerformedAsync(int sampleTubeId, string reason, int? userId)
+        {
+            var tube = await _db.SampleTubes.FindAsync(sampleTubeId)
+                       ?? throw new InvalidOperationException("El tubo no existe.");
+            if (tube.IsRead) throw new InvalidOperationException("El tubo está leído: no hay nada que justificar.");
+            if (tube.IsVoided) throw new InvalidOperationException("El tubo está anulado.");
+            var t = (reason ?? string.Empty).Trim();
+            if (t.Length < MinJustificationLength)
+                throw new InvalidOperationException($"Indique el motivo por el que no se realiza el tubo (mínimo {MinJustificationLength} caracteres).");
+
+            _currentUserService.ActionContext = "Justificación de tubo no realizado";
+            tube.NotPerformedReason = t.Length > 300 ? t[..300] : t;
+            tube.NotPerformedByUserId = userId;
+            tube.NotPerformedAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task ClearTubeNotPerformedAsync(int sampleTubeId)
+        {
+            var tube = await _db.SampleTubes.FindAsync(sampleTubeId)
+                       ?? throw new InvalidOperationException("El tubo no existe.");
+            if (tube.NotPerformedReason == null) return;
+            _currentUserService.ActionContext = "Retirada de la justificación de tubo no realizado";
+            tube.NotPerformedReason = null;
+            tube.NotPerformedByUserId = null;
+            tube.NotPerformedAtUtc = null;
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task VoidSampleTubeAsync(int sampleTubeId, string reason, string? nonConformityRef, int? userId)
+        {
+            await RequireFacultativoAsync();
+            var tube = await _db.SampleTubes.FindAsync(sampleTubeId)
+                       ?? throw new InvalidOperationException("El tubo no existe.");
+            if (tube.IsVoided) throw new InvalidOperationException("El tubo ya está anulado.");
+            var t = ValidateVoidReason(reason);
+
+            _currentUserService.ActionContext = "Anulación de tubo: " + t;
+            tube.IsVoided = true;
+            tube.VoidReason = t;
+            tube.VoidNonConformityRef = CleanRef(nonConformityRef);
+            tube.VoidedByUserId = userId;
+            tube.VoidedAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task VoidSamplePanelAsync(int samplePanelId, string reason, string? nonConformityRef, int? userId)
+        {
+            await RequireFacultativoAsync();
+            var sp = await _db.SamplePanels.Include(p => p.Tubes).FirstOrDefaultAsync(p => p.Id == samplePanelId)
+                     ?? throw new InvalidOperationException("El panel no existe.");
+            if (sp.IsVoided) throw new InvalidOperationException("El panel ya está anulado.");
+            var t = ValidateVoidReason(reason);
+            var now = DateTime.UtcNow;
+            var nc = CleanRef(nonConformityRef);
+
+            _currentUserService.ActionContext = "Anulación de panel: " + t;
+            sp.IsVoided = true;
+            sp.IsRequested = false;
+            sp.VoidReason = t;
+            sp.VoidNonConformityRef = nc;
+            sp.VoidedByUserId = userId;
+            sp.VoidedAtUtc = now;
+            // Los tubos quedan anulados con el mismo motivo; sus lecturas se conservan.
+            foreach (var tube in sp.Tubes.Where(x => !x.IsVoided))
+            {
+                tube.IsVoided = true;
+                tube.VoidReason = t;
+                tube.VoidNonConformityRef = nc;
+                tube.VoidedByUserId = userId;
+                tube.VoidedAtUtc = now;
+            }
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task<List<PendingTube>> GetTubesPendingJustificationAsync(int sampleId)
+        {
+            var panels = await _db.SamplePanels
+                .Include(sp => sp.Panel)
+                .Include(sp => sp.Tubes)
+                .Where(sp => sp.SampleId == sampleId && sp.IsRequested && !sp.IsVoided && sp.PanelVersionId != null)
+                .OrderBy(sp => sp.DisplayOrder)
+                .ToListAsync();
+
+            return panels
+                .SelectMany(sp => sp.Tubes
+                    .Where(t => !t.IsRead && !t.IsVoided && t.NotPerformedReason == null)
+                    .OrderBy(t => t.TubeNumber)
+                    .Select(t => new PendingTube
+                    {
+                        SampleTubeId = t.Id,
+                        PanelName = sp.Panel?.Name ?? sp.CustomText ?? "—",
+                        TubeNumber = t.TubeNumber,
+                        MarkerList = t.MarkerList,
+                        IsOptional = t.IsOptional
+                    }))
+                .ToList();
+        }
+
+        /// <summary>Anular tubos o paneles leídos por error (v4.1: permiso configurable).</summary>
+        private async Task RequireFacultativoAsync()
+        {
+            if (!await _permissions.HasAsync(Permissions.TubosAnular))
+                throw new UnauthorizedAccessException("No tiene permiso para anular tubos o paneles leídos.");
+        }
+
+        public async Task UnmarkTubeReadAsync(int sampleTubeId, string reason, int? userId)
+        {
+            // Desmarcar borra quién y cuándo leyó el tubo: solo el facultativo, con motivo, y
+            // con los datos de la lectura deshecha guardados en la auditoría.
+            if (!await _permissions.HasAsync(Permissions.TubosDesmarcarLeido))
+                throw new UnauthorizedAccessException("No tiene permiso para desmarcar un tubo leído.");
+            var tube = await _db.SampleTubes.FindAsync(sampleTubeId) ?? throw new InvalidOperationException("El tubo no existe.");
+            if (tube.IsVoided) throw new InvalidOperationException("El tubo está anulado.");
+            if (!tube.IsRead) return;
+            var t = (reason ?? string.Empty).Trim();
+            if (t.Length < MinJustificationLength)
+                throw new InvalidOperationException($"Indique por qué se desmarca la lectura (mínimo {MinJustificationLength} caracteres).");
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SampleTube),
+                EntityId = tube.Id.ToString(),
+                Action = "UnmarkRead",
+                UserId = userId,
+                ActionContext = $"Lectura desmarcada: {t}",
+                Changes = $"Lectura anterior: usuario {tube.ReadByUserId?.ToString() ?? "—"}, {tube.ReadAtUtc:yyyy-MM-dd HH:mm} UTC",
+                TimestampUtc = DateTime.UtcNow
+            });
+            _currentUserService.ActionContext = "Lectura de tubo desmarcada: " + t;
+            tube.IsRead = false;
+            tube.ReadByUserId = null;
+            tube.ReadAtUtc = null;
+            await _db.SaveChangesAsync();
+        }
+
+        private static string ValidateVoidReason(string? reason)
+        {
+            var t = (reason ?? string.Empty).Trim();
+            if (t.Length < MinVoidReasonLength)
+                throw new InvalidOperationException($"Justifique la anulación (mínimo {MinVoidReasonLength} caracteres): qué error hubo y cómo se detectó.");
+            return t.Length > 500 ? t[..500] : t;
+        }
+
+        private static string? CleanRef(string? s)
+        {
+            var t = (s ?? string.Empty).Trim();
+            return t.Length == 0 ? null : (t.Length > 50 ? t[..50] : t);
         }
     }
 }

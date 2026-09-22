@@ -59,7 +59,7 @@ namespace MiniLIS.Tests
             var panel = new Panel { Code = "LMA", Name = "Leucemia aguda", DisplayOrder = 1, DefaultReportTemplate = plantilla };
             var v1 = new PanelVersion
             {
-                VersionNumber = 1, Status = PanelVersionStatus.Vigente, EffectiveFromUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                Ordinal = 1, VersionMajor = 1, Status = PanelVersionStatus.Vigente, EffectiveFromUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                 QmsDocumentRef = new QmsReference { Code = "PNT-HEM-CIT-001" }
             };
             v1.Tubes.Add(new PanelTube { TubeNumber = 1, MarkerList = "34/117/45", Notes = "Acreditado" });
@@ -111,6 +111,13 @@ namespace MiniLIS.Tests
 
         private static string SectionsOf(byte[] file) => JsonNode.Parse(file)!["sections"]!.ToJsonString(ConfigJson.Options);
 
+        private static string SectionsExcept(byte[] file, string key)
+        {
+            var sections = JsonNode.Parse(file)!["sections"]!.AsObject();
+            sections.Remove(key);
+            return sections.ToJsonString(ConfigJson.Options);
+        }
+
         [Fact]
         public void La_web_crea_el_servicio_con_todos_los_apartados()
         {
@@ -149,13 +156,15 @@ namespace MiniLIS.Tests
 
             resultado.Error.Should().BeNull();
             resultado.Success.Should().BeTrue();
-            SectionsOf((await s.ExportAsync()).Content).Should().Be(SectionsOf(fichero.Content),
+            // Todo igual salvo los paneles, que entran como borrador (los aprueba un facultativo).
+            SectionsExcept((await s.ExportAsync()).Content, "paneles").Should().Be(SectionsExcept(fichero.Content, "paneles"),
                 "exportar el destino debe dar exactamente la misma configuración");
 
             using var ctx = destino.CreateContext();
-            var version = await ctx.PanelVersions.Include(v => v.Panel).SingleAsync();
-            version.VersionNumber.Should().Be(1);
-            version.Status.Should().Be(PanelVersionStatus.Vigente, "un panel nuevo conserva el número y estado del origen");
+            var version = await ctx.PanelVersions.Include(v => v.Panel).Include(v => v.Tubes).SingleAsync();
+            version.VersionMajor.Should().Be(1, "conserva el número del origen");
+            version.Status.Should().Be(PanelVersionStatus.Borrador, "importar configuración nunca pone en vigor una versión");
+            version.Tubes.OrderBy(t => t.TubeNumber).Select(t => t.MarkerList).Should().Equal("34/117/45", "13/33/45");
             (await ctx.Panels.Include(p => p.DefaultReportTemplate).SingleAsync()).DefaultReportTemplate!.Name.Should().Be("LMA");
         }
 
@@ -263,7 +272,7 @@ namespace MiniLIS.Tests
                 // aplica DESPUÉS de marcadores y plantillas.
                 var versiones = root["sections"]!["paneles"]!["data"]![0]!["versions"]!.AsArray();
                 var copia = versiones[0]!.DeepClone();
-                copia["versionNumber"] = 2;
+                copia["versionMajor"] = 2;
                 versiones.Add(copia);
             });
 
@@ -352,6 +361,38 @@ namespace MiniLIS.Tests
             notas.Aplicado.Should().ContainSingle().Which.Autor.Should().Be("(desconocido)");
         }
 
+        [Fact]
+        public async Task Un_fichero_de_MiniLIS_3_con_versiones_enteras_se_convierte_a_mayor_punto_menor()
+        {
+            // Apartado Paneles v1 (MiniLIS 3.x): "versionNumber": 2. Al importarlo en 4.0 se
+            // convierte a 2.0 con el código anterior "v02", igual que la migración de la base.
+            using var origen = new TestDb();
+            await Seed(origen);
+            var fichero = Rewrite((await Service(origen).ExportAsync()).Content, root =>
+            {
+                var paneles = root["sections"]!["paneles"]!.AsObject();
+                paneles["schemaVersion"] = 1;
+                foreach (var panel in paneles["data"]!.AsArray())
+                    foreach (var v in panel!["versions"]!.AsArray())
+                    {
+                        var o = v!.AsObject();
+                        o.Remove("versionMajor"); o.Remove("versionMinor"); o.Remove("legacyCode");
+                        o["versionNumber"] = 2;
+                    }
+            });
+
+            using var destino = new TestDb();
+            var s = Service(destino);
+            var analisis = await s.AnalyzeAsync(fichero, ConfigImportMode.Fusionar);
+            analisis.Sections.Single(x => x.Key == "paneles").Compatibility.Should().Be(SectionCompatibility.CompatibleConConversion);
+
+            (await ImportWithBackup(s, fichero)).Success.Should().BeTrue();
+            using var ctx = destino.CreateContext();
+            var version = await ctx.PanelVersions.SingleAsync();
+            version.VersionLabel.Should().Be("v2.0");
+            version.LegacyCode.Should().Be("v02");
+        }
+
         // ── Reglas de aplicación ────────────────────────────────────────────────────────
 
         /// <summary>Asocia un estudio a la versión vigente del panel.</summary>
@@ -380,7 +421,7 @@ namespace MiniLIS.Tests
             resultado.Success.Should().BeTrue();
             resultado.Sections.Single(x => x.Key == "paneles").Changes.Single().Kind.Should().Be(ConfigChangeKind.Conflicto);
             using var ctx = db.CreateContext();
-            var versiones = await ctx.PanelVersions.Include(v => v.Tubes).OrderBy(v => v.VersionNumber).ToListAsync();
+            var versiones = await ctx.PanelVersions.Include(v => v.Tubes).OrderBy(v => v.VersionMajor).ToListAsync();
             versiones.Should().HaveCount(2);
             versiones[0].Status.Should().Be(PanelVersionStatus.Vigente);
             versiones[0].Tubes.OrderBy(t => t.TubeNumber).First().MarkerList.Should().Be("34/117/45", "la versión publicada no se toca (M-4)");
@@ -389,9 +430,11 @@ namespace MiniLIS.Tests
         }
 
         [Fact]
-        public async Task En_un_panel_sin_estudios_la_version_del_fichero_se_publica_y_la_anterior_se_retira()
+        public async Task Lo_importado_entra_como_borrador_aunque_el_panel_no_tenga_estudios()
         {
-            // Instalación recién hecha: MiniLIS siembra los paneles con una v1 de relleno.
+            // Instalación recién hecha (panel sin estudios): antes la versión del fichero se
+            // ponía en vigor directamente. Ahora entra como borrador y la vigente no cambia
+            // hasta que un facultativo apruebe la nueva.
             using var db = new TestDb();
             await Seed(db);
             var s = Service(db);
@@ -401,11 +444,10 @@ namespace MiniLIS.Tests
             var resultado = await ImportWithBackup(s, fichero);
 
             resultado.Success.Should().BeTrue();
-            resultado.Sections.Single(x => x.Key == "paneles").Changes.Single().Kind.Should().Be(ConfigChangeKind.Modificado);
             using var ctx = db.CreateContext();
-            var versiones = await ctx.PanelVersions.Include(v => v.Tubes).OrderBy(v => v.VersionNumber).ToListAsync();
-            versiones.Select(v => v.Status).Should().Equal(PanelVersionStatus.Retirada, PanelVersionStatus.Vigente);
-            versiones[0].Tubes.OrderBy(t => t.TubeNumber).First().MarkerList.Should().Be("34/117/45", "la retirada conserva su contenido");
+            var versiones = await ctx.PanelVersions.Include(v => v.Tubes).OrderBy(v => v.VersionMajor).ThenBy(v => v.VersionMinor).ToListAsync();
+            versiones.Select(v => v.Status).Should().Equal(PanelVersionStatus.Vigente, PanelVersionStatus.Borrador);
+            versiones[0].Tubes.OrderBy(t => t.TubeNumber).First().MarkerList.Should().Be("34/117/45", "la vigente no se toca");
             versiones[1].Tubes.OrderBy(t => t.TubeNumber).First().MarkerList.Should().Be("34/117/45/HLA-DR");
         }
 

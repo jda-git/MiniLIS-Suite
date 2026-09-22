@@ -288,10 +288,15 @@ namespace MiniLIS.Infrastructure.Services
             var breakdown = await FilteredReceivedQuery(start, end, filtro)
                 .SelectMany(s => s.Panels)
                 .Where(p => p.IsRequested && p.Panel != null)
-                .GroupBy(p => new { p.Panel!.Code, Version = p.PanelVersion != null ? p.PanelVersion.VersionNumber : (int?)null })
+                .GroupBy(p => new
+                {
+                    p.Panel!.Code,
+                    Major = p.PanelVersion != null ? p.PanelVersion.VersionMajor : (int?)null,
+                    Minor = p.PanelVersion != null ? p.PanelVersion.VersionMinor : (int?)null
+                })
                 .Select(g => new BreakdownItem
                 {
-                    Label = g.Key.Version.HasValue ? $"{g.Key.Code}-v{g.Key.Version.Value:D2}" : g.Key.Code,
+                    Label = g.Key.Major.HasValue ? g.Key.Code + " · v" + g.Key.Major + "." + g.Key.Minor : g.Key.Code,
                     Count = g.Count()
                 })
                 .OrderByDescending(b => b.Count)

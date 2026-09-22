@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Common;
@@ -205,16 +206,32 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         public string MarkerList { get; set; } = "";
         public string? Notes { get; set; }
         public bool IsOptional { get; set; }
+        public string? FormulaCode { get; set; }
+        public string? FormulaRevision { get; set; }
     }
 
     public class PanelVersionDto
     {
-        public int VersionNumber { get; set; }
+        public int VersionMajor { get; set; } = 1;
+        public int VersionMinor { get; set; }
+        public string? LegacyCode { get; set; }
         public PanelVersionStatus Status { get; set; }
         public DateTime? EffectiveFromUtc { get; set; }
         public string? QmsDocumentRef { get; set; }
+        public string? MasterSheetCode { get; set; }
+        public string? MasterSheetRevision { get; set; }
+        public string? ExternalSource { get; set; }
+        public string? ExternalName { get; set; }
+        public string? ExternalVersion { get; set; }
         public string? ChangeNotes { get; set; }
+        public string? ChangeEvaluationRef { get; set; }
+        public string? ApprovedByName { get; set; }
+        public DateTime? ApprovedAtUtc { get; set; }
         public List<PanelTubeDto> Tubes { get; set; } = new();
+
+        /// <summary>Solo para mensajes: no va en el fichero (al reimportarlo sería un campo desconocido).</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string Label => $"v{VersionMajor}.{VersionMinor}";
     }
 
     public class PanelDto
@@ -226,23 +243,54 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         public bool IsActive { get; set; } = true;
         /// <summary>Nombre de la plantilla de informe sugerida.</summary>
         public string? DefaultTemplate { get; set; }
-        /// <summary>Solo la versión vigente y los borradores: las retiradas son historia de
+        /// <summary>La vigente y las que están en preparación: las retiradas son historia de
         /// la instalación de origen, no configuración.</summary>
         public List<PanelVersionDto> Versions { get; set; } = new();
     }
 
     /// <summary>
-    /// Paneles con sus versiones. Respeta la inmutabilidad de versiones (M-4): una versión
-    /// vigente o retirada del servidor nunca se sobrescribe. Si el fichero trae otra versión
-    /// vigente: en un panel que ya tiene estudios se crea como borrador, para que se revise y
-    /// publique a mano; en un panel sin estudios (instalación nueva) se publica como versión
-    /// nueva y la anterior queda retirada. Solo en un panel que no existía se conservan los
-    /// números y estados del origen.
+    /// Paneles con sus versiones (esquema v2, MiniLIS 4.0: versión mayor.menor, fórmula por
+    /// tubo y referencias al QMS). Respeta la inmutabilidad (M-4): una versión que no está en
+    /// borrador nunca se sobrescribe.
+    ///
+    /// Lo importado entra SIEMPRE como borrador: la aprobación la da un facultativo de este
+    /// laboratorio por el circuito normal (revisión → aprobación → entrada en vigor). Importar
+    /// configuración nunca pone en vigor una versión de panel.
+    ///
+    /// - Panel que no existe aquí: se crea con un borrador de su versión vigente en el origen
+    ///   (o la más alta), conservando el número.
+    /// - Versión del fichero con la misma composición que una de aquí: nada que hacer.
+    /// - Versión distinta: se crea como borrador (conflicto si difiere de la vigente de aquí).
     /// </summary>
     public class PanelsSectionHandler : ConfigSectionHandler<List<PanelDto>>
     {
         public override string Key => "paneles";
         public override string Title => "Paneles";
+        public override int CurrentVersion => 2;
+
+        /// <summary>v1 (MiniLIS 3.x): la versión era un entero ("versionNumber": 2). Pasa a
+        /// 2.0, igual que la migración de la base de datos, y se conserva como código
+        /// anterior ("v02").</summary>
+        public override JsonNode Upgrade(JsonNode data, int fromVersion, SectionAnalysis report)
+        {
+            if (fromVersion != 1) return base.Upgrade(data, fromVersion, report);
+            foreach (var panel in data.AsArray())
+            {
+                if (panel?["versions"] is not JsonArray versions) continue;
+                foreach (var v in versions)
+                {
+                    if (v is not JsonObject o) continue;
+                    var n = o["versionNumber"]?.GetValue<int>() ?? 1;
+                    o.Remove("versionNumber");
+                    o["versionMajor"] = n;
+                    o["versionMinor"] = 0;
+                    o["legacyCode"] ??= $"v{n:D2}";
+                }
+            }
+            report.Messages.Add("Versiones de panel en formato anterior (vNN): se convierten a vN.0. " +
+                                "Las fórmulas de los tubos y las referencias a la ficha maestra no venían en el fichero.");
+            return data;
+        }
 
         protected override async Task<List<PanelDto>> ExportDataAsync(ApplicationDbContext db)
         {
@@ -262,20 +310,32 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
                 DefaultTemplate = p.DefaultReportTemplate?.Name,
                 Versions = p.Versions
                     .Where(v => v.Status != PanelVersionStatus.Retirada)
-                    .OrderBy(v => v.VersionNumber)
+                    .OrderBy(v => v.VersionMajor).ThenBy(v => v.VersionMinor)
                     .Select(v => new PanelVersionDto
                     {
-                        VersionNumber = v.VersionNumber,
+                        VersionMajor = v.VersionMajor,
+                        VersionMinor = v.VersionMinor,
+                        LegacyCode = v.LegacyCode,
                         Status = v.Status,
                         EffectiveFromUtc = v.EffectiveFromUtc,
                         QmsDocumentRef = v.QmsDocumentRef?.Code,
+                        MasterSheetCode = v.MasterSheetCode,
+                        MasterSheetRevision = v.MasterSheetRevision,
+                        ExternalSource = v.ExternalSource,
+                        ExternalName = v.ExternalName,
+                        ExternalVersion = v.ExternalVersion,
                         ChangeNotes = v.ChangeNotes,
+                        ChangeEvaluationRef = v.ChangeEvaluationRef,
+                        ApprovedByName = v.ApprovedByName,
+                        ApprovedAtUtc = v.ApprovedAtUtc,
                         Tubes = v.Tubes.OrderBy(t => t.TubeNumber).Select(t => new PanelTubeDto
                         {
                             TubeNumber = t.TubeNumber,
                             MarkerList = t.MarkerList,
                             Notes = t.Notes,
-                            IsOptional = t.IsOptional
+                            IsOptional = t.IsOptional,
+                            FormulaCode = t.FormulaCode,
+                            FormulaRevision = t.FormulaRevision
                         }).ToList()
                     }).ToList()
             }).ToList();
@@ -285,7 +345,6 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         {
             await db.ReportTemplates.LoadAsync();
             await db.Panels.Include(p => p.Versions).ThenInclude(v => v.Tubes).LoadAsync();
-            var conEstudios = (await db.SamplePanels.Select(sp => sp.PanelId).Distinct().ToListAsync()).ToHashSet();
 
             var items = Distinct(data, d => d.Code, "panel", report);
 
@@ -306,10 +365,16 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
                         Code = code, Name = Norm(d.Name), Description = d.Description,
                         DisplayOrder = d.DisplayOrder, IsActive = d.IsActive, DefaultReportTemplate = template
                     };
-                    foreach (var v in d.Versions.OrderBy(v => v.VersionNumber))
+                    // Un único borrador: el de la versión vigente en el origen, o la más alta.
+                    var elegida = d.Versions.FirstOrDefault(v => v.Status == PanelVersionStatus.Vigente)
+                                  ?? d.Versions.OrderByDescending(v => v.VersionMajor).ThenByDescending(v => v.VersionMinor).FirstOrDefault();
+                    if (elegida != null)
                     {
-                        panel.Versions.Add(NewVersion(v, v.VersionNumber, v.Status, v.ChangeNotes));
-                        diff.Note($"v{v.VersionNumber:D2} ({v.Status}), {v.Tubes.Count} tubo(s)");
+                        panel.Versions.Add(NewVersion(elegida, 1, elegida.VersionMajor, elegida.VersionMinor, PanelVersionStatus.Borrador, elegida.ChangeNotes, keepApproval: false));
+                        diff.Note($"{elegida.Label} ({elegida.Status} en origen) entra como BORRADOR, {elegida.Tubes.Count} tubo(s): " +
+                                  "un facultativo debe revisarlo y aprobarlo antes de poder usar el panel.");
+                        foreach (var otra in d.Versions.Where(v => v != elegida))
+                            diff.Note($"{otra.Label} ({otra.Status} en origen) no se importa: solo se trae una versión por panel.");
                     }
                     db.Panels.Add(panel);
                     report.Changes.Add(new ConfigChange { Kind = ConfigChangeKind.Nuevo, Item = label, Details = diff.Details });
@@ -325,8 +390,8 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
                         _ => panel.DefaultReportTemplate = template);
 
                 bool conflicto = false;
-                foreach (var v in d.Versions.OrderBy(v => v.VersionNumber))
-                    conflicto |= ApplyVersion(db, panel, v, diff, conEstudios.Contains(panel.Id));
+                foreach (var v in d.Versions.OrderBy(v => v.VersionMajor).ThenBy(v => v.VersionMinor))
+                    conflicto |= ApplyVersion(db, panel, v, diff);
 
                 diff.Report(report, label, conflicto ? ConfigChangeKind.Conflicto : ConfigChangeKind.Modificado);
             }
@@ -346,83 +411,90 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         }
 
         /// <summary>Devuelve true si la versión no se pudo aplicar tal cual (conflicto).</summary>
-        private static bool ApplyVersion(ApplicationDbContext db, Panel panel, PanelVersionDto v, ItemDiff diff, bool panelConEstudios)
+        private static bool ApplyVersion(ApplicationDbContext db, Panel panel, PanelVersionDto v, ItemDiff diff)
         {
-            var mismoContenido = panel.Versions.FirstOrDefault(x => SameContent(x, v));
-            var mismoNumero = panel.Versions.FirstOrDefault(x => x.VersionNumber == v.VersionNumber);
+            if (panel.Versions.Any(x => SameContent(x, v)))
+                return false; // ya existe con idéntica composición y referencias
 
-            if (mismoContenido != null)
-            {
-                // Ya existe con idéntica composición: nada que hacer (aunque tenga otro número
-                // o estado en este servidor).
-                return false;
-            }
-
+            var mismoNumero = panel.Versions.FirstOrDefault(x => x.VersionMajor == v.VersionMajor && x.VersionMinor == v.VersionMinor);
             if (v.Status == PanelVersionStatus.Borrador && mismoNumero?.Status == PanelVersionStatus.Borrador)
             {
-                // Un borrador sí se puede editar.
-                diff.Note($"Borrador v{v.VersionNumber:D2}: se actualiza su composición ({v.Tubes.Count} tubo(s)).");
+                diff.Note($"Borrador {v.Label}: se actualiza su composición ({v.Tubes.Count} tubo(s)).");
+                CopyFields(mismoNumero, v);
                 mismoNumero.ChangeNotes = v.ChangeNotes;
-                mismoNumero.QmsDocumentRef.Code = Norm(v.QmsDocumentRef).Length == 0 ? null : Norm(v.QmsDocumentRef);
                 db.PanelTubes.RemoveRange(mismoNumero.Tubes);
                 mismoNumero.Tubes.Clear();
                 foreach (var t in Tubes(v)) mismoNumero.Tubes.Add(t);
                 return false;
             }
 
-            var siguiente = (panel.Versions.Select(x => (int?)x.VersionNumber).Max() ?? 0) + 1;
-
-            if (v.Status == PanelVersionStatus.Vigente && !panelConEstudios)
+            // Número para la versión nueva: el del fichero si es posterior a todas las de
+            // aquí; si no, la siguiente menor (una versión no se reutiliza ni se intercala).
+            var top = panel.Versions.OrderByDescending(x => x.VersionMajor).ThenByDescending(x => x.VersionMinor).FirstOrDefault();
+            int major = v.VersionMajor, minor = v.VersionMinor;
+            if (top != null && PanelVersion.Compare(major, minor, top.VersionMajor, top.VersionMinor) <= 0)
             {
-                // Panel sin ningún estudio en este servidor (típico de una instalación recién
-                // hecha, cuya v1 es la de relleno que siembra MiniLIS): se publica la versión
-                // del fichero por el circuito normal -- versión nueva vigente y la anterior
-                // retirada --, sin tocar la publicada (M-4). Con estudios, se deja en borrador.
-                var ahora = DateTime.UtcNow;
-                var anterior = panel.Versions.FirstOrDefault(x => x.Status == PanelVersionStatus.Vigente);
-                if (anterior != null)
-                {
-                    anterior.Status = PanelVersionStatus.Retirada;
-                    anterior.EffectiveToUtc = ahora;
-                }
-                var publicada = NewVersion(v, siguiente, PanelVersionStatus.Vigente,
-                    Recortar($"Importada de configuración (v{v.VersionNumber:D2} vigente en origen)" +
-                             (string.IsNullOrWhiteSpace(v.ChangeNotes) ? "" : ": " + v.ChangeNotes)));
-                publicada.EffectiveFromUtc = ahora;
-                panel.Versions.Add(publicada);
-                diff.Note($"Se publica la versión del fichero como v{siguiente:D2}" +
-                          (anterior != null ? $"; la v{anterior.VersionNumber:D2} de este servidor queda retirada" : "") +
-                          ". El panel no tiene estudios en este servidor.");
-                return false;
+                major = top.VersionMajor;
+                minor = top.VersionMinor + 1;
+            }
+            var numero = $"v{major}.{minor}" + (major != v.VersionMajor || minor != v.VersionMinor ? $" (en origen {v.Label}, ya ocupado aquí)" : "");
+            var ordinal = (panel.Versions.Select(x => (int?)x.Ordinal).Max() ?? 0) + 1;
+
+            if (panel.Versions.Any(x => x.Status is PanelVersionStatus.Borrador or PanelVersionStatus.EnRevision))
+            {
+                diff.Note($"La versión {v.Label} del fichero no se añade: ya hay una versión de este panel en preparación aquí. " +
+                          "Termínela o descártela y vuelva a importar.");
+                return true;
             }
 
-            var notas = $"Importada de configuración (v{v.VersionNumber:D2} {v.Status} en origen)" +
+            var notas = $"Importada de configuración ({v.Label} {v.Status} en origen)" +
                         (string.IsNullOrWhiteSpace(v.ChangeNotes) ? "" : ": " + v.ChangeNotes);
-            panel.Versions.Add(NewVersion(v, siguiente, PanelVersionStatus.Borrador, Recortar(notas)));
+            panel.Versions.Add(NewVersion(v, ordinal, major, minor, PanelVersionStatus.Borrador, Recortar(notas), keepApproval: false));
 
             if (v.Status == PanelVersionStatus.Vigente)
             {
-                diff.Note($"La versión vigente del fichero (v{v.VersionNumber:D2}) difiere de la de este servidor, que ya tiene estudios. " +
-                          $"Las versiones publicadas no se modifican (M-4): se crea como borrador v{siguiente:D2}. " +
-                          "Revíselo y publíquelo desde Paneles.");
+                diff.Note($"La versión vigente del fichero ({v.Label}) difiere de la de este servidor. " +
+                          $"Entra como borrador {numero}: un facultativo debe revisarlo y aprobarlo desde Versiones de paneles.");
                 return true;
             }
-            diff.Note($"Borrador v{v.VersionNumber:D2} del fichero: se crea como borrador v{siguiente:D2}.");
+            diff.Note($"Versión {v.Label} del fichero ({v.Status}): se crea como borrador {numero}.");
             return false;
         }
 
         private static string Recortar(string s) => s.Length > 500 ? s[..500] : s;
+        private static string? NullIfEmpty(string? s) => Norm(s).Length == 0 ? null : Norm(s);
 
-        private static PanelVersion NewVersion(PanelVersionDto v, int number, PanelVersionStatus status, string? notes)
+        private static void CopyFields(PanelVersion x, PanelVersionDto v)
+        {
+            x.QmsDocumentRef ??= new QmsReference();
+            x.QmsDocumentRef.Code = NullIfEmpty(v.QmsDocumentRef);
+            x.MasterSheetCode = NullIfEmpty(v.MasterSheetCode);
+            x.MasterSheetRevision = NullIfEmpty(v.MasterSheetRevision);
+            x.ExternalSource = NullIfEmpty(v.ExternalSource);
+            x.ExternalName = NullIfEmpty(v.ExternalName);
+            x.ExternalVersion = NullIfEmpty(v.ExternalVersion);
+            x.ChangeEvaluationRef = NullIfEmpty(v.ChangeEvaluationRef);
+        }
+
+        private static PanelVersion NewVersion(PanelVersionDto v, int ordinal, int major, int minor, PanelVersionStatus status, string? notes, bool keepApproval)
         {
             var version = new PanelVersion
             {
-                VersionNumber = number,
+                Ordinal = ordinal,
+                VersionMajor = major,
+                VersionMinor = minor,
+                LegacyCode = major == v.VersionMajor && minor == v.VersionMinor ? v.LegacyCode : null,
                 Status = status,
                 EffectiveFromUtc = status == PanelVersionStatus.Vigente ? (v.EffectiveFromUtc ?? DateTime.UtcNow) : null,
-                ChangeNotes = notes,
-                QmsDocumentRef = new QmsReference { Code = Norm(v.QmsDocumentRef).Length == 0 ? null : Norm(v.QmsDocumentRef) }
+                ChangeNotes = notes
             };
+            CopyFields(version, v);
+            if (keepApproval)
+            {
+                // Aprobación registrada en el origen (el mismo laboratorio, otra instalación).
+                version.ApprovedByName = v.ApprovedByName;
+                version.ApprovedAtUtc = v.ApprovedAtUtc;
+            }
             foreach (var t in Tubes(v)) version.Tubes.Add(t);
             return version;
         }
@@ -431,14 +503,19 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         {
             int n = 1;
             foreach (var t in v.Tubes.OrderBy(t => t.TubeNumber))
-                yield return new PanelTube { TubeNumber = n++, MarkerList = Norm(t.MarkerList), Notes = t.Notes, IsOptional = t.IsOptional };
+                yield return new PanelTube
+                {
+                    TubeNumber = n++, MarkerList = Norm(t.MarkerList), Notes = t.Notes, IsOptional = t.IsOptional,
+                    FormulaCode = NullIfEmpty(t.FormulaCode), FormulaRevision = NullIfEmpty(t.FormulaRevision)
+                };
         }
 
         private static bool SameContent(PanelVersion x, PanelVersionDto v)
         {
             if (Norm(x.QmsDocumentRef?.Code) != Norm(v.QmsDocumentRef)) return false;
-            var a = x.Tubes.OrderBy(t => t.TubeNumber).Select(t => (Norm(t.MarkerList), Norm(t.Notes), t.IsOptional));
-            var b = v.Tubes.OrderBy(t => t.TubeNumber).Select(t => (Norm(t.MarkerList), Norm(t.Notes), t.IsOptional));
+            if (Norm(x.MasterSheetRevision) != Norm(v.MasterSheetRevision)) return false;
+            var a = x.Tubes.OrderBy(t => t.TubeNumber).Select(t => (Norm(t.MarkerList), Norm(t.Notes), t.IsOptional, Norm(t.FormulaCode), Norm(t.FormulaRevision)));
+            var b = v.Tubes.OrderBy(t => t.TubeNumber).Select(t => (Norm(t.MarkerList), Norm(t.Notes), t.IsOptional, Norm(t.FormulaCode), Norm(t.FormulaRevision)));
             return a.SequenceEqual(b);
         }
 
@@ -461,18 +538,26 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
                 throw new InvalidOperationException($"El panel {code} trae más de una versión vigente.");
             if (d.Versions.Any(v => v.Status == PanelVersionStatus.Retirada))
                 throw new InvalidOperationException($"El panel {code} trae versiones retiradas: no son configuración importable.");
-            if (d.Versions.GroupBy(v => v.VersionNumber).Any(g => g.Count() > 1))
+            if (d.Versions.GroupBy(v => (v.VersionMajor, v.VersionMinor)).Any(g => g.Count() > 1))
                 throw new InvalidOperationException($"El panel {code} repite número de versión.");
             foreach (var v in d.Versions)
             {
+                if (v.VersionMajor < 1 || v.VersionMinor < 0)
+                    throw new InvalidOperationException($"Panel {code}: versión no válida ({v.Label}).");
                 if (v.Status == PanelVersionStatus.Vigente && v.Tubes.Count == 0)
-                    throw new InvalidOperationException($"La versión vigente v{v.VersionNumber} del panel {code} no tiene tubos.");
+                    throw new InvalidOperationException($"La versión vigente {v.Label} del panel {code} no tiene tubos.");
+                CheckLength(v.MasterSheetCode, 50, "el código de la ficha maestra", code);
+                CheckLength(v.MasterSheetRevision, 20, "la revisión de la ficha maestra", code);
+                CheckLength(v.ChangeNotes, 500, "la descripción del cambio", code);
+                CheckLength(v.ChangeEvaluationRef, 100, "la evaluación del cambio", code);
                 foreach (var t in v.Tubes)
                 {
                     if (Norm(t.MarkerList).Length == 0)
-                        throw new InvalidOperationException($"Panel {code} v{v.VersionNumber}: un tubo no tiene marcadores.");
+                        throw new InvalidOperationException($"Panel {code} {v.Label}: un tubo no tiene marcadores.");
                     CheckLength(t.MarkerList, 300, "la lista de marcadores de un tubo", code);
                     CheckLength(t.Notes, 200, "las notas de un tubo", code);
+                    CheckLength(t.FormulaCode, 50, "la fórmula de un tubo", code);
+                    CheckLength(t.FormulaRevision, 20, "la revisión de la fórmula de un tubo", code);
                 }
             }
         }

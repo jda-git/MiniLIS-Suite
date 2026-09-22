@@ -100,17 +100,17 @@ namespace MiniLIS.Tests
 
             { HttpMethod.Get, "/api/downloads/indicadores/pdf", null, Expect.RedirectToLogin },
             { HttpMethod.Get, "/api/downloads/indicadores/pdf", "Técnico", Expect.Forbidden },
-            { HttpMethod.Get, "/api/downloads/indicadores/pdf", "Facultativo", Expect.Forbidden },
+            { HttpMethod.Get, "/api/downloads/indicadores/pdf", "Facultativo", Expect.Allowed },
             { HttpMethod.Get, "/api/downloads/indicadores/pdf", "Administrador", Expect.Allowed },
 
             { HttpMethod.Get, "/api/downloads/evidencias/zip", null, Expect.RedirectToLogin },
             { HttpMethod.Get, "/api/downloads/evidencias/zip", "Técnico", Expect.Forbidden },
-            { HttpMethod.Get, "/api/downloads/evidencias/zip", "Facultativo", Expect.Forbidden },
+            { HttpMethod.Get, "/api/downloads/evidencias/zip", "Facultativo", Expect.Allowed },
             { HttpMethod.Get, "/api/downloads/evidencias/zip", "Administrador", Expect.Allowed },
 
             { HttpMethod.Get, "/api/downloads/contingencia/pendientes/pdf", null, Expect.RedirectToLogin },
             { HttpMethod.Get, "/api/downloads/contingencia/pendientes/pdf", "Técnico", Expect.Forbidden },
-            { HttpMethod.Get, "/api/downloads/contingencia/pendientes/pdf", "Facultativo", Expect.Forbidden },
+            { HttpMethod.Get, "/api/downloads/contingencia/pendientes/pdf", "Facultativo", Expect.Allowed },
             { HttpMethod.Get, "/api/downloads/contingencia/pendientes/pdf", "Administrador", Expect.Allowed },
         };
 

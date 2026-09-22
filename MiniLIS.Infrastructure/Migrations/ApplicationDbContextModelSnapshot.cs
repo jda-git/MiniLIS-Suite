@@ -15,7 +15,7 @@ namespace MiniLIS.Infrastructure.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.19");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.20");
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
@@ -449,6 +449,14 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<int>("CreatedBy")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("FormulaCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FormulaRevision")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("INTEGER");
 
@@ -490,9 +498,26 @@ namespace MiniLIS.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("ApprovedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApprovedByName")
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ApprovedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ChangeEvaluationRef")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ChangeNotes")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("CompositionVerified")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
@@ -506,13 +531,54 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<DateTime?>("EffectiveToUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ExternalName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalSource")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalVersion")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("LegacyCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MasterSheetCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MasterSheetRevision")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("VersionNumber");
 
                     b.Property<int>("PanelId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("RetiredByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RetirementReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SubmittedByUserId")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
@@ -521,15 +587,61 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<int?>("UpdatedBy")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("VersionNumber")
+                    b.Property<int>("VersionMajor")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("VersionMinor")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PanelId", "VersionNumber")
+                    b.HasIndex("PanelId", "Ordinal")
+                        .IsUnique();
+
+                    b.HasIndex("PanelId", "VersionMajor", "VersionMinor")
                         .IsUnique();
 
                     b.ToTable("PanelVersions");
+                });
+
+            modelBuilder.Entity("MiniLIS.Domain.Entities.PanelVersionClarification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AuthorName")
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PanelVersionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PanelVersionId");
+
+                    b.ToTable("PanelVersionClarifications");
                 });
 
             modelBuilder.Entity("MiniLIS.Domain.Entities.Patient", b =>
@@ -1089,6 +1201,9 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<bool>("IsRequested")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsVoided")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("PanelId")
                         .HasColumnType("INTEGER");
 
@@ -1102,6 +1217,20 @@ namespace MiniLIS.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("UpdatedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VoidNonConformityRef")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("VoidedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VoidedByUserId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
@@ -1240,6 +1369,10 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<int?>("PanelId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("PanelVersionsText")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PanelsUsedText")
                         .HasColumnType("TEXT");
 
@@ -1267,6 +1400,9 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<string>("SelectedSignatures")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("ShowPreviousAdditionalText")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("ShowPreviousConclusions")
                         .HasColumnType("INTEGER");
@@ -1349,10 +1485,26 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<bool>("IsRead")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsVoided")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("MarkerList")
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NotPerformedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("NotPerformedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("NotPerformedReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PanelTubeId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("ReadAtUtc")
                         .HasColumnType("TEXT");
@@ -1388,7 +1540,23 @@ namespace MiniLIS.Infrastructure.Migrations
                     b.Property<int?>("UpdatedBy")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("VoidNonConformityRef")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("VoidedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VoidedByUserId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("PanelTubeId");
 
                     b.HasIndex("ReadByUserId");
 
@@ -2052,6 +2220,17 @@ namespace MiniLIS.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MiniLIS.Domain.Entities.PanelVersionClarification", b =>
+                {
+                    b.HasOne("MiniLIS.Domain.Entities.PanelVersion", "PanelVersion")
+                        .WithMany("Clarifications")
+                        .HasForeignKey("PanelVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PanelVersion");
+                });
+
             modelBuilder.Entity("MiniLIS.Domain.Entities.ReportMarkerValue", b =>
                 {
                     b.HasOne("MiniLIS.Domain.Entities.Marker", "Marker")
@@ -2204,6 +2383,11 @@ namespace MiniLIS.Infrastructure.Migrations
 
             modelBuilder.Entity("MiniLIS.Domain.Entities.SampleTube", b =>
                 {
+                    b.HasOne("MiniLIS.Domain.Entities.PanelTube", "PanelTube")
+                        .WithMany()
+                        .HasForeignKey("PanelTubeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("MiniLIS.Domain.Identity.ApplicationUser", "ReadByUser")
                         .WithMany()
                         .HasForeignKey("ReadByUserId");
@@ -2222,6 +2406,8 @@ namespace MiniLIS.Infrastructure.Migrations
                         .HasForeignKey("SamplePanelId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("PanelTube");
 
                     b.Navigation("ReadByUser");
 
@@ -2312,6 +2498,8 @@ namespace MiniLIS.Infrastructure.Migrations
 
             modelBuilder.Entity("MiniLIS.Domain.Entities.PanelVersion", b =>
                 {
+                    b.Navigation("Clarifications");
+
                     b.Navigation("Tubes");
                 });
 

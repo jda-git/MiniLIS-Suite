@@ -3,7 +3,7 @@
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Components.Authorization
-@attribute [Authorize]
+@attribute [Authorize(Policy = Permissions.Policies.MuestrasVer)]
 @implements IDisposable
 @inject IWorklistService WorklistService
 @inject NavigationManager Nav
@@ -69,6 +69,8 @@
     // todavía no está disponible en un inicializador de campo) -- nunca se ve en pantalla sin
     // pasar antes por ahí.
     private DateTime lastUpdated;
+    private bool puedeInformar;
+    [Inject] private IPermissionService Permisos { get; set; } = default!;
     private string perfil = "Todos";
     private System.Threading.Timer? timer;
 
@@ -76,6 +78,7 @@
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
+        puedeInformar = await Permisos.HasAsync(Permissions.InformesAbrir);
         if (user.IsInRole("Técnico") && !user.IsInRole("Administrador") && !user.IsInRole("Facultativo"))
         {
             perfil = "Tecnico";
@@ -113,7 +116,8 @@
 
     private void GoTo(WorklistItem item)
     {
-        Nav.NavigateTo(item.NavigateToReport ? $"/informes/editar/{item.SampleId}" : $"/muestras/editar/{item.SampleId}");
+        // Quien no puede abrir informes va a la ficha de la muestra.
+        Nav.NavigateTo(item.NavigateToReport && puedeInformar ? $"/informes/editar/{item.SampleId}" : $"/muestras/editar/{item.SampleId}");
     }
 
     private string SemaphoreClass(string semaphore) => semaphore switch

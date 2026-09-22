@@ -4,7 +4,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.ComponentModel.DataAnnotations
 @using MiniLIS.Web.Components.Shared
-@attribute [Authorize]
+@attribute [Authorize(Policy = Permissions.Policies.MuestrasEditar)]
 @inject IPatientService PatientService
 @inject ISampleService SampleService
 @inject IMasterDataService MasterService

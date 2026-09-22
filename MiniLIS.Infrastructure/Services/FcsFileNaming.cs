@@ -11,12 +11,20 @@ namespace MiniLIS.Infrastructure.Services
     /// </summary>
     public static class FcsFileNaming
     {
+        /// <summary>Formato anterior a v4, con la versión como entero ("-v02").</summary>
         public static string GenerateFileName(string sampleNumber, string sampleTypeCode, int tubeNumber, string panelCode, int panelVersion)
+            => GenerateFileName(sampleNumber, sampleTypeCode, tubeNumber, panelCode, $"v{panelVersion:D2}");
+
+        /// <summary>Con el componente de versión de PanelVersion.FileToken: "v02" en versiones
+        /// migradas (mismo nombre que antes) y "v1-0" en las nuevas. El componente ya es seguro
+        /// (letras, dígitos y guion) y no se pasa por Sanitize, que lo pondría en mayúsculas y
+        /// cambiaría el nombre de los ficheros ya adquiridos.</summary>
+        public static string GenerateFileName(string sampleNumber, string sampleTypeCode, int tubeNumber, string panelCode, string versionToken)
         {
             var number = Sanitize(sampleNumber);
             var type = Sanitize(sampleTypeCode);
             var panel = Sanitize(panelCode);
-            return $"{number}_{type}_T{tubeNumber:D2}_{panel}-v{panelVersion:D2}.fcs";
+            return $"{number}_{type}_T{tubeNumber:D2}_{panel}-{versionToken}.fcs";
         }
 
         /// <summary>Mayúsculas, sin tildes/ñ/espacios, solo A-Z0-9-_. Devuelve además si el

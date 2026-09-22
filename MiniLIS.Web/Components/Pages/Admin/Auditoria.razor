@@ -2,7 +2,7 @@
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "Administrador")]
+@attribute [Authorize(Policy = Permissions.Policies.AuditoriaVer)]
 @inject ISampleService SampleService
 @inject IAuditQueryService AuditQueryService
 @inject ILocalTimeService LocalTimeService

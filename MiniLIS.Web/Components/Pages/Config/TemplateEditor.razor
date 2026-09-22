@@ -4,7 +4,7 @@
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "Administrador")]
+@attribute [Authorize(Policy = Permissions.Policies.ConfiguracionVer)]
 @inject IMasterDataService MasterService
 @inject NavigationManager Nav
 

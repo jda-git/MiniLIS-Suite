@@ -34,5 +34,36 @@ namespace MiniLIS.Application.Interfaces
 
         /// <summary>Anula una incidencia registrada por error, sin tocar el estado de lectura del tubo.</summary>
         Task ClearTubeReadIncidentAsync(int sampleTubeId);
+
+        // --- v4: justificación de tubos no realizados y anulaciones ---
+
+        /// <summary>Justifica un tubo del panel que no se ha leído. Sin justificación, los
+        /// tubos no leídos impiden validar el informe.</summary>
+        Task JustifyTubeNotPerformedAsync(int sampleTubeId, string reason, int? userId);
+        Task ClearTubeNotPerformedAsync(int sampleTubeId);
+
+        /// <summary>Desmarca un tubo leído (solo facultativo, con motivo; queda en la auditoría
+        /// con quién y cuándo lo había leído).</summary>
+        Task UnmarkTubeReadAsync(int sampleTubeId, string reason, int? userId);
+
+        /// <summary>Anula un tubo leído por error (solo facultativos). La lectura se conserva
+        /// con su motivo de anulación; el tubo sale del informe.</summary>
+        Task VoidSampleTubeAsync(int sampleTubeId, string reason, string? nonConformityRef, int? userId);
+
+        /// <summary>Anula un panel con tubos leídos registrado por error (solo facultativos).</summary>
+        Task VoidSamplePanelAsync(int samplePanelId, string reason, string? nonConformityRef, int? userId);
+
+        /// <summary>Tubos de paneles del catálogo que ni se han leído, ni se han justificado,
+        /// ni están anulados: bloquean la validación del informe.</summary>
+        Task<List<PendingTube>> GetTubesPendingJustificationAsync(int sampleId);
+    }
+
+    public class PendingTube
+    {
+        public int SampleTubeId { get; init; }
+        public string PanelName { get; init; } = string.Empty;
+        public int TubeNumber { get; init; }
+        public string MarkerList { get; init; } = string.Empty;
+        public bool IsOptional { get; init; }
     }
 }

@@ -3,7 +3,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using MiniLIS.Application.Interfaces
 @using MiniLIS.Domain.Entities
-@attribute [Authorize(Roles = "Administrador,Facultativo")]
+@attribute [Authorize(Policy = Permissions.Policies.BuscadorVer)]
 @inject IReportSearchService SearchService
 @inject IJSRuntime JS
 

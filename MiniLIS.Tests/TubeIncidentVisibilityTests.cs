@@ -35,7 +35,7 @@ namespace MiniLIS.Tests
             ctx.Panels.Add(panel);
             await ctx.SaveChangesAsync();
 
-            var version = new PanelVersion { PanelId = panel.Id, VersionNumber = 2, Status = PanelVersionStatus.Vigente };
+            var version = new PanelVersion { PanelId = panel.Id, Ordinal = 2, VersionMajor = 2, Status = PanelVersionStatus.Vigente };
             ctx.PanelVersions.Add(version);
             await ctx.SaveChangesAsync();
 
