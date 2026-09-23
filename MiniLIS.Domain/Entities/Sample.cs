@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Collections.Generic;
 using System.Linq;
 using MiniLIS.Domain.Common;
@@ -87,6 +88,25 @@ namespace MiniLIS.Domain.Entities
         /// <summary>Texto que se traslada al informe cuando hay salvedad. Propuesto a partir de los motivos elegidos, editable.</summary>
         [MaxLength(500)]
         public string? ReceptionCaveatForReport { get; set; }
+
+        /// <summary>Los motivos de rechazo o salvedad elegidos, tal y como se llaman en el
+        /// catálogo. Es el dato autoritativo: ReceptionCaveatForReport se propone a partir de
+        /// ellos pero es editable y puede quedar vacío, sobre todo en filas antiguas. Exige
+        /// tener cargados ReceptionIssues y su RejectionReason.</summary>
+        [NotMapped]
+        public List<string> ReceptionIssueDescriptions => ReceptionIssues
+            .Where(i => i.RejectionReason != null)
+            .OrderBy(i => i.RejectionReason!.DisplayOrder)
+            .ThenBy(i => i.RejectionReason!.Description)
+            .Select(i => string.IsNullOrWhiteSpace(i.Notes)
+                ? i.RejectionReason!.Description
+                : $"{i.RejectionReason!.Description}: {i.Notes!.Trim()}")
+            .ToList();
+
+        /// <summary>Encabezado del informe de una muestra rechazada en recepción. Vive aquí, y
+        /// no repartido entre el editor y el generador del documento, porque es la frase que
+        /// sube a la historia clínica: una sola redacción.</summary>
+        public const string RejectionReportHeading = "Muestra rechazada preanalíticamente.";
 
         public bool RequesterNotified { get; set; }
         public DateTime? RequesterNotifiedAtUtc { get; set; }

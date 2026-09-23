@@ -150,6 +150,10 @@
                                 <span class="wl-type">@item.SampleType.ToCode()</span>
                             </div>
                             <div class="wl-card-panels">@(item.Panels.Any() ? string.Join(", ", item.Panels) : "—")</div>
+                            @if (!string.IsNullOrEmpty(item.Note))
+                            {
+                                <div class="wl-card-note">@item.Note</div>
+                            }
                             <div class="wl-card-bottom">
                                 <span class="wl-age">@item.AgeHours.ToString("0.#") h</span>
                                 <span class="wl-dot"></span>
@@ -191,6 +195,7 @@
 
     .wl-card-top { display: flex; justify-content: space-between; font-weight: 700; color: #0f172a; }
     .wl-type { font-size: 10px; background: #e0f2fe; color: #0369a1; border-radius: 3px; padding: 1px 5px; }
+    .wl-card-note { font-size: 10.5px; font-weight: 600; color: #b91c1c; margin-top: 2px; }
     .wl-card-panels { color: #64748b; font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wl-card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
     .wl-age { color: #475569; font-weight: 600; font-size: 11px; }

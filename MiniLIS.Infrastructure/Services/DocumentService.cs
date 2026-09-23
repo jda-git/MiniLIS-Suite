@@ -34,6 +34,20 @@ namespace MiniLIS.Infrastructure.Services
             QuestPDF.Settings.License = LicenseType.Community;
         }
 
+        /// <summary>Los motivos del rechazo o la salvedad, una línea por motivo. Se prefiere
+        /// el texto de ReceptionCaveatForReport, que es el que el laboratorio redactó para el
+        /// informe; si está vacío (filas antiguas, o se borró) se cae a los motivos marcados,
+        /// que siempre están. Antes, con el texto vacío, el apartado salía sin la causa.</summary>
+        private static List<string> ReceptionIssueLines(Sample? sample)
+        {
+            if (sample == null) return new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(sample.ReceptionCaveatForReport))
+                return SplitLines(sample.ReceptionCaveatForReport!).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+
+            return sample.ReceptionIssueDescriptions;
+        }
+
         /// <summary>Parte un texto guardado en líneas. Los campos del informe son áreas
         /// multilínea, así que llegan con los saltos que ponga cada navegador.</summary>
         private static List<string> SplitLines(string text)
@@ -141,6 +155,10 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Panel)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
+                // Los motivos de rechazo/salvedad elegidos: son el dato autoritativo del
+                // apartado de rechazo, por encima del texto libre que se propuso a partir
+                // de ellos y que pudo quedarse vacío.
+                .Include(r => r.Sample).ThenInclude(s => s.ReceptionIssues).ThenInclude(i => i.RejectionReason)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
@@ -368,10 +386,10 @@ namespace MiniLIS.Infrastructure.Services
                         if (fullReport.Sample?.ReceptionStatus == ReceptionStatus.Rechazada)
                         {
                             col.Item().PaddingBottom(5).Text("MUESTRA RECHAZADA PREANALÍTICAMENTE").FontSize(11).FontColor(titleColor);
-                            if (!string.IsNullOrWhiteSpace(fullReport.Sample.ReceptionCaveatForReport))
-                            {
-                                col.Item().PaddingBottom(5).Text(fullReport.Sample.ReceptionCaveatForReport!).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
-                            }
+                            var motivosRechazo = ReceptionIssueLines(fullReport.Sample);
+                            foreach (var motivo in motivosRechazo)
+                                col.Item().Text(motivo).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                            if (motivosRechazo.Any()) col.Item().PaddingBottom(5);
                             if (fullReport.Sample.RequesterNotified)
                             {
                                 col.Item().PaddingBottom(15).Text(t =>
@@ -591,6 +609,7 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(r => r.Sample).ThenInclude(s => s.Panels).ThenInclude(sp => sp.Panel)
                 .Include(r => r.MarkerValues).ThenInclude(mv => mv.Marker)
                 .Include(r => r.Signatories).ThenInclude(rs => rs.User)
+                .Include(r => r.Sample).ThenInclude(s => s.ReceptionIssues).ThenInclude(i => i.RejectionReason)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
@@ -848,10 +867,8 @@ namespace MiniLIS.Infrastructure.Services
             if (s?.ReceptionStatus == ReceptionStatus.Rechazada)
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">MUESTRA RECHAZADA PREANALÍTICAMENTE</text:p>");
-                if (!string.IsNullOrWhiteSpace(s.ReceptionCaveatForReport))
-                {
-                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(s.ReceptionCaveatForReport!)}</text:p>");
-                }
+                foreach (var motivo in ReceptionIssueLines(s))
+                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(motivo)}</text:p>");
                 if (s.RequesterNotified)
                 {
                     var notif = "Peticionario notificado." + (!string.IsNullOrWhiteSpace(s.NotificationNotes) ? " " + s.NotificationNotes : "");

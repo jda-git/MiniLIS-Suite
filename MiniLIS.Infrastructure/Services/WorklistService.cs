@@ -47,7 +47,14 @@ namespace MiniLIS.Infrastructure.Services
             {
                 if (s.ReceptionStatus == ReceptionStatus.Rechazada)
                 {
-                    board.Rechazadas.Add(BuildItem(s, nowUtc, objetivoTat, navigateToReport: false));
+                    // Una muestra rechazada también se informa: el peticionario necesita el
+                    // motivo en su historia. Sale del tablero igual que cualquier otra, cuando
+                    // su informe está validado y descargado (filtro de arriba). Sin esto se
+                    // quedaba aquí para siempre, porque nunca llegaba a tener informe.
+                    var nota = s.Report == null
+                        ? "Sin informe de rechazo"
+                        : s.Report.IsFinalized ? "Pendiente de enviar" : "Informe en redacción";
+                    board.Rechazadas.Add(BuildItem(s, nowUtc, objetivoTat, navigateToReport: true, note: nota));
                     continue;
                 }
 
@@ -96,7 +103,7 @@ namespace MiniLIS.Infrastructure.Services
             return board;
         }
 
-        private static WorklistItem BuildItem(Sample s, DateTime nowUtc, decimal? objetivoTatHoras, bool navigateToReport)
+        private static WorklistItem BuildItem(Sample s, DateTime nowUtc, decimal? objetivoTatHoras, bool navigateToReport, string? note = null)
         {
             // Horas naturales sobre ReceivedAtUtc (M-5); ReceptionDate como último recurso para
             // filas antiguas que no tengan la marca nueva.
@@ -123,7 +130,8 @@ namespace MiniLIS.Infrastructure.Services
                 Panels = panels,
                 AgeHours = ageHours,
                 Semaphore = semaphore,
-                NavigateToReport = navigateToReport
+                NavigateToReport = navigateToReport,
+                Note = note
             };
         }
     }

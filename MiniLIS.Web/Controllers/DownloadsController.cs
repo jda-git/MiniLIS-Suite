@@ -183,7 +183,11 @@ namespace MiniLIS.Web.Controllers
             // respuesta en vez del editor. Se redirige de vuelta con un código de error que la
             // página traduce a un aviso legible (mismo patrón que Login.razor).
             if (report.IsFinalized) return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=ya-validado");
-            if (string.IsNullOrWhiteSpace(report.Conclusions))
+            // La conclusión es obligatoria salvo en una muestra rechazada en recepción: ahí el
+            // motivo del rechazo ya es todo el contenido del informe, y su apartado propio lo
+            // recoge. Se propone hecha al crear el informe, pero borrarla no debe bloquearlo.
+            if (string.IsNullOrWhiteSpace(report.Conclusions) &&
+                report.Sample?.ReceptionStatus != ReceptionStatus.Rechazada)
                 return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-conclusion");
             if (string.IsNullOrWhiteSpace(report.SelectedSignatures))
                 return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=sin-firma");
@@ -191,7 +195,12 @@ namespace MiniLIS.Web.Controllers
             // v4: cada tubo de los paneles solicitados debe estar leído, justificado como no
             // realizado o anulado. Un tubo sin leer y sin explicación deja el estudio sin
             // constancia de si se hizo o no.
-            if ((await _sampleService.GetTubesPendingJustificationAsync(report.SampleId)).Any())
+            //
+            // Salvo que la muestra se rechazara en recepción: ahí no se analizó nada, y ese es
+            // justamente el contenido del informe. Exigir una justificación tubo a tubo dejaría
+            // el informe de rechazo sin poder emitirse, y la muestra atascada como pendiente.
+            if (report.Sample?.ReceptionStatus != ReceptionStatus.Rechazada &&
+                (await _sampleService.GetTubesPendingJustificationAsync(report.SampleId)).Any())
                 return LocalRedirect($"/informes/editar/{report.SampleId}?validarError=tubos-pendientes");
 
             // v4: el texto de versiones de panel se congela al validar (ver

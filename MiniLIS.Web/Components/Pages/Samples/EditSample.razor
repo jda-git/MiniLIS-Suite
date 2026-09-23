@@ -702,6 +702,18 @@
             originalSample.RequesterNotified = receptionStatus == ReceptionStatus.Rechazada && model.RequesterNotified;
             originalSample.NotificationNotes = receptionStatus == ReceptionStatus.Rechazada ? model.NotificationNotes : null;
 
+            // El estado del flujo sigue al de recepción: marcar el rechazo aquí y dejar la
+            // muestra como "Recibida" hacía que la ficha y la bandeja se contradijeran. Solo se
+            // toca cuando cambia el rechazo, para no pisar un avance real del trabajo.
+            if (receptionStatus == ReceptionStatus.Rechazada)
+            {
+                originalSample.Status = SampleStatus.Rechazada;
+            }
+            else if (originalSample.Status == SampleStatus.Rechazada)
+            {
+                originalSample.Status = SampleStatus.Recibida;
+            }
+
             var existingIssueByReason = originalSample.ReceptionIssues.ToDictionary(i => i.RejectionReasonId);
             var toRemoveIssues = originalSample.ReceptionIssues.Where(i => !selectedReasonIds.Contains(i.RejectionReasonId)).ToList();
             foreach (var issue in toRemoveIssues)

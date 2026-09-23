@@ -51,7 +51,14 @@ namespace MiniLIS.Infrastructure.Services
                     ReportDate = DateTime.UtcNow,
                     MarkersSummary = "",
                     ReportBody = "",
-                    Conclusions = ""
+                    // Una muestra rechazada en recepción no se analiza, pero sí se informa: el
+                    // peticionario necesita en la historia clínica el porqué. Basta con la
+                    // conclusión: el motivo concreto ya lo imprime su propio apartado, y
+                    // repetirlo también en el cuerpo dejaba el aviso tres veces en la misma
+                    // página.
+                    Conclusions = sample?.ReceptionStatus == ReceptionStatus.Rechazada
+                        ? Sample.RejectionReportHeading
+                        : ""
                 };
                 _db.SampleReports.Add(report);
                 await _db.SaveChangesAsync();
@@ -73,9 +80,12 @@ namespace MiniLIS.Infrastructure.Services
 
             _db.SampleReports.Update(report);
 
-            // Actualizar estado de muestra si está en Recibida o Procesando
+            // Actualizar estado de muestra si está en Recibida o Procesando. Una muestra
+            // rechazada en recepción se queda como Rechazada aunque se le redacte el informe
+            // del rechazo: el informe documenta el rechazo, no un análisis.
             var sample = await _db.Samples.FindAsync(report.SampleId);
-            if (sample != null && (sample.Status == SampleStatus.Recibida || sample.Status == SampleStatus.EnProceso))
+            if (sample != null && sample.ReceptionStatus != ReceptionStatus.Rechazada &&
+                (sample.Status == SampleStatus.Recibida || sample.Status == SampleStatus.EnProceso))
             {
                 sample.Status = SampleStatus.ReportadaParcial;
             }

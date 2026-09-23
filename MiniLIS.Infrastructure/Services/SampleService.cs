@@ -90,7 +90,12 @@ namespace MiniLIS.Infrastructure.Services
                         RegisteredAtUtc = registeredAtUtc,
                         ClinicalRequestId = request.Id,
                         ClinicalRequest = request,
-                        Status = SampleStatus.Recibida,
+                        // Rechazada en recepción: el estado del flujo lo refleja desde el alta,
+                        // para que la ficha, la bandeja y la auditoría digan lo mismo que la
+                        // pestaña de recepción.
+                        Status = reception.Status == ReceptionStatus.Rechazada
+                            ? SampleStatus.Rechazada
+                            : SampleStatus.Recibida,
                         Diagnosis = sampleDiagnosis,
                         SampleType = sampleType,
                         SampleTypeOther = sampleTypeOther,

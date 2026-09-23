@@ -30,6 +30,60 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.3.0
+
+Versión **MENOR**: no cambia ningún informe ya emitido. Añade el informe de las muestras
+rechazadas en recepción y corrige que esas muestras se quedaran atascadas en el tablero.
+
+### Informe de muestra rechazada preanalíticamente
+
+Una muestra rechazada en recepción no se analiza, pero sí se informa: el peticionario
+necesita el motivo en su historia clínica, no solo en el LIS.
+
+Al abrir el editor de informes de una muestra rechazada, la **conclusión viene propuesta**
+con «Muestra rechazada preanalíticamente.», editable. El motivo concreto no se repite en el
+cuerpo del informe: lo imprime su propio apartado, y ponerlo en los dos sitios dejaba el
+mismo aviso tres veces en la misma página. El informe queda así:
+
+```
+MUESTRA RECHAZADA PREANALÍTICAMENTE
+Muestra coagulada
+Peticionario notificado. Díaz 19.30
+
+CONCLUSIÓN
+Muestra rechazada preanalíticamente.
+```
+
+En estas muestras la conclusión **deja de ser obligatoria** para validar: borrarla no puede
+impedir emitir el informe.
+
+**Se puede validar.** Antes no: la comprobación de que todos los tubos estén leídos o
+justificados bloqueaba la validación, y en una muestra rechazada los tubos no se van a leer
+nunca. Esa comprobación se salta cuando la muestra está rechazada, que es justamente lo que
+el informe documenta.
+
+El apartado **MUESTRA RECHAZADA PREANALÍTICAMENTE** del documento imprime ahora **cada motivo
+en su línea** y, si el texto para el informe está vacío (filas antiguas, o borrado a mano),
+**cae a los motivos marcados** en vez de salir sin la causa.
+
+### Tablero de trabajo
+
+- **Las rechazadas ya salen del tablero.** Una muestra solo desaparecía al tener su informe
+  validado y descargado; sin informe posible, las rechazadas se quedaban en su columna para
+  siempre. Ahora siguen el mismo circuito que el resto.
+- La tarjeta lleva al **editor de informes** y dice qué le falta: *Sin informe de rechazo*,
+  *Informe en redacción* o *Pendiente de enviar*.
+
+### Estado de la muestra
+
+Marcar el rechazo en recepción deja la muestra en estado **Rechazada**, al darla de alta y al
+editarla; antes se quedaba como «Recibida» y la ficha se contradecía con la pestaña de
+recepción. Redactar el informe del rechazo **no** la pasa a «Reportada parcial»: el informe
+documenta el rechazo, no un análisis. Quitar el rechazo la devuelve a «Recibida».
+
+Las muestras rechazadas que ya estuvieran guardadas conservan su estado: no se reescribe el
+histórico.
+
 ## v4.2.0
 
 Versión **MENOR**: los informes ya emitidos no cambian, pero el informe puede decir cosas

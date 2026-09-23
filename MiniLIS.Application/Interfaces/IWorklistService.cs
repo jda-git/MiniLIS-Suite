@@ -15,6 +15,10 @@ namespace MiniLIS.Application.Interfaces
         public string Semaphore { get; init; } = "none";
         /// <summary>true → la tarjeta navega al editor de informe; false → a la ficha de la muestra.</summary>
         public bool NavigateToReport { get; init; }
+
+        /// <summary>Aclaración corta de en qué punto está la tarjeta dentro de su columna, para
+        /// las rechazadas: qué les falta para salir del tablero.</summary>
+        public string? Note { get; init; }
     }
 
     /// <summary>Tablero de trabajo por estado (F-3). Cada muestra aparece en exactamente una
