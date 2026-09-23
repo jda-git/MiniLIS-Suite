@@ -30,6 +30,63 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.2.0
+
+Versión **MENOR**: los informes ya emitidos no cambian, pero el informe puede decir cosas
+nuevas. Antes de usarlo en rutina conviene revisar el catálogo de **Limitaciones analíticas**
+y emitir un informe de prueba con cada novedad.
+
+### Bajo la conclusión: cuantificación
+
+Tres datos independientes, cada uno con su casilla, debajo del texto de conclusión:
+**Células atípicas** (con su %), **LOD** (límite de detección) y **LLOQ** (límite de
+cuantificación). Se guardan como texto de hasta 10 caracteres, no como número: se escriben
+tal y como deben imprimirse (`<0,01`), que es lo que valida el facultativo.
+
+Solo se imprime lo que se marca. Marcar la casilla sin escribir valor no saca una línea vacía.
+
+### Calidad de la muestra en el análisis
+
+Debajo, un listado de frases que se marcan con casillas. Las marcadas se imprimen debajo de
+la conclusión, una por línea; sin marcar ninguna no se añade nada.
+
+Las frases se configuran en **Configuración → Limitaciones Analíticas**, con código, texto y
+orden. Vienen seis de partida («Muestra marcadamente contaminada con sangre periférica…»,
+«No se alcanza la sensibilidad óptima»…), editables y ampliables.
+
+**Son limitaciones, no incidencias.** No describen un desvío del procedimiento sino hasta
+dónde llega la interpretación del resultado con la muestra recibida, que es información que
+el peticionario necesita para leer el informe (ISO 15189, cl. 7.4.1.3). Cuando además hubo un
+desvío, la no conformidad se abre en el QMS: las frases marcadas como **«sugiere no
+conformidad»** hacen que el editor lo recuerde al seleccionarlas. MiniLIS no duplica el
+registro de no conformidades.
+
+El texto **se congela al validar**, igual que las versiones de panel y el equipo empleado:
+reescribir una frase en el catálogo no cambia lo que decía un informe ya emitido. Al reabrir
+un informe el texto se suelta y se vuelve a congelar en la siguiente validación. Una frase que
+algún informe tenga marcada se desactiva en vez de borrarse.
+
+### Informes con más de un clon
+
+Dos casillas junto a la lista de marcadores, **2 POBLACIONES** y **3 POBLACIONES**. Sin marcar
+ninguna, todo funciona exactamente como hasta ahora.
+
+- Al marcarlas, la lista de marcadores se repite entera por población, cada una bajo su
+  encabezado **Población 1:**, **Población 2:**…
+- El informe hace lo mismo: cada clon en su bloque, con el encabezado en negrita.
+- Al reducir el número de poblaciones se avisa antes de descartar lo ya informado.
+
+**Migración.** Los informes existentes y sus marcadores quedan todos en una población, que es
+exactamente lo que eran: comprobado fila a fila sobre una copia de la base de datos real, sin
+un solo cambio en el texto, los marcadores ni el estado de validación de los 13 informes
+guardados.
+
+### Copia de configuración
+
+Las limitaciones analíticas viajan en el fichero de configuración como una sección propia
+(`limitaciones_analiticas`), con el mismo comportamiento que los demás catálogos: al
+reemplazar, lo que no venga en el fichero se desactiva en vez de borrarse.
+
 ## v4.1.0
 
 Versión **MENOR**: no cambia el informe emitido ni obliga a revalidar. Añade un permiso

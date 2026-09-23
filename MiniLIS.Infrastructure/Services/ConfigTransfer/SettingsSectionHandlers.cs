@@ -204,6 +204,70 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         }
     }
 
+    // ── Limitaciones analíticas ─────────────────────────────────────────────────────────
+
+    public class AnalyticalLimitationDto
+    {
+        public string Code { get; set; } = "";
+        public string Text { get; set; } = "";
+        public bool SuggestsNonConformity { get; set; }
+        public bool IsActive { get; set; } = true;
+        public int DisplayOrder { get; set; }
+    }
+
+    public class AnalyticalLimitationsSectionHandler : ConfigSectionHandler<List<AnalyticalLimitationDto>>
+    {
+        public override string Key => "limitaciones_analiticas";
+        public override string Title => "Limitaciones analíticas";
+
+        protected override async Task<List<AnalyticalLimitationDto>> ExportDataAsync(ApplicationDbContext db)
+            => await db.AnalyticalLimitations.AsNoTracking().OrderBy(l => l.DisplayOrder).ThenBy(l => l.Code)
+                .Select(l => new AnalyticalLimitationDto
+                {
+                    Code = l.Code, Text = l.Text, SuggestsNonConformity = l.SuggestsNonConformity,
+                    IsActive = l.IsActive, DisplayOrder = l.DisplayOrder
+                }).ToListAsync();
+
+        protected override async Task ApplyDataAsync(ApplicationDbContext db, List<AnalyticalLimitationDto> data, ConfigImportMode mode, SectionAnalysis report)
+        {
+            await db.AnalyticalLimitations.LoadAsync();
+            var items = Distinct(data, d => d.Code, "limitación", report);
+            foreach (var d in items)
+            {
+                var code = Norm(d.Code).ToUpperInvariant();
+                CheckLength(code, 20, "el código", code);
+                CheckLength(d.Text, 300, "la frase", code);
+                if (Norm(d.Text).Length == 0) throw new InvalidOperationException($"La limitación {code} no tiene texto.");
+
+                var l = db.AnalyticalLimitations.Local.FirstOrDefault(x => SameKey(x.Code, code));
+                if (l == null)
+                {
+                    db.AnalyticalLimitations.Add(new AnalyticalLimitation
+                    {
+                        Code = code, Text = Norm(d.Text), SuggestsNonConformity = d.SuggestsNonConformity,
+                        IsActive = d.IsActive, DisplayOrder = d.DisplayOrder
+                    });
+                    report.Changes.Add(new ConfigChange { Kind = ConfigChangeKind.Nuevo, Item = $"{code} — {Norm(d.Text)}" });
+                    continue;
+                }
+                var diff = new ItemDiff();
+                diff.Set("Frase", l.Text, Norm(d.Text), v => l.Text = v ?? "");
+                diff.Set("Sugiere no conformidad", l.SuggestsNonConformity, d.SuggestsNonConformity, v => l.SuggestsNonConformity = v);
+                diff.Set("Activa", l.IsActive, d.IsActive, v => l.IsActive = v);
+                diff.Set("Orden", l.DisplayOrder, d.DisplayOrder, v => l.DisplayOrder = v);
+                diff.Report(report, $"{l.Code} — {l.Text}");
+            }
+
+            if (mode == ConfigImportMode.Reemplazar)
+                foreach (var l in db.AnalyticalLimitations.Local.Where(l => l.Id != 0 && l.IsActive && !items.Any(d => SameKey(d.Code, l.Code))).ToList())
+                {
+                    // Desactivar y no borrar: puede haber informes que la tengan marcada.
+                    l.IsActive = false;
+                    report.Changes.Add(new ConfigChange { Kind = ConfigChangeKind.Desactivado, Item = $"{l.Code} — {l.Text}" });
+                }
+        }
+    }
+
     // ── Citómetros ──────────────────────────────────────────────────────────────────────
 
     public class CytometerDto

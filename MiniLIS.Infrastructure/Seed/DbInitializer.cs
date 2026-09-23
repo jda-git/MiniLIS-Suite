@@ -261,6 +261,34 @@ namespace MiniLIS.Infrastructure.Seed
                 tubeIncidentOrder++;
             }
 
+            // 6.2 Limitaciones analíticas: un punto de partida editable. Son ejemplos con la
+            // redacción habitual; el laboratorio los adapta en Configuración. Idempotente por
+            // código: no se reponen los que se hayan borrado a propósito una vez creados.
+            var limitaciones = new (string Code, string Text, bool SuggestsNc)[]
+            {
+                ("HEMODIL", "Muestra que se encuentra marcadamente contaminada con sangre periférica, por lo que no es representativa de celularidad medular.", true),
+                ("SENSIB", "No se alcanza la sensibilidad óptima.", false),
+                ("CELULARIDAD", "Celularidad escasa para el análisis solicitado.", true),
+                ("VIABILIDAD", "Viabilidad celular reducida, que puede afectar a la interpretación del resultado.", true),
+                ("HEMOLIZADA", "Muestra hemolizada.", true),
+                ("DEMORA", "Demora entre la extracción y el procesamiento superior a la recomendada.", true),
+            };
+            int limitacionOrden = 0;
+            foreach (var (code, text, suggestsNc) in limitaciones)
+            {
+                if (!await context.AnalyticalLimitations.AnyAsync(l => l.Code == code))
+                {
+                    context.AnalyticalLimitations.Add(new AnalyticalLimitation
+                    {
+                        Code = code,
+                        Text = text,
+                        SuggestsNonConformity = suggestsNc,
+                        DisplayOrder = limitacionOrden
+                    });
+                }
+                limitacionOrden++;
+            }
+
             await context.SaveChangesAsync();
 
             // 6.5 Da a cada Panel sin PanelVersion una v1/Vigente (migración M-4, idempotente).

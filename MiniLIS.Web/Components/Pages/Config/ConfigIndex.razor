@@ -56,6 +56,9 @@
         <button class="config-tab @(activeTab == "readIncidents" ? "active" : "")" @onclick='() => SetTab("readIncidents")'>
             <i class="bi bi-exclamation-diamond"></i> Incidencias de Lectura
         </button>
+        <button class="config-tab @(activeTab == "limitations" ? "active" : "")" @onclick='() => SetTab("limitations")'>
+            <i class="bi bi-clipboard2-pulse"></i> Limitaciones Analíticas
+        </button>
         <button class="config-tab @(activeTab == "cytometers" ? "active" : "")" @onclick='() => SetTab("cytometers")'>
             <i class="bi bi-cpu"></i> Citómetros
         </button>
@@ -574,6 +577,104 @@
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <button class="action-icon action-delete" title="Eliminar (desactiva si está en uso)" @onclick="() => DeleteTubeReadIncidentReason(reason.Id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* ════════ TAB: LIMITACIONES ANALÍTICAS ════════ *@
+        else if (activeTab == "limitations")
+        {
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Limitaciones Analíticas</h2>
+                    <p class="section-subtitle">
+                        @analyticalLimitations.Count frases configuradas — se ofrecen en el editor bajo
+                        «Calidad de la muestra en el análisis» y se imprimen debajo de la conclusión
+                    </p>
+                </div>
+                <button class="btn-config btn-config-primary" @onclick="() => { editingLimitation = new AnalyticalLimitation { IsActive = true }; showLimitationForm = true; }">
+                    <i class="bi bi-plus-lg"></i> Nueva Frase
+                </button>
+            </div>
+
+            <div class="limit-note">
+                <i class="bi bi-info-circle me-1"></i>
+                Son <strong>limitaciones</strong>, no incidencias: dicen hasta dónde llega la interpretación
+                del resultado con la muestra recibida, que es lo que el peticionario necesita para leer el
+                informe. Si además hubo un desvío del procedimiento, la no conformidad se abre en el QMS;
+                marque para esas frases «sugiere no conformidad» y el editor lo recordará.
+            </div>
+
+            @if (showLimitationForm)
+            {
+                <div class="inline-form">
+                    <div class="inline-form-grid">
+                        <div class="form-field">
+                            <label class="field-label">Código</label>
+                            <input type="text" class="field-input" placeholder="Ej: HEMODIL" maxlength="20" @bind="editingLimitation.Code" />
+                        </div>
+                        <div class="form-field" style="grid-column: span 2;">
+                            <label class="field-label">Frase (tal y como saldrá impresa)</label>
+                            <input type="text" class="field-input" maxlength="300"
+                                   placeholder="Ej: Muestra marcadamente contaminada con sangre periférica, por lo que no es representativa de celularidad medular"
+                                   @bind="editingLimitation.Text" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Orden</label>
+                            <input type="number" class="field-input" @bind="editingLimitation.DisplayOrder" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Sugiere no conformidad</label>
+                            <input type="checkbox" @bind="editingLimitation.SuggestsNonConformity" />
+                        </div>
+                        <div class="form-field">
+                            <label class="field-label">Activa</label>
+                            <input type="checkbox" @bind="editingLimitation.IsActive" />
+                        </div>
+                        <div class="form-field form-actions-inline">
+                            <button class="btn-config btn-config-success" @onclick="SaveAnalyticalLimitation"><i class="bi bi-check-lg"></i> Guardar</button>
+                            <button class="btn-config btn-config-ghost" @onclick="() => showLimitationForm = false">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="config-table-wrap">
+                <table class="config-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Frase</th>
+                            <th>Orden</th>
+                            <th>Sugiere NC</th>
+                            <th>Activa</th>
+                            <th class="col-actions">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!analyticalLimitations.Any())
+                        {
+                            <tr><td colspan="6" class="text-muted">Todavía no hay ninguna frase configurada.</td></tr>
+                        }
+                        @foreach (var lim in analyticalLimitations)
+                        {
+                            <tr>
+                                <td><span class="marker-chip">@lim.Code</span></td>
+                                <td class="cell-desc">@lim.Text</td>
+                                <td>@lim.DisplayOrder</td>
+                                <td>@(lim.SuggestsNonConformity ? "Sí" : "No")</td>
+                                <td>@(lim.IsActive ? "Sí" : "No")</td>
+                                <td class="cell-actions">
+                                    <button class="action-icon action-edit" title="Editar" @onclick="() => { editingLimitation = lim; showLimitationForm = true; }">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="action-icon action-delete" title="Eliminar (desactiva si algún informe la usa)" @onclick="() => DeleteAnalyticalLimitation(lim.Id)">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </td>
@@ -1311,6 +1412,7 @@
     .inline-form-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: end; }
     .inline-form-rows { display: flex; flex-direction: column; gap: 16px; }
     .form-field { display: flex; flex-direction: column; gap: 6px; }
+    .limit-note { font-size: 12.5px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
     .field-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
     .field-input {
         border: 1px solid #e2e8f0;
@@ -1686,6 +1788,10 @@
     private RejectionReason editingReason = new();
 
     // Tube read incident reasons
+    private List<AnalyticalLimitation> analyticalLimitations = new();
+    private bool showLimitationForm = false;
+    private AnalyticalLimitation editingLimitation = new();
+
     private List<TubeReadIncidentReason> readIncidentReasons = new();
     private bool showIncidentReasonForm = false;
     private TubeReadIncidentReason editingIncidentReason = new();
@@ -1733,6 +1839,7 @@
         rejectionReasons = await MasterService.GetAllRejectionReasonsAsync();
         citometros = await MasterService.GetAllCytometersAsync();
         readIncidentReasons = await MasterService.GetAllTubeReadIncidentReasonsAsync();
+        analyticalLimitations = await MasterService.GetAllAnalyticalLimitationsAsync();
         qualityIndicators = await QualityIndicatorService.GetAllIndicatorsAsync();
         labelSettings = await MasterService.GetLabelSettingsAsync();
         worklistProfiles = await WorklistExportService.GetProfilesAsync();
@@ -1927,6 +2034,24 @@
     private async Task DeleteRejectionReason(int id)
     {
         await MasterService.DeleteRejectionReasonAsync(id);
+        await LoadData();
+    }
+
+    // ── LIMITACIONES ANALÍTICAS ──
+    private async Task SaveAnalyticalLimitation()
+    {
+        if (string.IsNullOrWhiteSpace(editingLimitation.Code) || string.IsNullOrWhiteSpace(editingLimitation.Text)) return;
+
+        editingLimitation.Code = editingLimitation.Code.Trim().ToUpperInvariant();
+        editingLimitation.Text = editingLimitation.Text.Trim();
+        await MasterService.UpsertAnalyticalLimitationAsync(editingLimitation);
+        showLimitationForm = false;
+        await LoadData();
+    }
+
+    private async Task DeleteAnalyticalLimitation(int id)
+    {
+        await MasterService.DeleteAnalyticalLimitationAsync(id);
         await LoadData();
     }
 

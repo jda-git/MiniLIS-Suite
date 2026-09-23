@@ -80,6 +80,7 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
             new WorklistSectionHandler(),
             new RejectionReasonsSectionHandler(),
             new ReadIncidentsSectionHandler(),
+            new AnalyticalLimitationsSectionHandler(),
             new CytometersSectionHandler(),
             new KeyValueSectionHandler("ajustes", "Ajustes (intensidades y plazos)",
                 k => SettingsSections.IsIntensity(k) || SettingsSections.General.Contains(k), SettingsSections.Describe,

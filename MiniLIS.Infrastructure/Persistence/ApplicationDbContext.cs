@@ -44,6 +44,7 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<BackupRecord> BackupRecords => Set<BackupRecord>();
         public DbSet<RejectionReason> RejectionReasons => Set<RejectionReason>();
         public DbSet<TubeReadIncidentReason> TubeReadIncidentReasons => Set<TubeReadIncidentReason>();
+        public DbSet<AnalyticalLimitation> AnalyticalLimitations => Set<AnalyticalLimitation>();
         public DbSet<SampleReceptionIssue> SampleReceptionIssues => Set<SampleReceptionIssue>();
         public DbSet<QualityIndicator> QualityIndicators => Set<QualityIndicator>();
 
@@ -188,6 +189,16 @@ namespace MiniLIS.Infrastructure.Persistence
 
             // Incidencias de lectura de tubo (nuevo)
             modelBuilder.Entity<TubeReadIncidentReason>().HasIndex(r => r.Code).IsUnique();
+
+            // Limitaciones analíticas: frases de calidad de la muestra que el informe imprime
+            // bajo la conclusión. Sin clave foránea desde SampleReport a propósito -- el
+            // informe guarda los ids elegidos y, al validarse, el texto ya resuelto.
+            modelBuilder.Entity<AnalyticalLimitation>().HasIndex(l => l.Code).IsUnique();
+
+            // Una población por omisión, no cero: así lo dice el modelo y así deben quedar las
+            // filas que cree cualquier otra vía. El histórico lo arregla la migración.
+            modelBuilder.Entity<SampleReport>().Property(r => r.PopulationCount).HasDefaultValue(1);
+            modelBuilder.Entity<ReportMarkerValue>().Property(v => v.PopulationIndex).HasDefaultValue(1);
 
             // No se borra un motivo en uso (solo se desactiva desde el servicio); igual que
             // RejectionReason, restringir a nivel de BD protege la trazabilidad histórica.

@@ -108,17 +108,43 @@ namespace MiniLIS.Infrastructure.Services
             return report;
         }
 
+        /// <summary>
+        /// Texto de marcadores que se guarda en el informe. Con una sola población es una
+        /// línea corrida, como siempre. Con dos o tres clones cada uno va en su bloque,
+        /// precedido de su encabezado (<see cref="MarkerPopulations"/>): el encabezado viaja
+        /// dentro del texto guardado para que el PDF y el ODT puedan destacarlo sin volver a
+        /// consultar los marcadores, que es lo que mantiene intacto un informe ya emitido.
+        /// </summary>
         public string GenerateMarkersSummary(IEnumerable<ReportMarkerValue> markerValues)
         {
-            var sb = new StringBuilder();
-            var values = markerValues
-                .Where(v => !string.IsNullOrEmpty(v.IntensityValue))
-                .OrderBy(v => v.DisplayOrder);
+            var values = markerValues.Where(v => !string.IsNullOrEmpty(v.IntensityValue)).ToList();
+            var populations = values.Select(v => v.PopulationIndex <= 0 ? 1 : v.PopulationIndex)
+                .Distinct().OrderBy(p => p).ToList();
 
-            foreach (var val in values)
+            // Una sola población (el caso de siempre): sin encabezado, para no cambiar el
+            // aspecto de los informes que no usan clones múltiples.
+            if (populations.Count <= 1)
+                return BuildPopulationLine(values);
+
+            var sb = new StringBuilder();
+            foreach (var population in populations)
+            {
+                var line = BuildPopulationLine(values.Where(v => (v.PopulationIndex <= 0 ? 1 : v.PopulationIndex) == population));
+                if (line.Length == 0) continue;
+
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append(MarkerPopulations.LabelFor(population)).Append('\n').Append(line);
+            }
+            return sb.ToString();
+        }
+
+        private static string BuildPopulationLine(IEnumerable<ReportMarkerValue> values)
+        {
+            var sb = new StringBuilder();
+            foreach (var val in values.OrderBy(v => v.DisplayOrder))
             {
                 if (sb.Length > 0) sb.Append(", ");
-                
+
                 sb.Append(val.Marker?.Name ?? "Marker");
                 sb.Append(" ");
                 sb.Append(val.IntensityValue);

@@ -34,6 +34,69 @@ namespace MiniLIS.Infrastructure.Services
             QuestPDF.Settings.License = LicenseType.Community;
         }
 
+        /// <summary>Parte un texto guardado en líneas. Los campos del informe son áreas
+        /// multilínea, así que llegan con los saltos que ponga cada navegador.</summary>
+        private static List<string> SplitLines(string text)
+            => text.Replace("\r\n", "\n")
+                   .Replace('\r', '\n')
+                   .Split('\n')
+                   .ToList();
+
+        /// <summary>La línea de cuantificación que va bajo la conclusión: solo los datos
+        /// marcados, en el orden de la pantalla. Null si no se marcó ninguno.</summary>
+        private static string? BuildQuantificationLine(SampleReport report)
+        {
+            var partes = new List<string>();
+            if (report.HasAtypicalCells && !string.IsNullOrWhiteSpace(report.AtypicalCellsPercent))
+                partes.Add($"Células atípicas: {report.AtypicalCellsPercent!.Trim()} %");
+            if (report.HasLod && !string.IsNullOrWhiteSpace(report.LodValue))
+                partes.Add($"LOD: {report.LodValue!.Trim()}");
+            if (report.HasLloq && !string.IsNullOrWhiteSpace(report.LloqValue))
+                partes.Add($"LLOQ: {report.LloqValue!.Trim()}");
+
+            return partes.Count == 0 ? null : string.Join("    ", partes);
+        }
+
+        /// <summary>Las frases de calidad de la muestra marcadas, una por línea. Salen del
+        /// texto ya resuelto (ResolveAnalyticalLimitationsAsync), nunca del catálogo en vivo:
+        /// reescribir una frase no debe cambiar un informe ya emitido.</summary>
+        private static List<string> AnalyticalLimitationsFor(SampleReport report)
+            => string.IsNullOrWhiteSpace(report.AnalyticalLimitationsText)
+               ? new List<string>()
+               : SplitLines(report.AnalyticalLimitationsText!).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+
+        /// <summary>Rellena en memoria el texto de las limitaciones si el informe todavía no lo
+        /// tiene congelado (o sea, antes de validarlo), para que la vista previa enseñe lo
+        /// mismo que se imprimirá. Al validar se congela de verdad en la base de datos.</summary>
+        private async Task ResolveAnalyticalLimitationsAsync(SampleReport report)
+        {
+            if (!string.IsNullOrWhiteSpace(report.AnalyticalLimitationsText)) return;
+            report.AnalyticalLimitationsText = await ComputeAnalyticalLimitationsTextAsync(_db, report);
+        }
+
+        /// <summary>Resuelve los ids marcados a sus frases, en el orden del catálogo. Estático y
+        /// con el contexto por parámetro para poder congelarlo también al validar
+        /// (DownloadsController), igual que se hace con las versiones de panel.</summary>
+        public static async Task<string?> ComputeAnalyticalLimitationsTextAsync(ApplicationDbContext db, SampleReport report)
+        {
+            if (string.IsNullOrWhiteSpace(report.SelectedAnalyticalLimitationIds)) return null;
+
+            var ids = report.SelectedAnalyticalLimitationIds!
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => int.TryParse(x.Trim(), out var id) ? id : 0)
+                .Where(id => id > 0)
+                .ToList();
+            if (ids.Count == 0) return null;
+
+            var textos = await db.AnalyticalLimitations.AsNoTracking()
+                .Where(l => ids.Contains(l.Id))
+                .OrderBy(l => l.DisplayOrder).ThenBy(l => l.Text)
+                .Select(l => l.Text)
+                .ToListAsync();
+
+            return textos.Count == 0 ? null : string.Join("\n", textos);
+        }
+
         /// <summary>Estudios previos seleccionados para incrustar en el informe (F-9), con
         /// datos frescos del servidor -- nunca se confía en nada que venga del cliente más
         /// allá del propio SampleReport ya cargado. Compartido por GeneratePdfAsync y
@@ -86,6 +149,7 @@ namespace MiniLIS.Infrastructure.Services
             // de la muestra, el informe declaraba la versión de paneles solicitados pero nunca
             // leídos (M-4).
             var panelVersionsText = PanelVersionsTextFor(fullReport);
+            await ResolveAnalyticalLimitationsAsync(fullReport);
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
 
@@ -213,11 +277,22 @@ namespace MiniLIS.Infrastructure.Services
                             col.Item().PaddingBottom(15).Text(fullReport.ReportBody).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
                         }
 
-                        // Marcadores (as string text)
+                        // Marcadores. Con varias poblaciones el texto guardado trae las líneas
+                        // "Población N:" intercaladas; se imprimen en negrita para separar los
+                        // clones de un vistazo (ver MarkerPopulations).
                         if (!string.IsNullOrWhiteSpace(fullReport.MarkersSummary))
                         {
                             col.Item().PaddingBottom(5).Text("MARCADORES").FontSize(11).FontColor(titleColor);
-                            col.Item().PaddingBottom(4).Text(fullReport.MarkersSummary).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                            foreach (var linea in SplitLines(fullReport.MarkersSummary))
+                            {
+                                var esEncabezado = MarkerPopulations.IsLabel(linea);
+                                col.Item().PaddingBottom(esEncabezado ? 1 : 4)
+                                   .Text(t =>
+                                   {
+                                       var span = t.Span(linea).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                                       if (esEncabezado) span.Bold();
+                                   });
+                            }
                         }
 
                         // Texto Adicional (sin título explícito, debajo de marcadores según solicitud)
@@ -312,10 +387,27 @@ namespace MiniLIS.Infrastructure.Services
                             }
                         }
 
-                        if (!string.IsNullOrWhiteSpace(fullReport.Conclusions))
+                        var cuantificacion = BuildQuantificationLine(fullReport);
+                        var limitaciones = AnalyticalLimitationsFor(fullReport);
+
+                        if (!string.IsNullOrWhiteSpace(fullReport.Conclusions) || cuantificacion != null || limitaciones.Any())
                         {
                             col.Item().PaddingBottom(5).Text("CONCLUSIÓN").FontSize(11).FontColor(titleColor);
-                            col.Item().PaddingBottom(15).Text(fullReport.Conclusions).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+
+                            if (!string.IsNullOrWhiteSpace(fullReport.Conclusions))
+                                col.Item().Text(fullReport.Conclusions).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+
+                            // Calidad de la muestra: una frase por línea, tal y como se marcaron.
+                            foreach (var limitacion in limitaciones)
+                                col.Item().Text(limitacion).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+
+                            // La cuantificación cierra el apartado, separada por una línea en
+                            // blanco de las frases de calidad que tenga encima.
+                            if (cuantificacion != null)
+                                col.Item().PaddingTop(limitaciones.Any() ? 11 : 4)
+                                   .Text(cuantificacion).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+
+                            col.Item().PaddingBottom(15);
                         }
 
                         bool isFirstAlert = true;
@@ -502,6 +594,8 @@ namespace MiniLIS.Infrastructure.Services
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
+            await ResolveAnalyticalLimitationsAsync(fullReport);
+
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
             var logoAlignment = await _masterService.GetSettingAsync("Header:LogoAlignment") ?? "Left";
             var headerLine1 = await _masterService.GetSettingAsync("Header:Line1") ?? "LABORATORIO DE HEMATOLOGÍA";
@@ -676,11 +770,17 @@ namespace MiniLIS.Infrastructure.Services
                 sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.ReportBody)}</text:p>");
             }
 
-            // MARCADORES
+            // MARCADORES (con encabezado de población en negrita si hay varios clones)
             if (!string.IsNullOrWhiteSpace(report.MarkersSummary))
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">MARCADORES</text:p>");
-                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.MarkersSummary)}</text:p>");
+                foreach (var linea in SplitLines(report.MarkersSummary))
+                {
+                    if (MarkerPopulations.IsLabel(linea))
+                        sb.Append($@"<text:p text:style-name=""MonoText""><text:span text:style-name=""BoldInline"">{EncodeForOdt(linea)}</text:span></text:p>");
+                    else
+                        sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(linea)}</text:p>");
+                }
             }
             
             // Texto Adicional (sin título)
@@ -759,11 +859,22 @@ namespace MiniLIS.Infrastructure.Services
                 }
             }
 
-            // CONCLUSIÓN
-            if (!string.IsNullOrWhiteSpace(report.Conclusions))
+            // CONCLUSIÓN (con la cuantificación y las limitaciones analíticas debajo)
+            var cuantificacionOdt = BuildQuantificationLine(report);
+            var limitacionesOdt = AnalyticalLimitationsFor(report);
+            if (!string.IsNullOrWhiteSpace(report.Conclusions) || cuantificacionOdt != null || limitacionesOdt.Any())
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">CONCLUSIÓN</text:p>");
-                sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.Conclusions)}</text:p>");
+                if (!string.IsNullOrWhiteSpace(report.Conclusions))
+                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(report.Conclusions)}</text:p>");
+                foreach (var limitacion in limitacionesOdt)
+                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(limitacion)}</text:p>");
+                if (cuantificacionOdt != null)
+                {
+                    // Línea en blanco entre las frases de calidad y la cuantificación.
+                    if (limitacionesOdt.Any()) sb.Append(@"<text:p text:style-name=""MonoText"" />");
+                    sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(cuantificacionOdt)}</text:p>");
+                }
             }
 
             // AVISOS Y MUESTRA EXCEDENTE (con separación de 5 líneas antes si hay alguno)

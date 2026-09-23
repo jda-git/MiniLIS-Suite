@@ -43,6 +43,18 @@ namespace MiniLIS.Application.Interfaces
         /// <summary>Si el motivo tiene SampleTube asociados, lo desactiva (IsActive=false) en vez de borrarlo.</summary>
         Task DeleteTubeReadIncidentReasonAsync(int id);
 
+        // LIMITACIONES ANALÍTICAS (calidad de la muestra en el análisis)
+        /// <summary>Todas, para la pantalla de Configuración.</summary>
+        Task<List<AnalyticalLimitation>> GetAllAnalyticalLimitationsAsync();
+        /// <summary>Solo las activas, que son las que se ofrecen en el editor de informes.</summary>
+        Task<List<AnalyticalLimitation>> GetActiveAnalyticalLimitationsAsync();
+        /// <summary>Por id, incluidas las desactivadas: un informe que ya tenía marcada una
+        /// frase debe seguir mostrándola aunque se haya retirado del catálogo.</summary>
+        Task<List<AnalyticalLimitation>> GetAnalyticalLimitationsByIdsAsync(List<int> ids);
+        Task<AnalyticalLimitation> UpsertAnalyticalLimitationAsync(AnalyticalLimitation limitation);
+        /// <summary>Si algún informe la tiene marcada, la desactiva en vez de borrarla.</summary>
+        Task DeleteAnalyticalLimitationAsync(int id);
+
         // TEMPLATES
         Task<List<ReportTemplate>> GetAllTemplatesAsync();
         Task<ReportTemplate?> GetTemplateWithMarkersAsync(int id);

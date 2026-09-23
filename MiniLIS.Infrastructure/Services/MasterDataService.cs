@@ -210,6 +210,51 @@ namespace MiniLIS.Infrastructure.Services
             await _db.SaveChangesAsync();
         }
 
+        // --- LIMITACIONES ANALÍTICAS ---
+        public async Task<List<AnalyticalLimitation>> GetAllAnalyticalLimitationsAsync() =>
+            await _db.AnalyticalLimitations.OrderBy(l => l.DisplayOrder).ThenBy(l => l.Text).ToListAsync();
+
+        public async Task<List<AnalyticalLimitation>> GetActiveAnalyticalLimitationsAsync() =>
+            await _db.AnalyticalLimitations.AsNoTracking().Where(l => l.IsActive)
+                .OrderBy(l => l.DisplayOrder).ThenBy(l => l.Text).ToListAsync();
+
+        public async Task<List<AnalyticalLimitation>> GetAnalyticalLimitationsByIdsAsync(List<int> ids) =>
+            await _db.AnalyticalLimitations.AsNoTracking().Where(l => ids.Contains(l.Id))
+                .OrderBy(l => l.DisplayOrder).ThenBy(l => l.Text).ToListAsync();
+
+        public async Task<AnalyticalLimitation> UpsertAnalyticalLimitationAsync(AnalyticalLimitation limitation)
+        {
+            if (limitation.Id == 0) _db.AnalyticalLimitations.Add(limitation);
+            else _db.AnalyticalLimitations.Update(limitation);
+            await _db.SaveChangesAsync();
+            return limitation;
+        }
+
+        public async Task DeleteAnalyticalLimitationAsync(int id)
+        {
+            var limitation = await _db.AnalyticalLimitations.FindAsync(id);
+            if (limitation == null) return;
+
+            // Los informes guardan los ids elegidos en una cadena separada por comas, así que
+            // el "en uso" se comprueba sobre esa cadena. Buscar ",id," sobre la cadena con
+            // comas a ambos lados evita que el 1 dé positivo dentro de un 12.
+            var marker = $",{id},";
+            var inUse = await _db.SampleReports.AnyAsync(r =>
+                r.SelectedAnalyticalLimitationIds != null &&
+                ("," + r.SelectedAnalyticalLimitationIds + ",").Contains(marker));
+
+            if (inUse)
+            {
+                limitation.IsActive = false;
+                _db.AnalyticalLimitations.Update(limitation);
+            }
+            else
+            {
+                _db.AnalyticalLimitations.Remove(limitation);
+            }
+            await _db.SaveChangesAsync();
+        }
+
         // --- TEMPLATES ---
         public async Task<List<ReportTemplate>> GetAllTemplatesAsync() => await _db.ReportTemplates.ToListAsync();
 

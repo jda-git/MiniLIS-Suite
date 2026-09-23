@@ -158,32 +158,57 @@
 
         <!-- Marcadores -->
         <div class="mb-3">
-            <label class="rpt-label">Marcadores:</label>
-            <div class="rpt-markers-box">
-                @foreach (var val in report.MarkerValues.OrderBy(v => v.DisplayOrder))
-                {
-                    <div class="marker-row">
-                        <span class="marker-name">@val.Marker?.Name</span>
-                        <div class="marker-intensities">
-                            @foreach (var intensity in intensityOptions)
-                            {
-                                <label class="intensity-radio @(intensity == "Heterogéneo" ? "intensity-het" : "")">
-                                    <input type="radio" name="mk-@val.MarkerId-@val.DisplayOrder"
-                                           checked="@(val.IntensityValue == intensity)"
-                                           @onchange="@(() => { val.IntensityValue = intensity; RecalculateSummary(); })" />
-                                    @intensity
-                                </label>
-                            }
-                        </div>
-                        <div class="marker-pct">
-                            <input type="text" class="pct-input" placeholder="%" @bind="val.Percentage" @bind:event="oninput" @onkeyup="RecalculateSummary" />
-                        </div>
-                        <button type="button" class="marker-clear" title="Limpiar" @onclick="@(() => { val.IntensityValue = null; val.Percentage = null; RecalculateSummary(); })">
-                            <i class="bi bi-x text-danger"></i>
-                        </button>
-                    </div>
-                }
+            @* Más de un clon: la lista de marcadores se repite entera por población, aquí y
+               en el informe. Sin marcar nada, todo funciona como siempre (una población). *@
+            <div class="markers-head">
+                <label class="rpt-label mb-0">Marcadores:</label>
+                <div class="pop-toggles">
+                    <label class="pop-toggle">
+                        <input type="checkbox" checked="@(report.PopulationCount == 2)"
+                               @onchange="@(e => SetPopulationCount(e.Value is true ? 2 : 1))" />
+                        2 POBLACIONES
+                    </label>
+                    <label class="pop-toggle">
+                        <input type="checkbox" checked="@(report.PopulationCount == 3)"
+                               @onchange="@(e => SetPopulationCount(e.Value is true ? 3 : 1))" />
+                        3 POBLACIONES
+                    </label>
+                </div>
             </div>
+
+            @for (var pop = 1; pop <= report.PopulationCount; pop++)
+            {
+                var poblacion = pop;
+                @if (report.PopulationCount > 1)
+                {
+                    <div class="pop-heading">@MarkerPopulations.LabelFor(poblacion)</div>
+                }
+                <div class="rpt-markers-box @(report.PopulationCount > 1 && poblacion < report.PopulationCount ? "mb-2" : "")">
+                    @foreach (var val in report.MarkerValues.Where(v => v.PopulationIndex == poblacion).OrderBy(v => v.DisplayOrder))
+                    {
+                        <div class="marker-row">
+                            <span class="marker-name">@val.Marker?.Name</span>
+                            <div class="marker-intensities">
+                                @foreach (var intensity in intensityOptions)
+                                {
+                                    <label class="intensity-radio @(intensity == "Heterogéneo" ? "intensity-het" : "")">
+                                        <input type="radio" name="mk-@poblacion-@val.MarkerId-@val.DisplayOrder"
+                                               checked="@(val.IntensityValue == intensity)"
+                                               @onchange="@(() => { val.IntensityValue = intensity; RecalculateSummary(); })" />
+                                        @intensity
+                                    </label>
+                                }
+                            </div>
+                            <div class="marker-pct">
+                                <input type="text" class="pct-input" placeholder="%" @bind="val.Percentage" @bind:event="oninput" @onkeyup="RecalculateSummary" />
+                            </div>
+                            <button type="button" class="marker-clear" title="Limpiar" @onclick="@(() => { val.IntensityValue = null; val.Percentage = null; RecalculateSummary(); })">
+                                <i class="bi bi-x text-danger"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
         </div>
 
         <!-- Texto adicional -->
@@ -265,6 +290,61 @@
             </select>
         </div>
         <textarea class="rpt-textarea" rows="4" @bind="report.Conclusions" placeholder="Texto de la conclusión (editable)..."></textarea>
+
+        @* Cuantificación: cada dato con su casilla, porque no siempre procede informar los
+           tres. Solo sale impreso lo que se marca. *@
+        <div class="conc-quant">
+            <label class="conc-check">
+                <input type="checkbox" @bind="report.HasAtypicalCells" />
+                <span>Células atípicas:</span>
+            </label>
+            <input type="text" class="conc-value" maxlength="10" @bind="report.AtypicalCellsPercent"
+                   disabled="@(!report.HasAtypicalCells)" />
+            <span class="conc-unit">%</span>
+
+            <label class="conc-check conc-sep">
+                <input type="checkbox" @bind="report.HasLod" />
+                <span>LOD:</span>
+            </label>
+            <input type="text" class="conc-value" maxlength="10" @bind="report.LodValue"
+                   disabled="@(!report.HasLod)" />
+
+            <label class="conc-check conc-sep">
+                <input type="checkbox" @bind="report.HasLloq" />
+                <span>LLOQ:</span>
+            </label>
+            <input type="text" class="conc-value" maxlength="10" @bind="report.LloqValue"
+                   disabled="@(!report.HasLloq)" />
+        </div>
+
+        @* Limitaciones analíticas: lo marcado sale impreso debajo de la conclusión, una frase
+           por línea. El catálogo se edita en Configuración → Limitaciones analíticas. *@
+        <div class="conc-quality">
+            <div class="conc-quality-title">Calidad de la muestra en el análisis:</div>
+            @if (!analyticalLimitations.Any())
+            {
+                <div class="conc-quality-empty">
+                    No hay frases configuradas. Se definen en <strong>Configuración → Limitaciones analíticas</strong>.
+                </div>
+            }
+            else
+            {
+                @foreach (var lim in analyticalLimitations)
+                {
+                    <label class="conc-quality-line">
+                        <input type="checkbox" checked="@selectedLimitationIds.Contains(lim.Id)"
+                               @onchange="@(e => ToggleLimitation(lim.Id, e.Value))" />
+                        <span>@lim.Text</span>
+                        @if (lim.SuggestsNonConformity && selectedLimitationIds.Contains(lim.Id))
+                        {
+                            <span class="conc-nc" title="Esta limitación suele requerir además una no conformidad en el QMS">
+                                <i class="bi bi-exclamation-triangle"></i> valorar no conformidad
+                            </span>
+                        }
+                    </label>
+                }
+            }
+        </div>
     </fieldset>
 
     <!-- ═══════════════  SECCIÓN 4 · PANELES (Auto-importados)  ═══════════════ -->
@@ -612,6 +692,26 @@
 </div>
 
 <style>
+    /* ── Poblaciones (clones) y bloque de conclusión ─────────────────────── */
+    .markers-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+    .pop-toggles { display: flex; align-items: center; gap: 18px; }
+    .pop-toggle { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; color: #475569; cursor: pointer; }
+    .pop-heading { font-weight: 700; font-size: 12.5px; color: #1e293b; margin: 10px 0 4px; }
+
+    .conc-quant { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .conc-check { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: #334155; cursor: pointer; }
+    .conc-sep { margin-left: 26px; }
+    .conc-value { width: 110px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+    .conc-value:disabled { background: #f1f5f9; color: #94a3b8; }
+    .conc-unit { font-size: 13px; color: #334155; }
+
+    .conc-quality { margin-top: 16px; }
+    .conc-quality-title { font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: 6px; }
+    .conc-quality-empty { font-size: 12px; color: #94a3b8; }
+    .conc-quality-line { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 4px; font-size: 13px; color: #334155; cursor: pointer; }
+    .conc-quality-line input { margin-top: 3px; flex-shrink: 0; }
+    .conc-nc { flex-shrink: 0; font-size: 11px; font-weight: 700; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px; padding: 1px 8px; }
+
     .rpt-page { padding: 24px 32px; background: #f4f6f9; min-height: calc(100vh - 56px); font-family: 'Segoe UI', system-ui, sans-serif; max-width: 1050px; }
 
     .rpt-fieldset {
@@ -845,6 +945,8 @@
     private List<ReportTemplate> availableTemplates = new();
     private List<Panel> availablePanels = new();
     private List<TemplateConclusion> templateConclusions = new();
+    private List<AnalyticalLimitation> analyticalLimitations = new();
+    private HashSet<int> selectedLimitationIds = new();
     private List<string> facultativosList = new();
     private List<string> selectedFacultativos = new();
     private List<string> intensityOptions = new();
@@ -872,7 +974,12 @@
         patientName, peticionElectronica, servicioSolicitante, medicoSolicitante, motivoSolicitud,
         string.Join("|", selectedFacultativos),
         string.Join(",", selectedPreviousStudyIds),
-        string.Join(";", report.MarkerValues.OrderBy(m => m.MarkerId).Select(m => $"{m.MarkerId}={m.IntensityValue}/{m.Percentage}"))
+        report.HasAtypicalCells.ToString(), report.AtypicalCellsPercent,
+        report.HasLod.ToString(), report.LodValue, report.HasLloq.ToString(), report.LloqValue,
+        report.PopulationCount.ToString(),
+        string.Join(",", selectedLimitationIds.OrderBy(x => x)),
+        string.Join(";", report.MarkerValues.OrderBy(m => m.PopulationIndex).ThenBy(m => m.MarkerId)
+            .Select(m => $"{m.PopulationIndex}:{m.MarkerId}={m.IntensityValue}/{m.Percentage}"))
     });
 
     private bool HasUnsavedChanges => report != null && CurrentFingerprint() != savedFingerprint;
@@ -1134,6 +1241,19 @@
         if (report.TemplateId.HasValue)
             templateConclusions = await MasterService.GetTemplateConclusionsAsync(report.TemplateId.Value);
 
+        // Frases de calidad de la muestra: se ofrecen las activas, pero si el informe tiene
+        // marcada una que después se desactivó, se sigue mostrando -- desactivar el catálogo
+        // no puede borrar en silencio lo que ya decía un informe.
+        analyticalLimitations = await MasterService.GetActiveAnalyticalLimitationsAsync();
+        selectedLimitationIds = (report.SelectedAnalyticalLimitationIds ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => int.TryParse(x.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToHashSet();
+        var faltantes = selectedLimitationIds.Where(id => !analyticalLimitations.Any(l => l.Id == id)).ToList();
+        if (faltantes.Any())
+            analyticalLimitations.AddRange(await MasterService.GetAnalyticalLimitationsByIdsAsync(faltantes));
+
         cytometers = await MasterService.GetActiveCytometersAsync();
         // Se restaura la selección guardada solo si ese citómetro sigue activo; si se dio de
         // baja, el desplegable queda vacío pero el informe conserva su texto congelado.
@@ -1161,12 +1281,14 @@
                 report.MarkerValues.Clear();
                 foreach (var tm in template.Markers.OrderBy(m => m.DisplayOrder))
                 {
-                    report.MarkerValues.Add(new ReportMarkerValue
-                    {
-                        MarkerId = tm.MarkerId,
-                        Marker = tm.Marker,
-                        DisplayOrder = tm.DisplayOrder
-                    });
+                    for (var pop = 1; pop <= report.PopulationCount; pop++)
+                        report.MarkerValues.Add(new ReportMarkerValue
+                        {
+                            MarkerId = tm.MarkerId,
+                            Marker = tm.Marker,
+                            DisplayOrder = tm.DisplayOrder,
+                            PopulationIndex = pop
+                        });
                 }
 
                 // Load conclusions for this template
@@ -1179,6 +1301,53 @@
                 RecalculateSummary();
             }
         }
+    }
+
+    private void ToggleLimitation(int id, object? isChecked)
+    {
+        if (isChecked is true) selectedLimitationIds.Add(id);
+        else selectedLimitationIds.Remove(id);
+    }
+
+    /// <summary>Cambia el número de poblaciones informadas. Al subir, cada población nueva
+    /// recibe la misma lista de marcadores en blanco; al bajar, se descartan las de más,
+    /// avisando primero si ya tenían algo escrito.</summary>
+    private async Task SetPopulationCount(int count)
+    {
+        if (report == null || report.PopulationCount == count) return;
+
+        var anterior = report.PopulationCount;
+        if (count < anterior)
+        {
+            var conDatos = report.MarkerValues.Any(v => v.PopulationIndex > count &&
+                (!string.IsNullOrWhiteSpace(v.IntensityValue) || !string.IsNullOrWhiteSpace(v.Percentage)));
+            if (conDatos && !await JS.InvokeAsync<bool>("confirm",
+                    $"Se descartarán los marcadores informados de la población {count + 1} en adelante.\n\n¿Continuar?"))
+                return;
+        }
+
+        report.PopulationCount = count;
+        if (count > anterior)
+        {
+            var plantilla = report.MarkerValues.Where(v => v.PopulationIndex == 1).OrderBy(v => v.DisplayOrder).ToList();
+            for (var pop = anterior + 1; pop <= count; pop++)
+                foreach (var m in plantilla)
+                    if (!report.MarkerValues.Any(v => v.PopulationIndex == pop && v.MarkerId == m.MarkerId))
+                        report.MarkerValues.Add(new ReportMarkerValue
+                        {
+                            MarkerId = m.MarkerId,
+                            Marker = m.Marker,
+                            DisplayOrder = m.DisplayOrder,
+                            PopulationIndex = pop
+                        });
+        }
+        else
+        {
+            foreach (var sobra in report.MarkerValues.Where(v => v.PopulationIndex > count).ToList())
+                report.MarkerValues.Remove(sobra);
+        }
+
+        RecalculateSummary();
     }
 
     private void OnConclusionSelected(ChangeEventArgs e)
@@ -1428,6 +1597,7 @@
 
             report.SelectedSignatures = selectedFacultativos.Any() ? string.Join("|", selectedFacultativos) : null;
             report.PreviousStudiesSelectedSampleIds = selectedPreviousStudyIds.Any() ? string.Join(",", selectedPreviousStudyIds) : null;
+            report.SelectedAnalyticalLimitationIds = selectedLimitationIds.Any() ? string.Join(",", selectedLimitationIds.OrderBy(x => x)) : null;
             await ReportService.SaveReportAsync(report!, report!.MarkerValues.ToList(), new List<int>());
 
             // Lo que hay en pantalla pasa a ser lo guardado: sin esto, "Volver" seguiría

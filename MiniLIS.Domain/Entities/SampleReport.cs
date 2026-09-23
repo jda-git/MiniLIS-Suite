@@ -128,6 +128,65 @@ namespace MiniLIS.Domain.Entities
         [MaxLength(500)]
         public string? PanelVersionsText { get; set; }
         public bool ShowPreviousConclusions { get; set; } = false;
+
+        // --- Cuantificación bajo la conclusión -------------------------------------
+        // Tres datos independientes, cada uno con su casilla: solo sale en el informe lo
+        // que se marca. Se guardan como texto y no como número porque se escriben tal y
+        // como deben imprimirse ("<0,01", "0,001"), que es lo que valida el facultativo.
+
+        /// <summary>Marcado: el informe incluye el porcentaje de células atípicas.</summary>
+        public bool HasAtypicalCells { get; set; } = false;
+
+        [MaxLength(10)]
+        public string? AtypicalCellsPercent { get; set; }
+
+        /// <summary>Marcado: el informe incluye el límite de detección.</summary>
+        public bool HasLod { get; set; } = false;
+
+        [MaxLength(10)]
+        public string? LodValue { get; set; }
+
+        /// <summary>Marcado: el informe incluye el límite de cuantificación.</summary>
+        public bool HasLloq { get; set; } = false;
+
+        [MaxLength(10)]
+        public string? LloqValue { get; set; }
+
+        /// <summary>Ids de AnalyticalLimitation marcadas, separadas por coma (mismo patrón
+        /// que SelectedSignatures). Salen impresas debajo de la conclusión, una por línea.</summary>
+        [MaxLength(500)]
+        public string? SelectedAnalyticalLimitationIds { get; set; }
+
+        /// <summary>Las frases marcadas, congeladas al validar: reimprimir un informe emitido
+        /// no debe cambiar su texto porque después se haya reescrito el catálogo. Mismo
+        /// criterio que PanelVersionsText y que el equipo empleado.</summary>
+        [MaxLength(2000)]
+        public string? AnalyticalLimitationsText { get; set; }
+
+        /// <summary>Número de poblaciones (clones) informadas: 1 por defecto, 2 o 3 cuando la
+        /// muestra tiene más de un clon. Con más de una, la lista de marcadores se repite por
+        /// población y el informe las separa con su encabezado (ver MarkerPopulations).</summary>
+        public int PopulationCount { get; set; } = 1;
+    }
+
+    /// <summary>Encabezados de población en la lista de marcadores. El texto vive aquí y no
+    /// repartido por las vistas porque el informe guardado (MarkersSummary) lo lleva dentro:
+    /// quien lo imprime necesita reconocer esas líneas para ponerlas en negrita.</summary>
+    public static class MarkerPopulations
+    {
+        public const int Max = 3;
+
+        public static string LabelFor(int populationIndex) => $"Población {populationIndex}:";
+
+        /// <summary>¿Es esta línea un encabezado de población? Se usa al maquetar el PDF y el
+        /// ODT para destacarla, y tolera espacios porque el texto pasa por un campo editable.</summary>
+        public static bool IsLabel(string line)
+        {
+            var t = line.Trim();
+            for (var i = 1; i <= Max; i++)
+                if (string.Equals(t, LabelFor(i), System.StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
     }
 
     public class ReportSignatory
@@ -156,5 +215,10 @@ namespace MiniLIS.Domain.Entities
         
         public bool IsAdHoc { get; set; } = false;
         public int DisplayOrder { get; set; }
+
+        /// <summary>Población (clon) a la que pertenece esta intensidad: 1 salvo que el
+        /// informe declare 2 o 3 poblaciones. Los informes anteriores quedan todos en 1, que
+        /// es exactamente lo que eran.</summary>
+        public int PopulationIndex { get; set; } = 1;
     }
 }

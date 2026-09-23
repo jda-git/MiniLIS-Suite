@@ -204,6 +204,14 @@ namespace MiniLIS.Web.Controllers
             var versionsText = MiniLIS.Infrastructure.Services.DocumentService.ComputePanelVersionsText(sampleForVersions);
             report.PanelVersionsText = versionsText.Length > 500 ? versionsText[..500] : versionsText;
 
+            // Y lo mismo con las frases de calidad de la muestra: se guardan resueltas, para
+            // que reescribir el catálogo no cambie lo que decía un informe ya emitido.
+            var limitacionesText = await MiniLIS.Infrastructure.Services.DocumentService
+                .ComputeAnalyticalLimitationsTextAsync(_db, report);
+            report.AnalyticalLimitationsText = limitacionesText != null && limitacionesText.Length > 2000
+                ? limitacionesText[..2000]
+                : limitacionesText;
+
             var user = await _userManager.GetUserAsync(User);
             report.IsFinalized = true;
             report.ValidatedByUserId = user?.Id;
@@ -265,6 +273,10 @@ namespace MiniLIS.Web.Controllers
             report.IsFinalized = false;
             // ValidatedByUserId/ValidatedAtUtc se conservan como constancia de la última
             // validación (no se borran); la reapertura queda como evento aparte en AuditLogs.
+
+            // Los textos congelados sí se sueltan: el informe vuelve a ser un borrador, y al
+            // validarlo de nuevo debe congelar lo que diga entonces, no lo de la vez anterior.
+            report.AnalyticalLimitationsText = null;
 
             if (report.Sample != null)
             {
