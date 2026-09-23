@@ -1,5 +1,7 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Seed;
 using MiniLIS.Infrastructure.Services;
@@ -24,8 +26,22 @@ namespace MiniLIS.Tests
             return sample.Id;
         }
 
-        private static StorageService CreateService(MiniLIS.Infrastructure.Persistence.ApplicationDbContext ctx) =>
-            new StorageService(ctx, new MasterDataService(ctx), new LocalTimeService());
+        private static StorageService CreateService(MiniLIS.Infrastructure.Persistence.ApplicationDbContext ctx,
+            IPermissionService? permissions = null) =>
+            new StorageService(ctx, new MasterDataService(ctx), new LocalTimeService(),
+                permissions ?? new FakePermissionService(new FakeCurrentUserService { Roles = new() { "Facultativo" } }));
+
+        /// <summary>Crea una alícuota suelta y le aplica un evento, devolviendo su Id.</summary>
+        private static async Task<int> SeedAliquotAsync(TestDb db, int sampleId, string? evento = null, bool agotada = false, string? motivo = null)
+        {
+            using var ctx = db.CreateContext();
+            var service = CreateService(ctx);
+            var created = await service.AddAsync(sampleId, StoredSpecimenType.CelulasViables, null,
+                "F1", "R1", "B1", "A1", aliquotCount: 1, expiryOverrideUtc: null, notes: null, userId: 1);
+            var id = created.Single().Id;
+            if (evento != null) await service.AddEventAsync(id, evento, motivo, null, agotada, userId: 1);
+            return id;
+        }
 
         [Fact]
         public async Task AddAsync_creates_one_row_per_aliquot_sharing_a_new_BatchId()
@@ -226,6 +242,154 @@ namespace MiniLIS.Tests
             {
                 ctx.StoredSpecimens.Count(s => s.SampleId == sampleId).Should().Be(4);
             }
+        }
+
+        // ── Alícuotas cerradas: agotada, eliminada o cedida ─────────────────────────────
+        // El tubo físico ya no está en el congelador (o ya no es nuestro), así que registrar
+        // encima otra descongelación sería anotar algo que no ha ocurrido.
+
+        [Theory]
+        [InlineData(StoredSpecimenEventTypes.Eliminacion)]
+        [InlineData(StoredSpecimenEventTypes.Cesion)]
+        public async Task Una_alicuota_cerrada_no_admite_mas_movimientos(string cierre)
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId, cierre, motivo: "Fin del periodo de conservación");
+
+            using var ctx = db.CreateContext();
+            var service = CreateService(ctx);
+
+            await FluentActions.Awaiting(() => service.AddEventAsync(id, StoredSpecimenEventTypes.Descongelacion, null, null, false, 1))
+                .Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*ya no admite movimientos*");
+        }
+
+        [Fact]
+        public async Task Una_alicuota_agotada_tampoco_admite_mas_movimientos()
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId, StoredSpecimenEventTypes.Descongelacion, agotada: true);
+
+            using var ctx = db.CreateContext();
+            var service = CreateService(ctx);
+
+            await FluentActions.Awaiting(() => service.AddEventAsync(id, StoredSpecimenEventTypes.Traslado, null, "F2 / R1 / B1 / A1", false, 1))
+                .Should().ThrowAsync<InvalidOperationException>();
+
+            // Y no se ha movido de sitio al fallar.
+            (await ctx.StoredSpecimens.FindAsync(id))!.FreezerCode.Should().Be("F1");
+        }
+
+        [Fact]
+        public async Task Una_alicuota_descongelada_pero_no_agotada_sigue_disponible()
+        {
+            // Descongelada sin agotar: el tubo sigue existiendo, así que se puede volver a usar.
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId, StoredSpecimenEventTypes.Descongelacion);
+
+            using var ctx = db.CreateContext();
+            var service = CreateService(ctx);
+
+            await service.AddEventAsync(id, StoredSpecimenEventTypes.Traslado, null, "F2 / R2 / B2 / C3", false, 1);
+
+            var specimen = await ctx.StoredSpecimens.FindAsync(id);
+            specimen!.FreezerCode.Should().Be("F2");
+            specimen.Status.Should().Be(StoredSpecimenStatus.Descongelada);
+        }
+
+        [Fact]
+        public async Task Eliminar_sin_motivo_se_rechaza_tambien_en_el_servicio()
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId);
+
+            using var ctx = db.CreateContext();
+            var service = CreateService(ctx);
+
+            await FluentActions.Awaiting(() => service.AddEventAsync(id, StoredSpecimenEventTypes.Eliminacion, "  ", null, false, 1))
+                .Should().ThrowAsync<InvalidOperationException>().WithMessage("*motivo es obligatorio*");
+        }
+
+        [Fact]
+        public async Task La_correccion_reabre_la_alicuota_sin_borrar_el_cierre_equivocado()
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId, StoredSpecimenEventTypes.Eliminacion, motivo: "Eliminada por error");
+
+            using (var ctx = db.CreateContext())
+            {
+                await CreateService(ctx).AddEventAsync(id, StoredSpecimenEventTypes.Correccion,
+                    "Se confundió con la alícuota 2: el tubo sigue en la caja", null, false, 1);
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                var specimen = ctx.StoredSpecimens.Include(x => x.Events).Single(x => x.Id == id);
+                specimen.Status.Should().Be(StoredSpecimenStatus.Almacenada);
+                specimen.IsClosed.Should().BeFalse();
+                specimen.Events.Should().HaveCount(2, "el cierre equivocado no se borra, se le añade la corrección encima");
+                specimen.Events.Should().Contain(e => e.EventType == StoredSpecimenEventTypes.Eliminacion);
+            }
+        }
+
+        [Fact]
+        public async Task Al_corregir_una_alicuota_ya_descongelada_no_vuelve_a_almacenada()
+        {
+            // La descongelación sí ocurrió: solo se deshace el cierre equivocado.
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId, StoredSpecimenEventTypes.Descongelacion);
+
+            using (var ctx = db.CreateContext())
+            {
+                var service = CreateService(ctx);
+                await service.AddEventAsync(id, StoredSpecimenEventTypes.Cesion, "Cedida al proyecto X", null, false, 1);
+                await service.AddEventAsync(id, StoredSpecimenEventTypes.Correccion, "La cesión era de otra muestra", null, false, 1);
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                (await ctx.StoredSpecimens.FindAsync(id))!.Status.Should().Be(StoredSpecimenStatus.Descongelada);
+            }
+        }
+
+        [Fact]
+        public async Task La_correccion_exige_motivo_y_permiso()
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId, StoredSpecimenEventTypes.Eliminacion, motivo: "Caducada");
+
+            using var ctx = db.CreateContext();
+
+            await FluentActions.Awaiting(() => CreateService(ctx).AddEventAsync(id, StoredSpecimenEventTypes.Correccion, "error", null, false, 1))
+                .Should().ThrowAsync<InvalidOperationException>().WithMessage("*al menos 10 caracteres*");
+
+            var tecnico = new FakePermissionService(new FakeCurrentUserService { Roles = new() { "Técnico" } });
+            await FluentActions.Awaiting(() => CreateService(ctx, tecnico).AddEventAsync(id, StoredSpecimenEventTypes.Correccion,
+                    "El tubo sigue en la caja B1, no se llegó a tirar", null, false, 1))
+                .Should().ThrowAsync<UnauthorizedAccessException>();
+
+            (await ctx.StoredSpecimens.FindAsync(id))!.Status.Should().Be(StoredSpecimenStatus.Eliminada);
+        }
+
+        [Fact]
+        public async Task No_se_puede_corregir_una_alicuota_que_sigue_disponible()
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db);
+            var id = await SeedAliquotAsync(db, sampleId);
+
+            using var ctx = db.CreateContext();
+
+            await FluentActions.Awaiting(() => CreateService(ctx).AddEventAsync(id, StoredSpecimenEventTypes.Correccion,
+                    "No hay nada que corregir aquí", null, false, 1))
+                .Should().ThrowAsync<InvalidOperationException>().WithMessage("*sigue disponible*");
         }
     }
 }

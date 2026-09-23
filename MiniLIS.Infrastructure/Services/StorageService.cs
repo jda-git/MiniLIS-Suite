@@ -35,12 +35,15 @@ namespace MiniLIS.Infrastructure.Services
         private readonly ApplicationDbContext _db;
         private readonly IMasterDataService _masterService;
         private readonly ILocalTimeService _localTimeService;
+        private readonly IPermissionService _permissions;
 
-        public StorageService(ApplicationDbContext db, IMasterDataService masterService, ILocalTimeService localTimeService)
+        public StorageService(ApplicationDbContext db, IMasterDataService masterService, ILocalTimeService localTimeService,
+            IPermissionService permissions)
         {
             _db = db;
             _masterService = masterService;
             _localTimeService = localTimeService;
+            _permissions = permissions;
         }
 
         public async Task<List<StoredSpecimen>> SearchAsync(string? searchTerm, StoredSpecimenStatus? status, StoredSpecimenType? type, string? freezerCode)
@@ -135,8 +138,40 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task AddEventAsync(int storedSpecimenId, string eventType, string? reason, string? newLocation, bool agotadaEnEsteUso, int? userId)
         {
-            var specimen = await _db.StoredSpecimens.FirstOrDefaultAsync(s => s.Id == storedSpecimenId);
+            var specimen = await _db.StoredSpecimens
+                .Include(s => s.Events)
+                .FirstOrDefaultAsync(s => s.Id == storedSpecimenId);
             if (specimen == null) throw new InvalidOperationException("Alícuota no encontrada.");
+
+            // Una alícuota agotada, eliminada o cedida ya no está en el congelador: cualquier
+            // movimiento posterior sería anotar algo que no ha pasado. La única salida es la
+            // corrección, que no borra el cierre sino que añade un evento más encima.
+            var yaDescongelada = specimen.Events.Any(e => e.EventType == StoredSpecimenEventTypes.Descongelacion);
+            if (eventType == StoredSpecimenEventTypes.Correccion)
+            {
+                if (!specimen.IsClosed)
+                    throw new InvalidOperationException("Esta alícuota sigue disponible: no hay ningún cierre que corregir.");
+                if (!await _permissions.HasAsync(Permissions.ExcedenteCorregir))
+                    throw new UnauthorizedAccessException(
+                        "Su rol no puede reabrir una alícuota cerrada. Se reparte en Configuración → Permisos.");
+                if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 10)
+                    throw new InvalidOperationException(
+                        "Explique por qué se reabre la alícuota (al menos 10 caracteres): queda en su histórico.");
+            }
+            else if (specimen.IsClosed)
+            {
+                var cerradaEl = specimen.ClosedAtUtc is DateTime c
+                    ? $" el {_localTimeService.ToLocal(c):dd/MM/yyyy}"
+                    : string.Empty;
+                throw new InvalidOperationException(
+                    $"Esta alícuota {specimen.Status.ClosedReason()}{cerradaEl}: ya no admite movimientos. " +
+                    "Si se cerró por error, un facultativo puede reabrirla dejando constancia del motivo.");
+            }
+            else if (eventType == StoredSpecimenEventTypes.Eliminacion && string.IsNullOrWhiteSpace(reason))
+            {
+                // Mismo control que en pantalla: eliminar sin motivo no deja trazabilidad útil.
+                throw new InvalidOperationException("El motivo es obligatorio para eliminar una alícuota.");
+            }
 
             var nowUtc = DateTime.UtcNow;
             _db.StoredSpecimenEvents.Add(new StoredSpecimenEvent
@@ -155,10 +190,10 @@ namespace MiniLIS.Infrastructure.Services
             // sobre esta única fila.
             switch (eventType)
             {
-                case "Descongelacion":
+                case StoredSpecimenEventTypes.Descongelacion:
                     specimen.Status = agotadaEnEsteUso ? StoredSpecimenStatus.Agotada : StoredSpecimenStatus.Descongelada;
                     break;
-                case "Traslado":
+                case StoredSpecimenEventTypes.Traslado:
                     if (!string.IsNullOrWhiteSpace(newLocation))
                     {
                         var parts = newLocation.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -168,11 +203,16 @@ namespace MiniLIS.Infrastructure.Services
                         specimen.Position = parts.ElementAtOrDefault(3);
                     }
                     break;
-                case "Eliminacion":
+                case StoredSpecimenEventTypes.Eliminacion:
                     specimen.Status = StoredSpecimenStatus.Eliminada;
                     break;
-                case "Cesion":
+                case StoredSpecimenEventTypes.Cesion:
                     specimen.Status = StoredSpecimenStatus.Cedida;
+                    break;
+                case StoredSpecimenEventTypes.Correccion:
+                    // Vuelve al estado que tenía antes del cierre equivocado: si alguna vez se
+                    // descongeló sigue siendo descongelada, porque eso sí ocurrió.
+                    specimen.Status = yaDescongelada ? StoredSpecimenStatus.Descongelada : StoredSpecimenStatus.Almacenada;
                     break;
             }
 

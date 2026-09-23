@@ -246,7 +246,13 @@
                                 <td style="font-weight:600;">@first.Sample?.SampleNumber</td>
                                 <td>@first.Type</td>
                                 <td>@BuildLocationSummary(items)</td>
-                                <td>@items.Count de @first.BatchSize</td>
+                                <td>
+                                    @items.Count(i => !i.IsClosed) de @first.BatchSize
+                                    @if (items.Any(i => i.IsClosed))
+                                    {
+                                        <span class="text-muted small">(@items.Count(i => i.IsClosed) ya no disponibles)</span>
+                                    }
+                                </td>
                                 <td>@BuildStatusSummary(items)</td>
                                 <td class="@(items.Any(i => i.ExpiryDateUtc.HasValue && i.ExpiryDateUtc < DateTime.UtcNow) ? "text-danger fw-bold" : "")">
                                     @(items.Select(i => i.ExpiryDateUtc).Min()?.ToString("dd/MM/yyyy"))
@@ -264,12 +270,20 @@
                                         <td colspan="2" class="text-muted small">Alícuota @sp.AliquotIndex/@sp.BatchSize</td>
                                         <td class="small">@sp.LocationDisplay</td>
                                         <td></td>
-                                        <td>@sp.Status</td>
-                                        <td class="@(sp.ExpiryDateUtc.HasValue && sp.ExpiryDateUtc < DateTime.UtcNow ? "text-danger fw-bold" : "")">
-                                            @sp.ExpiryDateUtc?.ToString("dd/MM/yyyy")
+                                        <td><span class="estado-chip @(sp.IsClosed ? "estado-chip-cerrada" : "")">@sp.Status.ToDisplayName()</span></td>
+                                        <td class="@(!sp.IsClosed && sp.ExpiryDateUtc.HasValue && sp.ExpiryDateUtc < DateTime.UtcNow ? "text-danger fw-bold" : "")">
+                                            @* Una alícuota que ya no existe no "caduca": la fecha se apaga. *@
+                                            <span class="@(sp.IsClosed ? "text-muted" : "")">@sp.ExpiryDateUtc?.ToString("dd/MM/yyyy")</span>
                                         </td>
                                         <td class="cell-actions">
-                                            <button class="action-icon action-edit" title="Registrar evento" @onclick="() => OpenEventModal(sp)"><i class="bi bi-arrow-repeat"></i></button>
+                                            @if (sp.IsClosed)
+                                            {
+                                                <button class="action-icon" title="Ver histórico (ya no admite movimientos)" @onclick="() => OpenEventModal(sp)"><i class="bi bi-clock-history"></i></button>
+                                            }
+                                            else
+                                            {
+                                                <button class="action-icon action-edit" title="Registrar evento" @onclick="() => OpenEventModal(sp)"><i class="bi bi-arrow-repeat"></i></button>
+                                            }
                                         </td>
                                     </tr>
                                 }
@@ -298,7 +312,11 @@
                                     <div class="storage-tree-items">
                                         @foreach (var sp in boxGroup)
                                         {
-                                            <span class="storage-tree-item" title="@sp.Type - @sp.Status" @onclick="() => OpenEventModal(sp)">
+                                            @* Tachada: sigue visible para poder consultar su histórico, pero se ve
+                                               de un vistazo que esa posición del congelador ya está libre. *@
+                                            <span class="storage-tree-item @(sp.IsClosed ? "storage-tree-item-cerrada" : "")"
+                                                  title="@TreeItemTitle(sp)"
+                                                  @onclick="() => OpenEventModal(sp)">
                                                 @sp.Position · @sp.Sample?.SampleNumber
                                             </span>
                                         }
@@ -324,36 +342,77 @@
                 <button type="button" class="btn-close btn-close-white" @onclick="CloseEventModal"></button>
             </div>
             <div class="modal-card-body">
-                <p class="small text-muted">Ubicación: @eventModalSpecimen.LocationDisplay · Estado: @eventModalSpecimen.Status</p>
+                <p class="small text-muted">
+                    Ubicación: @(string.IsNullOrWhiteSpace(eventModalSpecimen.LocationDisplay) ? "—" : eventModalSpecimen.LocationDisplay)
+                    · Estado: <span class="estado-chip @(eventModalSpecimen.IsClosed ? "estado-chip-cerrada" : "")">@eventModalSpecimen.Status.ToDisplayName()</span>
+                </p>
 
-                <div class="mb-2">
-                    <label class="field-label">Acción</label>
-                    <select class="field-input w-100" @bind="eventModalType">
-                        <option value="Descongelacion">Descongelación</option>
-                        <option value="Traslado">Traslado</option>
-                        <option value="Eliminacion">Eliminación</option>
-                        <option value="Cesion">Cesión</option>
-                    </select>
-                </div>
-
-                @if (eventModalType == "Descongelacion")
+                @* Agotada, eliminada o cedida: el tubo ya no está, así que no se ofrece ninguna
+                   acción -- solo el histórico y, para quien tenga el permiso, la corrección. *@
+                @if (eventModalSpecimen.IsClosed)
                 {
-                    <div class="mb-2 d-flex align-items-center gap-2">
-                        <input type="checkbox" id="chkAgotada" @bind="eventModalAgotada" />
-                        <label for="chkAgotada" class="field-label mb-0">¿Se agota en este uso?</label>
+                    <div class="aviso-cerrada">
+                        <i class="bi bi-slash-circle"></i>
+                        <div>
+                            <strong>Esta alícuota ya no está disponible:</strong>
+                            @eventModalSpecimen.Status.ClosedReason()@(eventModalSpecimen.ClosedAtUtc is DateTime cierre ? $" el {LocalTimeService.ToLocal(cierre):dd/MM/yyyy}" : "").
+                            No se pueden registrar más movimientos sobre ella.
+                        </div>
                     </div>
+
+                    @if (puedeCorregir)
+                    {
+                        @if (!corrigiendo)
+                        {
+                            <button class="btn-bandeja btn-bandeja-outline mb-2" @onclick="() => corrigiendo = true">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i> Se cerró por error: reabrir
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="mb-2">
+                                <label class="field-label">Motivo de la reapertura (obligatorio)</label>
+                                <textarea class="field-input w-100" rows="2" placeholder="Qué ocurrió y por qué la alícuota sigue existiendo"
+                                          @bind="eventModalReason"></textarea>
+                                <div class="campo-nota">
+                                    El cierre equivocado no se borra: queda en el histórico y encima se añade esta corrección.
+                                </div>
+                            </div>
+                        }
+                    }
                 }
-                @if (eventModalType == "Traslado")
+                else
                 {
                     <div class="mb-2">
-                        <label class="field-label">Nueva ubicación (Congelador / Rack / Caja / Posición)</label>
-                        <input type="text" class="field-input w-100" placeholder="CONG-2 / B / 4 / A3" @bind="eventModalNewLocation" />
+                        <label class="field-label">Acción</label>
+                        <select class="field-input w-100" @bind="eventModalType">
+                            <option value="Descongelacion">Descongelación</option>
+                            <option value="Traslado">Traslado</option>
+                            <option value="Eliminacion">Eliminación</option>
+                            <option value="Cesion">Cesión</option>
+                        </select>
+                        <div class="campo-nota">@AccionAviso(eventModalType)</div>
+                    </div>
+
+                    @if (eventModalType == "Descongelacion")
+                    {
+                        <div class="mb-2 d-flex align-items-center gap-2">
+                            <input type="checkbox" id="chkAgotada" @bind="eventModalAgotada" />
+                            <label for="chkAgotada" class="field-label mb-0">¿Se agota en este uso?</label>
+                        </div>
+                    }
+                    @if (eventModalType == "Traslado")
+                    {
+                        <div class="mb-2">
+                            <label class="field-label">Nueva ubicación (Congelador / Rack / Caja / Posición)</label>
+                            <input type="text" class="field-input w-100" placeholder="CONG-2 / B / 4 / A3" @bind="eventModalNewLocation" />
+                        </div>
+                    }
+                    <div class="mb-2">
+                        <label class="field-label">Motivo @(eventModalType == "Eliminacion" ? "(obligatorio)" : "")</label>
+                        <textarea class="field-input w-100" rows="2" @bind="eventModalReason"></textarea>
                     </div>
                 }
-                <div class="mb-2">
-                    <label class="field-label">Motivo @(eventModalType == "Eliminacion" ? "(obligatorio)" : "")</label>
-                    <textarea class="field-input w-100" rows="2" @bind="eventModalReason"></textarea>
-                </div>
 
                 @if (!string.IsNullOrEmpty(eventModalError))
                 {
@@ -364,13 +423,22 @@
                 <ul class="storage-event-list">
                     @foreach (var ev in eventModalSpecimen.Events.OrderByDescending(e => e.EventAtUtc))
                     {
-                        <li>@LocalTimeService.ToLocal(ev.EventAtUtc).ToString("dd/MM/yyyy HH:mm") — @ev.EventType @(string.IsNullOrWhiteSpace(ev.Reason) ? "" : $"({ev.Reason})")</li>
+                        <li>@LocalTimeService.ToLocal(ev.EventAtUtc).ToString("dd/MM/yyyy HH:mm") — @EventoLabel(ev.EventType) @(string.IsNullOrWhiteSpace(ev.Reason) ? "" : $"({ev.Reason})")</li>
                     }
                 </ul>
 
                 <div class="d-flex justify-content-end gap-2 mt-3">
-                    <button class="btn-bandeja btn-bandeja-outline" @onclick="CloseEventModal">Cancelar</button>
-                    <button class="btn-bandeja" style="background:#16a34a;color:#fff;" @onclick="SaveEvent">Guardar</button>
+                    <button class="btn-bandeja btn-bandeja-outline" @onclick="CloseEventModal">
+                        @(eventModalSpecimen.IsClosed && !corrigiendo ? "Cerrar" : "Cancelar")
+                    </button>
+                    @if (!eventModalSpecimen.IsClosed)
+                    {
+                        <button class="btn-bandeja" style="background:#16a34a;color:#fff;" @onclick="SaveEvent">Guardar</button>
+                    }
+                    else if (corrigiendo)
+                    {
+                        <button class="btn-bandeja" style="background:#b45309;color:#fff;" @onclick="ReabrirAlicuota">Reabrir alícuota</button>
+                    }
                 </div>
             </div>
         </div>
@@ -388,8 +456,35 @@
     .storage-tree-items { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
     .storage-tree-item { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
     .storage-tree-item:hover { background: #e0f2fe; }
+    .storage-tree-item-cerrada { background: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; text-decoration: line-through; }
+    .storage-tree-item-cerrada:hover { background: #e2e8f0; }
     .storage-event-list { list-style: none; padding: 0; font-size: 12px; max-height: 120px; overflow-y: auto; }
     .storage-event-list li { padding: 3px 0; border-bottom: 1px dashed #e2e8f0; }
+
+    /* Campos de la ventana de eventos (mismo aspecto que los de Configuración). */
+    .field-label { display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .field-input {
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+        color: #334155;
+        transition: border-color 0.15s;
+        outline: none;
+    }
+    .field-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    .campo-nota { font-size: 11.5px; color: #94a3b8; margin-top: 4px; }
+
+    /* Estado de la alícuota: las cerradas (agotada/eliminada/cedida) se leen de un vistazo. */
+    .estado-chip { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .estado-chip-cerrada { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+    .aviso-cerrada {
+        display: flex; gap: 10px; align-items: flex-start;
+        background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+        border-radius: 8px; padding: 10px 12px; font-size: 12.5px; margin-bottom: 14px;
+    }
+    .aviso-cerrada i { font-size: 16px; line-height: 1.2; flex-shrink: 0; }
 
     /* Fila de lote (F-7): un clic expande/colapsa las alícuotas individuales debajo -- toda
        la fila es clicable salvo la celda de acciones (con stopPropagation en el marcado). */
@@ -614,6 +709,7 @@
     {
         // "Sin justificar" es un permiso propio (Configuración → Permisos).
         esAdmin = await Permisos.HasAsync(Permissions.ExportIdentificadoresSinJustificar);
+        puedeCorregir = await Permisos.HasAsync(Permissions.ExcedenteCorregir);
     }
 
     private bool isLoading = false;
@@ -634,6 +730,9 @@
     private string? eventModalNewLocation;
     private bool eventModalAgotada;
     private string? eventModalError;
+    /// <summary>Reabrir una alícuota cerrada por error (permiso "excedente.corregir").</summary>
+    private bool puedeCorregir;
+    private bool corrigiendo;
 
     // Lotes expandidos en la tabla (F-7): cada fila es ahora una alícuota individual, así que
     // la tabla agrupa por BatchId y solo muestra el detalle alícuota a alícuota bajo demanda.
@@ -686,35 +785,90 @@
     private void OpenEventModal(StoredSpecimen sp)
     {
         eventModalSpecimen = sp;
-        eventModalType = "Descongelacion";
+        eventModalType = StoredSpecimenEventTypes.Descongelacion;
         eventModalReason = null;
         eventModalNewLocation = null;
         eventModalAgotada = false;
         eventModalError = null;
+        corrigiendo = false;
     }
 
     private void CloseEventModal() => eventModalSpecimen = null;
+
+    /// <summary>Lo que va a pasar al guardar, dicho antes de guardarlo: "eliminación" y
+    /// "cesión" cierran la alícuota para siempre y conviene saberlo antes de pulsar.</summary>
+    private static string AccionAviso(string tipo) => tipo switch
+    {
+        StoredSpecimenEventTypes.Descongelacion => "Si además se agota, la alícuota queda cerrada y no admitirá más movimientos.",
+        StoredSpecimenEventTypes.Traslado => "Solo cambia la ubicación: la alícuota sigue disponible.",
+        StoredSpecimenEventTypes.Eliminacion => "La alícuota deja de existir: no admitirá más movimientos.",
+        StoredSpecimenEventTypes.Cesion => "La alícuota sale de nuestra custodia: no admitirá más movimientos.",
+        _ => string.Empty
+    };
+
+    private static string TreeItemTitle(StoredSpecimen sp)
+        => $"{sp.Type} - {sp.Status.ToDisplayName()}" + (sp.IsClosed ? " (ya no está en el congelador)" : "");
+
+    private static string EventoLabel(string tipo) => tipo switch
+    {
+        StoredSpecimenEventTypes.Descongelacion => "Descongelación",
+        StoredSpecimenEventTypes.Traslado => "Traslado",
+        StoredSpecimenEventTypes.Eliminacion => "Eliminación",
+        StoredSpecimenEventTypes.Cesion => "Cesión",
+        StoredSpecimenEventTypes.Correccion => "Reapertura (corrección)",
+        _ => tipo
+    };
 
     private async Task SaveEvent()
     {
         if (eventModalSpecimen == null) return;
         eventModalError = null;
 
-        if (eventModalType == "Eliminacion" && string.IsNullOrWhiteSpace(eventModalReason))
+        if (eventModalType == StoredSpecimenEventTypes.Eliminacion && string.IsNullOrWhiteSpace(eventModalReason))
         {
             eventModalError = "El motivo es obligatorio para eliminar una alícuota.";
             return;
         }
-        if (eventModalType == "Traslado" && string.IsNullOrWhiteSpace(eventModalNewLocation))
+        if (eventModalType == StoredSpecimenEventTypes.Traslado && string.IsNullOrWhiteSpace(eventModalNewLocation))
         {
             eventModalError = "Indique la nueva ubicación.";
             return;
         }
 
+        await RegistrarEvento(eventModalType);
+    }
+
+    /// <summary>Corrección de un cierre equivocado: no borra nada, añade un evento encima.</summary>
+    private async Task ReabrirAlicuota()
+    {
+        if (eventModalSpecimen == null) return;
+        eventModalError = null;
+
+        if (string.IsNullOrWhiteSpace(eventModalReason) || eventModalReason.Trim().Length < 10)
+        {
+            eventModalError = "Explique por qué se reabre la alícuota (al menos 10 caracteres).";
+            return;
+        }
+
+        await RegistrarEvento(StoredSpecimenEventTypes.Correccion);
+    }
+
+    private async Task RegistrarEvento(string tipo)
+    {
         var authState = await AuthStateTask;
         var currentUser = await UserManager.GetUserAsync(authState.User);
 
-        await StorageService.AddEventAsync(eventModalSpecimen.Id, eventModalType, eventModalReason, eventModalNewLocation, eventModalAgotada, currentUser?.Id);
+        try
+        {
+            await StorageService.AddEventAsync(eventModalSpecimen!.Id, tipo, eventModalReason, eventModalNewLocation, eventModalAgotada, currentUser?.Id);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+        {
+            // Por ejemplo, si otra sesión cerró la alícuota mientras esta ventana estaba abierta.
+            eventModalError = ex.Message;
+            return;
+        }
+
         eventModalSpecimen = null;
         await LoadStorage();
     }

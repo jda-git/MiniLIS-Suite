@@ -30,6 +30,41 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.1.0
+
+Versión **MENOR**: no cambia el informe emitido ni obliga a revalidar. Añade un permiso
+nuevo, que entra con su reparto de fábrica sin tocar lo ya configurado.
+
+### Alícuotas almacenadas: lo cerrado queda cerrado
+
+Una alícuota **agotada, eliminada o cedida** ya no está en el congelador (o ya no es
+nuestra). Hasta ahora la pantalla seguía ofreciendo registrar una descongelación, un
+traslado o una segunda eliminación sobre ella, lo que permitía anotar movimientos de un
+tubo que no existe.
+
+- La ventana de la alícuota ya no ofrece ninguna acción cuando está cerrada: explica desde
+  cuándo y por qué, y muestra solo su histórico.
+- **El servidor lo comprueba igual**, no solo la pantalla: cualquier evento sobre una
+  alícuota cerrada se rechaza con el motivo.
+- En el listado, el botón de registrar evento pasa a ser **Ver histórico**; el estado se ve
+  como etiqueta y la fecha de caducidad se apaga (lo que no existe no caduca). La columna de
+  alícuotas cuenta las que **quedan disponibles**.
+- En el mapa de congeladores, las alícuotas cerradas salen tachadas: esa posición está libre.
+- Eliminar sin motivo se rechaza también en el servidor, no solo en el formulario.
+
+**Si se cerró por error**, un facultativo puede **reabrir la alícuota** dejando constancia:
+exige un motivo y el cierre equivocado **no se borra** — la corrección se añade encima, en
+el histórico (misma regla que las anulaciones de tubo de la v4.0). Lo reparte el permiso
+nuevo *Reabrir una alícuota cerrada por error* (Configuración → Permisos), de fábrica solo
+para el Facultativo.
+
+### Correcciones
+
+- La ventana de eventos de una alícuota se abría **al final de la página y con el título
+  ilegible** (blanco sobre blanco): sus estilos vivían en la pantalla de muestras, así que en
+  Excedente no se aplicaban y el contenido se pintaba como texto corriente. Ahora son estilos
+  compartidos y la ventana se abre centrada, sin tener que bajar la página.
+
 ## v4.0.0
 
 Versión **MAYOR**: cambia cómo figura la versión de panel en los informes nuevos y exige

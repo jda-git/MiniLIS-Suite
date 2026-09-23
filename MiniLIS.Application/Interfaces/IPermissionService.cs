@@ -140,6 +140,9 @@ namespace MiniLIS.Application.Interfaces
                     Title = "Notificaciones (pantalla y CSV)" },
             new() { Code = Permissions.ExcedenteVer, Group = "Consultas y exportaciones", Defaults = AdminYFacultativo,
                     Title = "Excedente (pantalla y CSV)" },
+            new() { Code = Permissions.ExcedenteCorregir, Group = "Consultas y exportaciones", Defaults = SoloFacultativo,
+                    Title = "Reabrir una alícuota cerrada por error",
+                    Description = "Agotada, eliminada o cedida por equivocación. Exige motivo; el evento erróneo no se borra." },
             new() { Code = Permissions.ExportMuestras, Group = "Consultas y exportaciones", Defaults = AdminYFacultativo,
                     Title = "Exportar el CSV de muestras (Bandeja técnica)" },
             new() { Code = Permissions.ExportIdentificadores, Group = "Consultas y exportaciones", Defaults = AdminYFacultativo,
@@ -230,6 +233,7 @@ namespace MiniLIS.Application.Interfaces
         public const string BuscadorVer = "buscador.ver";
         public const string NotificacionesVer = "notificaciones.ver";
         public const string ExcedenteVer = "excedente.ver";
+        public const string ExcedenteCorregir = "excedente.corregir";
         public const string ExportMuestras = "export.muestras";
         public const string ExportIdentificadores = "export.identificadores";
         public const string ExportIdentificadoresSinJustificar = "export.identificadores-sin-justificar";
@@ -277,6 +281,7 @@ namespace MiniLIS.Application.Interfaces
             public const string BuscadorVer = PolicyPrefix + Permissions.BuscadorVer;
             public const string NotificacionesVer = PolicyPrefix + Permissions.NotificacionesVer;
             public const string ExcedenteVer = PolicyPrefix + Permissions.ExcedenteVer;
+            public const string ExcedenteCorregir = PolicyPrefix + Permissions.ExcedenteCorregir;
             public const string ExportMuestras = PolicyPrefix + Permissions.ExportMuestras;
             public const string ExportIdentificadores = PolicyPrefix + Permissions.ExportIdentificadores;
             public const string ExportIdentificadoresSinJustificar = PolicyPrefix + Permissions.ExportIdentificadoresSinJustificar;

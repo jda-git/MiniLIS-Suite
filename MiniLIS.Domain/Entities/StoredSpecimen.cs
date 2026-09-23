@@ -62,6 +62,49 @@ namespace MiniLIS.Domain.Entities
         Cedida = 5
     }
 
+    /// <summary>Tipos de evento admitidos por StoredSpecimenEvent.EventType. Como cadenas y no
+    /// como enum: la columna ya está en producción con estos valores.</summary>
+    public static class StoredSpecimenEventTypes
+    {
+        public const string Descongelacion = "Descongelacion";
+        public const string Traslado = "Traslado";
+        public const string Eliminacion = "Eliminacion";
+        public const string Cesion = "Cesion";
+
+        /// <summary>Corrección de un cierre equivocado: devuelve la alícuota a circulación sin
+        /// borrar el evento erróneo, que sigue en el histórico (Regla 1).</summary>
+        public const string Correccion = "Correccion";
+    }
+
+    public static class StoredSpecimenStatusExtensions
+    {
+        /// <summary>Estados de los que no se vuelve: la alícuota se consumió, se destruyó o
+        /// salió de nuestra custodia. Una alícuota así no admite nuevos movimientos -- el tubo
+        /// físico ya no está en el congelador y registrar otra descongelación sobre ella sería
+        /// anotar algo que no ha ocurrido.</summary>
+        public static bool IsClosed(this StoredSpecimenStatus status) =>
+            status is StoredSpecimenStatus.Agotada or StoredSpecimenStatus.Eliminada or StoredSpecimenStatus.Cedida;
+
+        public static string ToDisplayName(this StoredSpecimenStatus status) => status switch
+        {
+            StoredSpecimenStatus.Almacenada => "Almacenada",
+            StoredSpecimenStatus.Descongelada => "Descongelada",
+            StoredSpecimenStatus.Agotada => "Agotada",
+            StoredSpecimenStatus.Eliminada => "Eliminada",
+            StoredSpecimenStatus.Cedida => "Cedida",
+            _ => status.ToString()
+        };
+
+        /// <summary>Por qué ya no está disponible, para explicarlo en pantalla.</summary>
+        public static string ClosedReason(this StoredSpecimenStatus status) => status switch
+        {
+            StoredSpecimenStatus.Agotada => "se agotó en su último uso",
+            StoredSpecimenStatus.Eliminada => "se eliminó",
+            StoredSpecimenStatus.Cedida => "se cedió y ya no está bajo nuestra custodia",
+            _ => string.Empty
+        };
+    }
+
     /// <summary>Seguimiento de ubicación de alícuotas de muestra excedente almacenada (F-7).
     /// Capa nueva junto a IExcedenteService (que sigue sirviendo su vista actual sobre los
     /// booleanos de SampleReport): no lo sustituye. El congelador es una referencia al código
@@ -128,6 +171,22 @@ namespace MiniLIS.Domain.Entities
 
         public ICollection<StoredSpecimenEvent> Events { get; set; } = new List<StoredSpecimenEvent>();
 
+        /// <summary>La alícuota ya no existe (agotada o eliminada) o ha salido de nuestra
+        /// custodia (cedida): no admite nuevos eventos. Ver StoredSpecimenStatusExtensions.</summary>
+        [NotMapped]
+        public bool IsClosed => Status.IsClosed();
+
+        /// <summary>Fecha del evento que la cerró, para poder decir «eliminada el 12/03/2026».</summary>
+        [NotMapped]
+        public DateTime? ClosedAtUtc => IsClosed
+            ? Events.Where(e => e.EventType is StoredSpecimenEventTypes.Eliminacion
+                                            or StoredSpecimenEventTypes.Cesion
+                                            or StoredSpecimenEventTypes.Descongelacion)
+                    .OrderByDescending(e => e.EventAtUtc)
+                    .Select(e => (DateTime?)e.EventAtUtc)
+                    .FirstOrDefault()
+            : null;
+
         [NotMapped]
         public string LocationDisplay =>
             string.Join(" / ", new[] { FreezerCode, Rack, Box, Position }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -143,7 +202,7 @@ namespace MiniLIS.Domain.Entities
         public StoredSpecimen StoredSpecimen { get; set; } = null!;
 
         [MaxLength(30)]
-        public string EventType { get; set; } = string.Empty; // Descongelacion, Uso, Traslado, Eliminacion, Cesion
+        public string EventType { get; set; } = string.Empty; // ver StoredSpecimenEventTypes
 
         public DateTime EventAtUtc { get; set; }
         public int? PerformedByUserId { get; set; }
