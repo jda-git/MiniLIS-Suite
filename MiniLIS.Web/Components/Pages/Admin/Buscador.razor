@@ -2,6 +2,7 @@
 @page "/estadisticas"
 @using Microsoft.AspNetCore.Authorization
 @using MiniLIS.Application.Interfaces
+@using MiniLIS.Web.Components.Shared
 @using MiniLIS.Domain.Entities
 @attribute [Authorize(Policy = Permissions.Policies.BuscadorVer)]
 @inject IReportSearchService SearchService
@@ -122,7 +123,8 @@
             </button>
             @if (resultado != null && resultado.Items.Any())
             {
-                <button class="bus-btn-csv" @onclick="ExportarCsv">
+                <ExportIdentityDialog @ref="exportDialog" Titulo="la búsqueda" Aviso="@AvisoRango" OnConfirmar="DescargarCsv" />
+                <button class="bus-btn-csv" @onclick="() => exportDialog!.MostrarAsync()">
                     <i class="bi bi-filetype-csv me-1"></i>Exportar CSV
                 </button>
             }
@@ -345,11 +347,54 @@
         mensaje = null;
     }
 
-    private async Task ExportarCsv()
+    private ExportIdentityDialog? exportDialog;
+
+    /// <summary>La política de exportación exige un rango de fechas acotado. Si la búsqueda no
+    /// lo llevaba, el fichero se limita al último año y puede traer menos filas de las que hay
+    /// en pantalla: mejor decirlo antes de descargar que dejar que se note al abrirlo.</summary>
+    private string? AvisoRango => filtro.Desde.HasValue && filtro.Hasta.HasValue
+        ? null
+        : "La búsqueda no tiene rango de fechas. El fichero se limitará al último año, así que puede " +
+          "contener menos filas de las que ve en pantalla.";
+
+    /// <summary>
+    /// v4.4: la exportación ya no genera el fichero aquí. Pasa por
+    /// /api/downloads/buscador/csv, que reevalúa IPatientDataExportPolicy en servidor (rango de
+    /// fechas, permiso de identificadores, justificación) y deja la descarga en la auditoría
+    /// con usuario e IP. Antes se descargaba con nombre y NHC siempre, sin control ni rastro.
+    /// </summary>
+    private void DescargarCsv((ExportIdentityLevel Nivel, string? Justificacion) opcion)
     {
         if (resultado == null) return;
-        var csv = SearchService.ExportToCsv(resultado.Items);
-        await JS.InvokeVoidAsync("downloadFileFromBase64",
-            $"Busqueda_informes_{DateTime.Now:yyyyMMdd_HHmm}.csv", Convert.ToBase64String(csv));
+
+        // El rango de fechas lo exige la política; si la búsqueda no lo acotó, se usa el
+        // último año, igual que en la bandeja técnica.
+        var desde = (filtro.Desde ?? DateTime.Today.AddDays(-366)).ToString("yyyy-MM-dd");
+        var hasta = (filtro.Hasta ?? DateTime.Today).ToString("yyyy-MM-dd");
+
+        var parametros = new List<string>
+        {
+            $"Desde={desde}",
+            $"Hasta={hasta}",
+            $"nivel={opcion.Nivel}"
+        };
+        void Añadir(string nombre, string? valor)
+        {
+            if (!string.IsNullOrWhiteSpace(valor)) parametros.Add($"{nombre}={Uri.EscapeDataString(valor)}");
+        }
+        Añadir("Conclusiones", filtro.Conclusiones);
+        Añadir("CuerpoInforme", filtro.CuerpoInforme);
+        Añadir("SospechaClinica", filtro.SospechaClinica);
+        Añadir("Facultativo", filtro.Facultativo);
+        Añadir("Servicio", filtro.Servicio);
+        Añadir("Marcador", filtro.Marcador);
+        Añadir("Panel", filtro.Panel);
+        Añadir("Paciente", filtro.Paciente);
+        if (filtro.TipoMuestra.HasValue) parametros.Add($"TipoMuestra={filtro.TipoMuestra}");
+        if (filtro.Estado.HasValue) parametros.Add($"Estado={filtro.Estado}");
+        if (filtro.SoloValidados) parametros.Add("SoloValidados=true");
+        Añadir("justificacion", opcion.Justificacion);
+
+        JS.InvokeVoidAsync("triggerDownload", "/api/downloads/buscador/csv?" + string.Join("&", parametros));
     }
 }

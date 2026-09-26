@@ -30,6 +30,56 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.4.0
+
+Versión **MENOR**: no toca el informe. Cambia cómo salen los datos de paciente en las
+exportaciones y **cierra un agujero de protección de datos** en el CSV del buscador.
+
+### El CSV del buscador ya no se lleva nombres sin control
+
+Hasta esta versión, «Exportar CSV» del buscador generaba el fichero en el propio navegador y
+lo descargaba directamente. Eso significaba que:
+
+- Salía **siempre con nombre y NHC**, sin forma de evitarlo.
+- **No comprobaba** el permiso de incluir identificadores: cualquiera que pudiera abrir el
+  buscador se llevaba un listado nominal.
+- **No exigía justificación** ni límite de rango de fechas.
+- **No dejaba ninguna línea en la auditoría**: no había forma de saber quién se llevó qué.
+
+Era la vía más cómoda para sacar un listado con nombres del sistema sin dejar rastro. Cuando
+se blindaron las exportaciones se cubrieron muestras, excedente y notificaciones; este CSV se
+añadió después y nació fuera de ese control.
+
+Ahora pasa por `/api/downloads/buscador/csv`, con el **mismo control que las otras tres**:
+permiso, justificación obligatoria, rango de fechas acotado y registro en auditoría con
+usuario, IP, nivel de identidad, número de filas y motivo. La búsqueda se rehace en el
+servidor: no se exporta nada que venga del navegador.
+
+### Tres niveles de identidad, no un sí o no
+
+Las exportaciones de la **bandeja técnica** y del **buscador** preguntan qué debe llevar el
+fichero:
+
+| Nivel | Contenido |
+|---|---|
+| **Sin identificadores** (por defecto) | Ni NHC ni nombre |
+| **Con NHC, sin nombre** | Permite cruzar con la historia sin sacar nombres |
+| **Con NHC y nombre** | Solo cuando el nombre sea imprescindible |
+
+El nivel intermedio es el que faltaba: para casi todo el trabajo de conciliación basta el
+NHC, y llevarse además el nombre multiplica el daño si el fichero se traspapela sin aportar
+nada (minimización del dato, RGPD art. 5.1.c).
+
+**El NHC pide el mismo permiso y la misma justificación que el nombre.** Identifica al
+paciente dentro del hospital, así que un listado con NHC sigue siendo dato personal: lo que
+cambia entre los dos niveles es cuánto daño hace, no si hace falta permiso.
+
+La ventana avisa además de que el fichero sale sin cifrar y de que, para respaldar el
+sistema, la herramienta es **Copias de seguridad** y no esta exportación.
+
+Excedente y notificaciones mantienen su comportamiento anterior (seudonimizada o completa),
+ya con el mismo tipo de dato por debajo.
+
 ## v4.3.0
 
 Versión **MENOR**: no cambia ningún informe ya emitido. Añade el informe de las muestras

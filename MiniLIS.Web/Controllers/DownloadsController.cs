@@ -25,13 +25,14 @@ namespace MiniLIS.Web.Controllers
         private readonly IAuditPackageService _auditPackageService;
         private readonly IExcedenteService _excedenteService;
         private readonly INotificationService _notificationService;
+        private readonly IReportSearchService _searchService;
         private readonly IPatientDataExportPolicy _exportPolicy;
         private readonly IPermissionService _permissions;
         private readonly Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> _userManager;
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, IExcedenteService excedenteService, INotificationService notificationService, IPatientDataExportPolicy exportPolicy, IPermissionService permissions, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, IExcedenteService excedenteService, INotificationService notificationService, IReportSearchService searchService, IPatientDataExportPolicy exportPolicy, IPermissionService permissions, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
@@ -43,6 +44,7 @@ namespace MiniLIS.Web.Controllers
             _auditPackageService = auditPackageService;
             _excedenteService = excedenteService;
             _notificationService = notificationService;
+            _searchService = searchService;
             _exportPolicy = exportPolicy;
             _permissions = permissions;
             _userManager = userManager;
@@ -313,14 +315,18 @@ namespace MiniLIS.Web.Controllers
         public async Task<IActionResult> ExportMuestras(
             [FromQuery] DateTime? desde,
             [FromQuery] DateTime? hasta,
+            [FromQuery] ExportIdentityLevel? nivel = null,
             [FromQuery] bool incluirIdentificadores = false,
             [FromQuery] string? justificacion = null)
         {
+            // "incluirIdentificadores" se mantiene para no romper enlaces guardados de antes de
+            // que la identidad fuera por niveles: equivale al nivel máximo.
+            var nivelPedido = nivel ?? (incluirIdentificadores ? ExportIdentityLevel.NhcYNombre : ExportIdentityLevel.Ninguno);
             // N-2: las comprobaciones vivían aquí incrustadas -- ahora pasan por
             // IPatientDataExportPolicy, el mismo punto que usan también /excedente/csv y
             // /notificaciones/csv, para que esta implementación de referencia no vuelva a
             // divergir de las otras dos exportaciones de datos de paciente.
-            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta, incluirIdentificadores, justificacion);
+            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta, nivelPedido, justificacion);
             if (!decision.Allowed)
                 return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
 
@@ -333,7 +339,7 @@ namespace MiniLIS.Web.Controllers
                 .OrderByDescending(s => s.ReceptionDate)
                 .ToListAsync();
 
-            var bytes = await _sampleService.ExportSamplesToCsvAsync(samples, decision.IncludeIdentifiers);
+            var bytes = await _sampleService.ExportSamplesToCsvAsync(samples, decision.Level);
             var fileName = $"Muestras_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv";
 
             var user = await _userManager.GetUserAsync(User);
@@ -345,7 +351,7 @@ namespace MiniLIS.Web.Controllers
                 UserId = user?.Id,
                 Username = user?.UserName,
                 IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
-                ActionContext = $"Exportación CSV de muestras {(decision.IncludeIdentifiers ? "con identificadores" : "seudonimizada")}: " +
+                ActionContext = $"Exportación CSV de muestras {decision.LevelDescription}: " +
                     $"{start:yyyy-MM-dd} a {hasta.Value.Date:yyyy-MM-dd}, {samples.Count} fila(s)" +
                     (decision.Justification != null ? $" — Justificación: {decision.Justification}" : ""),
                 TimestampUtc = DateTime.UtcNow
@@ -353,6 +359,47 @@ namespace MiniLIS.Web.Controllers
             await _db.SaveChangesAsync();
 
             return File(bytes, "text/csv", fileName);
+        }
+
+        /// <summary>
+        /// CSV del resultado del buscador de informes. Hasta la v4.4 lo generaba el propio
+        /// componente Blazor y lo descargaba por JavaScript: salía siempre con nombre y NHC,
+        /// sin comprobar el permiso de identificadores, sin exigir justificación y sin dejar
+        /// ninguna línea en la auditoría. Era la vía más cómoda para sacar un listado nominal
+        /// del sistema sin rastro. Ahora pasa por el mismo control que las otras tres.
+        /// </summary>
+        [HttpGet("buscador/csv")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = Permissions.Policies.BuscadorVer)]
+        public async Task<IActionResult> ExportBuscador(
+            [FromQuery] ReportSearchFilter filtro,
+            [FromQuery] ExportIdentityLevel nivel = ExportIdentityLevel.Ninguno,
+            [FromQuery] string? justificacion = null)
+        {
+            var decision = await _exportPolicy.EvaluateAsync(User, filtro.Desde, filtro.Hasta, nivel, justificacion);
+            if (!decision.Allowed)
+                return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
+
+            // La búsqueda se rehace aquí: nunca se confía en filas que vengan del cliente.
+            var resultado = await _searchService.SearchAsync(filtro);
+            var bytes = _searchService.ExportToCsv(resultado.Items, decision.Level);
+
+            var user = await _userManager.GetUserAsync(User);
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = "ReportSearchCsvExport",
+                EntityId = $"{filtro.Desde:yyyyMMdd}-{filtro.Hasta:yyyyMMdd}",
+                Action = "Export",
+                UserId = user?.Id,
+                Username = user?.UserName,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                ActionContext = $"Exportación CSV del buscador {decision.LevelDescription}: " +
+                    $"{filtro.Desde:yyyy-MM-dd} a {filtro.Hasta:yyyy-MM-dd}, {resultado.Items.Count} fila(s)" +
+                    (decision.Justification != null ? $" — Justificación: {decision.Justification}" : ""),
+                TimestampUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+
+            return File(bytes, "text/csv", $"Busqueda_informes_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv");
         }
 
         /// <summary>Excedente disponible (biobanco/genómica/NGS), con identidad completa u
@@ -369,7 +416,8 @@ namespace MiniLIS.Web.Controllers
             [FromQuery] string destinationType = "Todos",
             [FromQuery] string? searchTerm = null)
         {
-            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta, incluirIdentificadores, justificacion);
+            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta,
+                incluirIdentificadores ? ExportIdentityLevel.NhcYNombre : ExportIdentityLevel.Ninguno, justificacion);
             if (!decision.Allowed)
                 return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
 
@@ -395,7 +443,8 @@ namespace MiniLIS.Web.Controllers
             [FromQuery] string alertType = "Todos",
             [FromQuery] string? searchTerm = null)
         {
-            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta, incluirIdentificadores, justificacion);
+            var decision = await _exportPolicy.EvaluateAsync(User, desde, hasta,
+                incluirIdentificadores ? ExportIdentityLevel.NhcYNombre : ExportIdentityLevel.Ninguno, justificacion);
             if (!decision.Allowed)
                 return decision.IsForbidden ? Forbid() : Problem(title: decision.DenialReason, statusCode: 400);
 

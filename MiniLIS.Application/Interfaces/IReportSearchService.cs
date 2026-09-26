@@ -100,6 +100,6 @@ namespace MiniLIS.Application.Interfaces
         /// quién buscó qué y cuántos resultados obtuvo.</summary>
         Task<ReportSearchResult> SearchAsync(ReportSearchFilter filtro, int maxResults = 500);
 
-        byte[] ExportToCsv(List<ReportSearchResultItem> items);
+        byte[] ExportToCsv(List<ReportSearchResultItem> items, ExportIdentityLevel nivel = ExportIdentityLevel.Ninguno);
     }
 }

@@ -321,26 +321,37 @@ namespace MiniLIS.Infrastructure.Services
             await _db.SaveChangesAsync();
         }
 
-        public byte[] ExportToCsv(List<ReportSearchResultItem> items)
+        /// <summary>
+        /// CSV del resultado de una búsqueda. Hasta la v4.4 salía siempre con nombre y NHC, sin
+        /// forma de evitarlo; ahora la identidad va por niveles y quien decide cuál es
+        /// IPatientDataExportPolicy, igual que en el resto de exportaciones.
+        /// </summary>
+        public byte[] ExportToCsv(List<ReportSearchResultItem> items, ExportIdentityLevel nivel = ExportIdentityLevel.Ninguno)
         {
+            var conNhc = nivel != ExportIdentityLevel.Ninguno;
+            var conNombre = nivel == ExportIdentityLevel.NhcYNombre;
+
             var sb = new StringBuilder();
-            sb.AppendLine("Nº muestra;Fecha recepción;Paciente;NHC;Servicio;Facultativo;Sospecha clínica;Paneles;Estado;Validado;Conclusión");
+            sb.AppendLine("Nº muestra;Fecha recepción" + (conNombre ? ";Paciente" : "") + (conNhc ? ";NHC" : "") +
+                          ";Servicio;Facultativo;Sospecha clínica;Paneles;Estado;Validado;Conclusión");
             foreach (var i in items)
             {
-                sb.AppendLine(string.Join(";", new[]
+                var campos = new List<string>
                 {
                     CsvUtils.EscapeField(i.SampleNumber),
-                    CsvUtils.EscapeField(i.ReceptionDate.ToString("dd/MM/yyyy")),
-                    CsvUtils.EscapeField(i.Patient),
-                    CsvUtils.EscapeField(i.Nhc),
-                    CsvUtils.EscapeField(i.Servicio),
-                    CsvUtils.EscapeField(i.Facultativo),
-                    CsvUtils.EscapeField(i.SospechaClinica),
-                    CsvUtils.EscapeField(i.Paneles),
-                    CsvUtils.EscapeField(i.Estado),
-                    CsvUtils.EscapeField(i.Validado ? "Sí" : "No"),
-                    CsvUtils.EscapeField(i.Conclusion)
-                }));
+                    CsvUtils.EscapeField(i.ReceptionDate.ToString("dd/MM/yyyy"))
+                };
+                if (conNombre) campos.Add(CsvUtils.EscapeField(i.Patient));
+                if (conNhc) campos.Add(CsvUtils.EscapeField(i.Nhc));
+                campos.Add(CsvUtils.EscapeField(i.Servicio));
+                campos.Add(CsvUtils.EscapeField(i.Facultativo));
+                campos.Add(CsvUtils.EscapeField(i.SospechaClinica));
+                campos.Add(CsvUtils.EscapeField(i.Paneles));
+                campos.Add(CsvUtils.EscapeField(i.Estado));
+                campos.Add(CsvUtils.EscapeField(i.Validado ? "Sí" : "No"));
+                campos.Add(CsvUtils.EscapeField(i.Conclusion));
+
+                sb.AppendLine(string.Join(";", campos));
             }
             return CsvUtils.ToExcelBytes(sb.ToString());
         }

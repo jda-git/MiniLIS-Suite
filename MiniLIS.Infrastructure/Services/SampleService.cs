@@ -353,38 +353,31 @@ namespace MiniLIS.Infrastructure.Services
             return true;
         }
 
-        public async Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples, bool incluirIdentificadores = false)
+        public async Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples, ExportIdentityLevel nivel = ExportIdentityLevel.Ninguno)
         {
             var sb = new StringBuilder();
 
-            if (incluirIdentificadores)
+            // Las columnas de identidad se añaden por niveles: seudonimizada (por defecto, C-2),
+            // con NHC, o con NHC y nombre. Un nivel intermedio con solo el NHC cubre el trabajo
+            // de conciliación sin sacar nombres del sistema.
+            var conNhc = nivel != ExportIdentityLevel.Ninguno;
+            var conNombre = nivel == ExportIdentityLevel.NhcYNombre;
+
+            sb.AppendLine("N Muestra;Fecha" + (conNhc ? ";NHC" : "") + (conNombre ? ";Paciente" : "") + ";Origen;Estado;Sospecha");
+            foreach (var s in samples)
             {
-                sb.AppendLine("N Muestra;Fecha;NHC;Paciente;Origen;Estado;Sospecha");
-                foreach (var s in samples)
+                var campos = new List<string>
                 {
-                    sb.AppendLine(string.Join(';',
-                        CsvUtils.EscapeField(s.SampleNumber),
-                        CsvUtils.EscapeField(_localTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy")),
-                        CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.NHC),
-                        CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.FullName),
-                        CsvUtils.EscapeField(s.ClinicalRequest?.OriginService),
-                        CsvUtils.EscapeField(s.Status.ToString()),
-                        CsvUtils.EscapeField(s.Diagnosis)));
-                }
-            }
-            else
-            {
-                // Seudonimizado por defecto: sin NHC ni nombre del paciente (C-2).
-                sb.AppendLine("N Muestra;Fecha;Origen;Estado;Sospecha");
-                foreach (var s in samples)
-                {
-                    sb.AppendLine(string.Join(';',
-                        CsvUtils.EscapeField(s.SampleNumber),
-                        CsvUtils.EscapeField(_localTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy")),
-                        CsvUtils.EscapeField(s.ClinicalRequest?.OriginService),
-                        CsvUtils.EscapeField(s.Status.ToString()),
-                        CsvUtils.EscapeField(s.Diagnosis)));
-                }
+                    CsvUtils.EscapeField(s.SampleNumber),
+                    CsvUtils.EscapeField(_localTimeService.ToLocal(s.ReceptionDate).ToString("dd/MM/yyyy"))
+                };
+                if (conNhc) campos.Add(CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.NHC));
+                if (conNombre) campos.Add(CsvUtils.EscapeField(s.ClinicalRequest?.Patient?.FullName));
+                campos.Add(CsvUtils.EscapeField(s.ClinicalRequest?.OriginService));
+                campos.Add(CsvUtils.EscapeField(s.Status.ToString()));
+                campos.Add(CsvUtils.EscapeField(s.Diagnosis));
+
+                sb.AppendLine(string.Join(';', campos));
             }
 
             // Return as UTF-8 with BOM for Excel compatibility

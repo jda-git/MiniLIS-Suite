@@ -1,5 +1,6 @@
 @page "/muestras"
 @using MiniLIS.Application.Interfaces
+@using MiniLIS.Web.Components.Shared
 @using MiniLIS.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = Permissions.Policies.MuestrasVer)]
@@ -28,7 +29,8 @@
             <button class="btn-bandeja btn-bandeja-outline" @onclick="ImprimirSeleccionadas" disabled="@(selectedSampleIds.Count == 0)">
                 <i class="bi bi-upc-scan"></i> Imprimir etiquetas (@selectedSampleIds.Count)
             </button>
-            <button class="btn-bandeja btn-bandeja-outline" @onclick="ExportExcel">
+            <ExportIdentityDialog @ref="exportDialog" Titulo="las muestras" OnConfirmar="DescargarCsv" />
+            <button class="btn-bandeja btn-bandeja-outline" @onclick="() => exportDialog!.MostrarAsync()">
                 <i class="bi bi-file-earmark-spreadsheet"></i> Exportar Excel
             </button>
             <button class="btn-bandeja btn-bandeja-primary" @onclick='() => Nav.NavigateTo("/muestras/nueva")'>
@@ -1799,7 +1801,11 @@
         _ => status.ToString()
     };
 
-    private void ExportExcel()
+    private ExportIdentityDialog? exportDialog;
+
+    /// <summary>v4.4: el nivel de identidad se elige antes de descargar. El servidor vuelve a
+    /// evaluarlo al generar el fichero, así que lo de aquí solo evita una descarga fallida.</summary>
+    private void DescargarCsv((ExportIdentityLevel Nivel, string? Justificacion) opcion)
     {
         // El backend exige un rango de fechas (C-2); si no hay filtro activo,
         // se usa por defecto el último año.
@@ -1808,7 +1814,9 @@
         // "t" es puramente anti-caché (fuerza una URL distinta en cada clic); un GUID expresa
         // mejor esa intención que una marca de tiempo y evita el falso positivo de cualquier
         // búsqueda futura de DateTime.Now (N-7).
-        var url = $"/api/downloads/muestras/csv?desde={desde}&hasta={hasta}&t={Guid.NewGuid().ToString("N")[..8]}";
+        var url = $"/api/downloads/muestras/csv?desde={desde}&hasta={hasta}&nivel={opcion.Nivel}" +
+                  (opcion.Justificacion != null ? $"&justificacion={Uri.EscapeDataString(opcion.Justificacion)}" : "") +
+                  $"&t={Guid.NewGuid().ToString("N")[..8]}";
         JS.InvokeVoidAsync("triggerDownload", url);
     }
 }

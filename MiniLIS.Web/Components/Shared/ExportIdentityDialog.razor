@@ -1,0 +1,172 @@
+@using MiniLIS.Application.Interfaces
+@inject IPermissionService Permisos
+
+@* Elección del nivel de identidad antes de exportar (v4.4). Compartido por la bandeja técnica
+   y el buscador para que la decisión se plantee igual en los dos sitios, y porque duplicarla
+   fue justo lo que dejó al buscador exportando nombres sin control.
+
+   Lo que se marque aquí no es la última palabra: el servidor vuelve a evaluar la política al
+   generar el fichero. Esta ventana solo evita lanzar una descarga que iba a fallar. *@
+
+@if (visible)
+{
+    <div class="modal-backdrop-custom" @onclick="Cancelar">
+        <div class="modal-card animate-fade-in" @onclick:stopPropagation="true">
+            <div class="modal-card-header d-flex align-items-center justify-content-between">
+                <h5 class="d-flex align-items-center m-0 text-white fw-bold">
+                    <i class="bi bi-file-earmark-arrow-down me-2"></i> Exportar @Titulo
+                </h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="Cancelar"></button>
+            </div>
+            <div class="modal-card-body">
+                <p class="exp-lead">¿Qué datos del paciente debe llevar el fichero?</p>
+
+                @if (!string.IsNullOrWhiteSpace(Aviso))
+                {
+                    <div class="exp-nota mb-2">
+                        <i class="bi bi-info-circle me-1"></i> @Aviso
+                    </div>
+                }
+
+                <label class="exp-option @(nivel == ExportIdentityLevel.Ninguno ? "exp-option-on" : "")">
+                    <input type="radio" name="expNivel" checked="@(nivel == ExportIdentityLevel.Ninguno)"
+                           @onchange="@(() => nivel = ExportIdentityLevel.Ninguno)" />
+                    <span>
+                        <strong>Sin identificadores</strong>
+                        <em>Ni NHC ni nombre. Es lo recomendable siempre que sirva.</em>
+                    </span>
+                </label>
+
+                @if (puedeIdentificar)
+                {
+                    <label class="exp-option @(nivel == ExportIdentityLevel.SoloNhc ? "exp-option-on" : "")">
+                        <input type="radio" name="expNivel" checked="@(nivel == ExportIdentityLevel.SoloNhc)"
+                               @onchange="@(() => nivel = ExportIdentityLevel.SoloNhc)" />
+                        <span>
+                            <strong>Con NHC, sin nombre</strong>
+                            <em>Permite cruzar los datos con la historia sin sacar nombres del sistema.</em>
+                        </span>
+                    </label>
+
+                    <label class="exp-option @(nivel == ExportIdentityLevel.NhcYNombre ? "exp-option-on" : "")">
+                        <input type="radio" name="expNivel" checked="@(nivel == ExportIdentityLevel.NhcYNombre)"
+                               @onchange="@(() => nivel = ExportIdentityLevel.NhcYNombre)" />
+                        <span>
+                            <strong>Con NHC y nombre</strong>
+                            <em>Solo cuando el nombre sea imprescindible para el uso previsto.</em>
+                        </span>
+                    </label>
+                }
+                else
+                {
+                    <div class="exp-nota">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Su rol no puede incluir identificadores del paciente. Se reparte en
+                        Configuración → Permisos.
+                    </div>
+                }
+
+                @if (nivel != ExportIdentityLevel.Ninguno)
+                {
+                    <div class="exp-aviso">
+                        <i class="bi bi-shield-exclamation"></i>
+                        <div>
+                            El fichero saldrá con datos personales y sin cifrar. Guárdelo en la red del
+                            centro y bórrelo en cuanto deje de hacer falta; para respaldar el sistema
+                            use <strong>Copias de seguridad</strong>, no esta exportación.
+                        </div>
+                    </div>
+
+                    @if (exigeJustificacion)
+                    {
+                        <div class="mt-2">
+                            <label class="exp-label">Justificación (obligatoria, queda en la auditoría)</label>
+                            <textarea class="exp-input" rows="2" placeholder="Para qué se necesitan los identificadores"
+                                      @bind="justificacion" @bind:event="oninput"></textarea>
+                        </div>
+                    }
+                }
+
+                @if (!string.IsNullOrEmpty(error))
+                {
+                    <div class="alert alert-danger py-2 px-3 small mt-2 mb-0">@error</div>
+                }
+
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button class="exp-btn exp-btn-ghost" @onclick="Cancelar">Cancelar</button>
+                    <button class="exp-btn exp-btn-go" @onclick="Aceptar">
+                        <i class="bi bi-download me-1"></i> Exportar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .exp-lead { font-size: 13px; color: #334155; margin-bottom: 12px; }
+    .exp-option { display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+    .exp-option:hover { background: #f8fafc; }
+    .exp-option-on { border-color: #3b82f6; background: #eff6ff; }
+    .exp-option input { margin-top: 3px; flex-shrink: 0; }
+    .exp-option strong { display: block; font-size: 13px; color: #0f172a; }
+    .exp-option em { display: block; font-style: normal; font-size: 11.5px; color: #64748b; margin-top: 1px; }
+    .exp-nota { font-size: 12.5px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; }
+    .exp-aviso { display: flex; gap: 10px; align-items: flex-start; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 8px; padding: 9px 12px; font-size: 12px; margin-top: 4px; }
+    .exp-aviso i { font-size: 15px; flex-shrink: 0; }
+    .exp-label { display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .exp-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+    .exp-btn { border: 1px solid #e2e8f0; background: #fff; border-radius: 6px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .exp-btn-ghost { color: #475569; }
+    .exp-btn-go { background: #16a34a; border-color: #16a34a; color: #fff; }
+</style>
+
+@code {
+    /// <summary>Qué se está exportando, para el título ("las muestras", "la búsqueda").</summary>
+    [Parameter] public string Titulo { get; set; } = "";
+
+    /// <summary>Aviso opcional de la pantalla que abre el diálogo (p. ej. que el fichero no
+    /// va a coincidir exactamente con lo que se ve).</summary>
+    [Parameter] public string? Aviso { get; set; }
+
+    /// <summary>Se dispara al aceptar, con el nivel elegido y la justificación escrita.</summary>
+    [Parameter] public EventCallback<(ExportIdentityLevel Nivel, string? Justificacion)> OnConfirmar { get; set; }
+
+    private bool visible;
+    private bool puedeIdentificar;
+    private bool exigeJustificacion;
+    private ExportIdentityLevel nivel = ExportIdentityLevel.Ninguno;
+    private string? justificacion;
+    private string? error;
+
+    /// <summary>Abre la ventana. Los permisos se releen en cada apertura: pueden haber cambiado
+    /// en Configuración → Permisos mientras la sesión seguía abierta.</summary>
+    public async Task MostrarAsync()
+    {
+        puedeIdentificar = await Permisos.HasAsync(Permissions.ExportIdentificadores);
+        exigeJustificacion = !await Permisos.HasAsync(Permissions.ExportIdentificadoresSinJustificar);
+        nivel = ExportIdentityLevel.Ninguno;
+        justificacion = null;
+        error = null;
+        visible = true;
+        StateHasChanged();
+    }
+
+    private void Cancelar()
+    {
+        visible = false;
+        error = null;
+    }
+
+    private async Task Aceptar()
+    {
+        if (nivel != ExportIdentityLevel.Ninguno && exigeJustificacion && (justificacion ?? "").Trim().Length < 10)
+        {
+            error = "Para incluir identificadores del paciente indique la justificación (mínimo 10 caracteres).";
+            return;
+        }
+
+        visible = false;
+        await OnConfirmar.InvokeAsync((nivel, nivel == ExportIdentityLevel.Ninguno ? null : justificacion));
+    }
+}

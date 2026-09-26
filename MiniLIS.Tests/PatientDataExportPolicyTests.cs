@@ -40,7 +40,7 @@ namespace MiniLIS.Tests
         public async Task Politica_deniega_exportacion_a_rol_Tecnico()
         {
             var policy = CreatePolicy();
-            var decision = await policy.EvaluateAsync(UserWithRole("Técnico"), DateTime.Today.AddDays(-1), DateTime.Today, false);
+            var decision = await policy.EvaluateAsync(UserWithRole("Técnico"), DateTime.Today.AddDays(-1), DateTime.Today, ExportIdentityLevel.Ninguno);
 
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeTrue("un rol sin permiso debe traducirse en 403, no en un 400 de validación");
@@ -51,15 +51,15 @@ namespace MiniLIS.Tests
         {
             var policy = CreatePolicy();
 
-            (await policy.EvaluateAsync(UserWithRole("Administrador"), null, DateTime.Today, false)).Allowed.Should().BeFalse();
-            (await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today, null, false)).Allowed.Should().BeFalse();
+            (await policy.EvaluateAsync(UserWithRole("Administrador"), null, DateTime.Today, ExportIdentityLevel.Ninguno)).Allowed.Should().BeFalse();
+            (await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today, null, ExportIdentityLevel.Ninguno)).Allowed.Should().BeFalse();
         }
 
         [Fact]
         public async Task Politica_deniega_rango_superior_al_maximo()
         {
             var policy = CreatePolicy(maxRangoDias: 30);
-            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today.AddDays(-31), DateTime.Today, false);
+            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today.AddDays(-31), DateTime.Today, ExportIdentityLevel.Ninguno);
 
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeFalse("un rango excesivo es un error de petición (400), no de autorización");
@@ -72,11 +72,11 @@ namespace MiniLIS.Tests
             // justificación viaja en la decisión para quedar en la auditoría.
             var policy = CreatePolicy();
 
-            var sin = await policy.EvaluateAsync(UserWithRole("Facultativo"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true);
+            var sin = await policy.EvaluateAsync(UserWithRole("Facultativo"), DateTime.Today.AddDays(-1), DateTime.Today, ExportIdentityLevel.NhcYNombre);
             sin.Allowed.Should().BeFalse();
             sin.IsForbidden.Should().BeFalse("no es falta de permiso sino de justificación");
 
-            var con = await policy.EvaluateAsync(UserWithRole("Facultativo"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true,
+            var con = await policy.EvaluateAsync(UserWithRole("Facultativo"), DateTime.Today.AddDays(-1), DateTime.Today, ExportIdentityLevel.NhcYNombre,
                 justificacion: "Envío a biobanco solicitado por el comité");
             con.Allowed.Should().BeTrue();
             con.IncludeIdentifiers.Should().BeTrue();
@@ -86,7 +86,7 @@ namespace MiniLIS.Tests
         [Fact]
         public async Task El_tecnico_no_exporta_datos_de_pacientes_ni_con_justificacion()
         {
-            var decision = await CreatePolicy().EvaluateAsync(UserWithRole("Técnico"), DateTime.Today.AddDays(-1), DateTime.Today, true, "Justificación larga cualquiera");
+            var decision = await CreatePolicy().EvaluateAsync(UserWithRole("Técnico"), DateTime.Today.AddDays(-1), DateTime.Today, ExportIdentityLevel.NhcYNombre, "Justificación larga cualquiera");
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeTrue();
         }
@@ -95,7 +95,7 @@ namespace MiniLIS.Tests
         public async Task Politica_permite_identificadores_a_rol_Administrador()
         {
             var policy = CreatePolicy();
-            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today.AddDays(-1), DateTime.Today, incluirIdentificadores: true);
+            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today.AddDays(-1), DateTime.Today, ExportIdentityLevel.NhcYNombre);
 
             decision.Allowed.Should().BeTrue();
             decision.IncludeIdentifiers.Should().BeTrue();
@@ -105,7 +105,7 @@ namespace MiniLIS.Tests
         public async Task Politica_deniega_hasta_anterior_a_desde()
         {
             var policy = CreatePolicy();
-            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today, DateTime.Today.AddDays(-1), false);
+            var decision = await policy.EvaluateAsync(UserWithRole("Administrador"), DateTime.Today, DateTime.Today.AddDays(-1), ExportIdentityLevel.Ninguno);
 
             decision.Allowed.Should().BeFalse();
             decision.IsForbidden.Should().BeFalse();
@@ -148,7 +148,7 @@ namespace MiniLIS.Tests
             using var ctx = db.CreateContext();
 
             var service = new ExcedenteService(ctx, new LocalTimeService());
-            var decision = new ExportDecision(true, null, IncludeIdentifiers: false);
+            var decision = new ExportDecision(true, null, ExportIdentityLevel.Ninguno);
             var reports = await ctx.SampleReports.Include(r => r.Sample).ThenInclude(s => s.ClinicalRequest).ThenInclude(c => c.Patient)
                 .Where(r => r.Id == report.Id).ToListAsync();
 
@@ -169,7 +169,7 @@ namespace MiniLIS.Tests
             using var ctx = db.CreateContext();
 
             var service = new NotificationService(ctx, new LocalTimeService());
-            var decision = new ExportDecision(true, null, IncludeIdentifiers: false);
+            var decision = new ExportDecision(true, null, ExportIdentityLevel.Ninguno);
             var reports = await ctx.SampleReports.Include(r => r.Sample).ThenInclude(s => s.ClinicalRequest).ThenInclude(c => c.Patient)
                 .Where(r => r.Id == report.Id).ToListAsync();
 
@@ -191,7 +191,7 @@ namespace MiniLIS.Tests
             using var ctx = db.CreateContext();
 
             var service = new ExcedenteService(ctx, new LocalTimeService());
-            var decision = new ExportDecision(true, null, IncludeIdentifiers: true);
+            var decision = new ExportDecision(true, null, ExportIdentityLevel.NhcYNombre);
             var desde = DateTime.Today.AddDays(-5);
             var hasta = DateTime.Today;
             var reports = await ctx.SampleReports.Include(r => r.Sample).ThenInclude(s => s.ClinicalRequest).ThenInclude(c => c.Patient)
