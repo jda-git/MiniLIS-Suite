@@ -193,7 +193,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        profiles = await ExportService.GetProfilesAsync();
+        profiles = await ExportService.GetProfilesAsync(soloActivos: true);
         if (profiles.Any())
         {
             selectedProfileId = profiles.First().Id;

@@ -35,7 +35,7 @@ namespace MiniLIS.Infrastructure.Services
             _localTimeService = localTimeService;
         }
 
-        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null, DeferredEntryInput? deferredEntry = null)
+        public async Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<CustomPanelInput>? customPanels = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null, DeferredEntryInput? deferredEntry = null, Dictionary<int, List<int>>? panelTubeSelection = null)
         {
             reception ??= new ReceptionInput();
             deferredEntry ??= new DeferredEntryInput();
@@ -173,14 +173,35 @@ namespace MiniLIS.Infrastructure.Services
                 // 4. Create SamplePanel entries from selected panel IDs, freezing la versión vigente
                 // en el momento del alta (M-4) y copiando sus tubos a SampleTube.
                 int order = 1;
-                if (panelIds != null && panelIds.Any())
+                // Un panel puede pedirse entero (panelIds) o solo con algunos de sus tubos
+                // (panelTubeSelection). Los dos acaban aquí: la selección manda si está.
+                var todosLosPaneles = new List<int>(panelIds ?? new List<int>());
+                if (panelTubeSelection != null)
+                    foreach (var pid in panelTubeSelection.Keys)
+                        if (!todosLosPaneles.Contains(pid)) todosLosPaneles.Add(pid);
+
+                if (todosLosPaneles.Any())
                 {
-                    foreach (var panelId in panelIds)
+                    foreach (var panelId in todosLosPaneles)
                     {
                         var version = await _panelCatalogService.GetVigenteVersionAsync(panelId);
                         if (version == null)
                         {
                             throw new InvalidOperationException($"El panel seleccionado (Id={panelId}) no tiene ninguna versión vigente. No se puede registrar la muestra con este panel.");
+                        }
+
+                        List<int>? tubosElegidos = null;
+                        if (panelTubeSelection != null && panelTubeSelection.TryGetValue(panelId, out var elegidos))
+                        {
+                            tubosElegidos = elegidos?.Distinct().ToList() ?? new List<int>();
+                            if (tubosElegidos.Count == 0)
+                                throw new InvalidOperationException($"Del panel {version.Panel?.Code ?? panelId.ToString()} no se ha elegido ningún tubo.");
+
+                            var disponibles = version.Tubes.Select(t => t.TubeNumber).ToHashSet();
+                            var desconocidos = tubosElegidos.Where(n => !disponibles.Contains(n)).ToList();
+                            if (desconocidos.Any())
+                                throw new InvalidOperationException(
+                                    $"El panel {version.Panel?.Code ?? panelId.ToString()} no tiene el tubo {string.Join(", ", desconocidos)} en su versión vigente.");
                         }
 
                         var samplePanel = new SamplePanel
@@ -192,7 +213,7 @@ namespace MiniLIS.Infrastructure.Services
                             DisplayOrder = order++
                         };
 
-                        AddTubesFromVersion(samplePanel, version, sample);
+                        AddTubesFromVersion(samplePanel, version, sample, tubosElegidos);
 
                         _db.SamplePanels.Add(samplePanel);
                     }
@@ -200,19 +221,39 @@ namespace MiniLIS.Infrastructure.Services
 
                 // 5. Create SamplePanel entries for custom (free-text) panels — sin versión de
                 // catálogo, un único tubo con el propio texto libre.
-                if (customPanelTexts != null && customPanelTexts.Any())
+                if (customPanels != null && customPanels.Any())
                 {
-                    foreach (var text in customPanelTexts)
+                    foreach (var custom in customPanels)
                     {
-                        _db.SamplePanels.Add(new SamplePanel
+                        var nombre = (custom.Name ?? string.Empty).Trim();
+                        if (nombre.Length == 0) continue;
+
+                        var sp = new SamplePanel
                         {
                             SampleId = sample.Id,
                             PanelId = null,
-                            CustomText = text,
+                            CustomText = nombre,
                             IsRequested = true,
-                            DisplayOrder = order++,
-                            Tubes = { new SampleTube { TubeNumber = 1, MarkerList = text } }
-                        });
+                            DisplayOrder = order++
+                        };
+
+                        // Sin tubos escritos, el propio nombre hace de único tubo: es como se
+                        // comportaba el panel manual de una sola línea antes de la v4.6.
+                        var combinaciones = (custom.Tubes ?? new List<string>())
+                            .Select(t => (t ?? string.Empty).Trim())
+                            .Where(t => t.Length > 0)
+                            .ToList();
+                        if (combinaciones.Count == 0) combinaciones.Add(nombre);
+
+                        var n = 1;
+                        foreach (var marcadores in combinaciones)
+                            sp.Tubes.Add(new SampleTube
+                            {
+                                TubeNumber = n++,
+                                MarkerList = marcadores.Length > 300 ? marcadores[..300] : marcadores
+                            });
+
+                        _db.SamplePanels.Add(sp);
                     }
                 }
 
@@ -457,7 +498,9 @@ namespace MiniLIS.Infrastructure.Services
         {
             return await _db.SamplePanels
                 .Include(sp => sp.Panel)
-                .Include(sp => sp.PanelVersion)
+                // Los tubos de la VERSIÓN, no solo los del estudio: es lo que permite saber
+                // qué tubos de un panel pedido en parte quedan por incorporar.
+                .Include(sp => sp.PanelVersion).ThenInclude(v => v!.Tubes)
                 .Include(sp => sp.Tubes)
                     .ThenInclude(t => t.ReadByUser)
                 .Include(sp => sp.Tubes)
@@ -699,12 +742,21 @@ namespace MiniLIS.Infrastructure.Services
 
         /// <summary>Copia los tubos de la versión a la muestra: composición congelada, enlace a
         /// la definición exacta (con su fórmula) y nombre FCS esperado fijado desde ya.</summary>
-        private static void AddTubesFromVersion(SamplePanel samplePanel, PanelVersion version, Sample sample)
+        /// <summary>
+        /// Copia los tubos de la versión al estudio. <paramref name="soloEstosTubos"/> limita la
+        /// copia a los números indicados (panel pedido en parte).
+        ///
+        /// Se conserva el número de tubo de la VERSIÓN, no se renumera: si se piden el T1 y el
+        /// T3, siguen siendo T1 y T3. Ese número es lo que enlaza el tubo con su definición, su
+        /// fórmula, su nota de alcance de acreditación y el nombre de su fichero FCS;
+        /// renumerarlos haría que el informe atribuyera al T2 lo que es del T3.
+        /// </summary>
+        private static void AddTubesFromVersion(SamplePanel samplePanel, PanelVersion version, Sample sample, List<int>? soloEstosTubos = null)
         {
-            int tubeNumber = 1;
             foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
             {
-                var n = tubeNumber++;
+                if (soloEstosTubos != null && !soloEstosTubos.Contains(tube.TubeNumber)) continue;
+                var n = tube.TubeNumber;
                 samplePanel.Tubes.Add(new SampleTube
                 {
                     TubeNumber = n,
@@ -716,6 +768,93 @@ namespace MiniLIS.Infrastructure.Services
                         : null
                 });
             }
+        }
+
+        public async Task<List<PendingTube>> GetAddableTubesAsync(int samplePanelId)
+        {
+            var sp = await _db.SamplePanels
+                .Include(p => p.Panel)
+                .Include(p => p.Tubes)
+                .Include(p => p.PanelVersion).ThenInclude(v => v!.Tubes)
+                .FirstOrDefaultAsync(p => p.Id == samplePanelId);
+
+            if (sp?.PanelVersion == null || sp.IsVoided) return new List<PendingTube>();
+
+            var yaPedidos = sp.Tubes.Select(t => t.TubeNumber).ToHashSet();
+            return sp.PanelVersion.Tubes
+                .Where(t => !yaPedidos.Contains(t.TubeNumber))
+                .OrderBy(t => t.TubeNumber)
+                .Select(t => new PendingTube
+                {
+                    SampleTubeId = 0, // todavía no existe: es un tubo de la versión, no del estudio
+                    PanelName = sp.Panel?.Name ?? sp.CustomText ?? "—",
+                    TubeNumber = t.TubeNumber,
+                    MarkerList = t.MarkerList,
+                    IsOptional = t.IsOptional
+                })
+                .ToList();
+        }
+
+        public async Task AddPanelTubesAsync(int samplePanelId, List<int> tubeNumbers, int? userId = null)
+        {
+            if (tubeNumbers == null || tubeNumbers.Count == 0) return;
+
+            var sp = await _db.SamplePanels
+                .Include(p => p.Panel)
+                .Include(p => p.Tubes)
+                .Include(p => p.Sample)
+                .Include(p => p.PanelVersion).ThenInclude(v => v!.Panel)
+                .Include(p => p.PanelVersion).ThenInclude(v => v!.Tubes)
+                .FirstOrDefaultAsync(p => p.Id == samplePanelId)
+                ?? throw new InvalidOperationException("El panel del estudio no existe.");
+
+            if (sp.IsVoided)
+                throw new InvalidOperationException("El panel está anulado: no se le pueden añadir tubos.");
+            if (sp.PanelVersion == null)
+                throw new InvalidOperationException("Este panel no tiene versión de catálogo, así que no hay tubos definidos que añadir.");
+
+            var yaPedidos = sp.Tubes.Select(t => t.TubeNumber).ToHashSet();
+            var nuevos = tubeNumbers.Distinct().Where(n => !yaPedidos.Contains(n)).OrderBy(n => n).ToList();
+            if (nuevos.Count == 0) return;
+
+            var definiciones = sp.PanelVersion.Tubes.ToDictionary(t => t.TubeNumber);
+            var desconocidos = nuevos.Where(n => !definiciones.ContainsKey(n)).ToList();
+            if (desconocidos.Any())
+                throw new InvalidOperationException(
+                    $"La versión {sp.PanelVersion.VersionLabel} de este panel no tiene el tubo {string.Join(", ", desconocidos)}.");
+
+            _currentUserService.ActionContext = "Añadir tubos a un panel parcial";
+
+            foreach (var n in nuevos)
+            {
+                var definicion = definiciones[n];
+                // Se conserva el número de la versión: el T2 se crea como T2. Ese número enlaza
+                // el tubo con su fórmula, su nota de alcance y el nombre de su fichero FCS.
+                sp.Tubes.Add(new SampleTube
+                {
+                    TubeNumber = definicion.TubeNumber,
+                    MarkerList = definicion.MarkerList,
+                    IsOptional = definicion.IsOptional,
+                    PanelTubeId = definicion.Id,
+                    FcsFileName = sp.PanelVersion.Panel != null && sp.Sample != null
+                        ? FcsFileNaming.GenerateFileName(sp.Sample.SampleNumber, sp.Sample.SampleType.ToCode(),
+                            definicion.TubeNumber, sp.PanelVersion.Panel.Code, sp.PanelVersion.FileToken)
+                        : null
+                });
+            }
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityName = nameof(SamplePanel),
+                EntityId = sp.Id.ToString(),
+                Action = "AddTubes",
+                UserId = userId,
+                ActionContext = "Añadir tubos a un panel parcial",
+                Changes = $"Panel {sp.Panel?.Code ?? sp.CustomText}: añadido(s) el/los tubo(s) {string.Join(", ", nuevos.Select(n => "T" + n))}",
+                TimestampUtc = DateTime.UtcNow
+            });
+
+            await _db.SaveChangesAsync();
         }
 
         public async Task JustifyTubeNotPerformedAsync(int sampleTubeId, string reason, int? userId)
@@ -795,10 +934,13 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task<List<PendingTube>> GetTubesPendingJustificationAsync(int sampleId)
         {
+            // Los paneles escritos a mano cuentan igual que los del catálogo: sus tubos sin
+            // leer también impiden validar. No tener versión no los deja fuera del control de
+            // lo que se hizo y lo que no -- antes se colaban por el filtro PanelVersionId.
             var panels = await _db.SamplePanels
                 .Include(sp => sp.Panel)
                 .Include(sp => sp.Tubes)
-                .Where(sp => sp.SampleId == sampleId && sp.IsRequested && !sp.IsVoided && sp.PanelVersionId != null)
+                .Where(sp => sp.SampleId == sampleId && sp.IsRequested && !sp.IsVoided)
                 .OrderBy(sp => sp.DisplayOrder)
                 .ToListAsync();
 

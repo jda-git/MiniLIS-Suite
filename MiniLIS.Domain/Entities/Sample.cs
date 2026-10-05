@@ -79,6 +79,12 @@ namespace MiniLIS.Domain.Entities
         /// <summary>[Obsoleto desde F-4] Ver IncidentsNotes.</summary>
         public bool HasIncident { get; set; } = false;
 
+        /// <summary>Último número de tubo repartido en esta muestra (SampleTube.SampleSequence).
+        /// Es un contador, no un recuento: solo sube. Vive aquí y no se deduce del máximo de los
+        /// tubos existentes porque un panel retirado se borra de verdad, y entonces el máximo
+        /// bajaría y el siguiente tubo reutilizaría una etiqueta ya impresa.</summary>
+        public int LastTubeSequence { get; set; }
+
         // --- Recepción (F-4) ---
 
         public ReceptionStatus ReceptionStatus { get; set; } = ReceptionStatus.Correcta;
@@ -218,6 +224,16 @@ namespace MiniLIS.Domain.Entities
     }
 
     /// <summary>Un tubo real dentro de un SamplePanel: leído o no, con su fichero FCS (M-4).</summary>
+    /// <summary>Identificador físico de un tubo: el número de muestra con el número de tubo
+    /// detrás. Vive aquí y no repartido entre la etiqueta y la lista de carga porque es el
+    /// mismo dato el que se imprime y el que se escanea; si divergieran, el tubo escaneado no
+    /// se correspondería con el de la lista.</summary>
+    public static class SampleTubeLabel
+    {
+        public static string Build(string? sampleNumber, int sampleSequence) =>
+            sampleSequence > 0 ? $"{sampleNumber}-{sampleSequence:D2}" : sampleNumber ?? string.Empty;
+    }
+
     public class SampleTube : AuditableEntity
     {
         public int Id { get; set; }
@@ -225,7 +241,22 @@ namespace MiniLIS.Domain.Entities
         public int SamplePanelId { get; set; }
         public SamplePanel SamplePanel { get; set; } = null!;
 
+        /// <summary>Número del tubo dentro de SU panel: T1, T2… Es el que se enseña junto a los
+        /// marcadores y el que usa el nombre del fichero FCS.</summary>
         public int TubeNumber { get; set; }
+
+        /// <summary>
+        /// Número del tubo dentro de la MUESTRA, correlativo y continuo entre paneles: el panel
+        /// de cuatro tubos ocupa el 1 al 4 y el siguiente panel que se añada empieza en el 5.
+        /// Es lo que identifica físicamente al tubo en la etiqueta (26-00018-01) y lo que se
+        /// escanea en el citómetro, así que <b>se asigna al crear el tubo y no se reutiliza
+        /// nunca</b>, ni siquiera si el panel se quita o se anula: un número reutilizado haría
+        /// que dos tubos distintos compartieran etiqueta.
+        ///
+        /// Lo asigna ApplicationDbContext al guardar, no cada sitio que crea tubos: hay cuatro
+        /// y basta olvidar uno para que salga una etiqueta sin identificador.
+        /// </summary>
+        public int SampleSequence { get; set; }
 
         /// <summary>Definición exacta del tubo en la versión de panel empleada (con su fórmula y
         /// revisión). Nulo en paneles personalizados sin versión.</summary>

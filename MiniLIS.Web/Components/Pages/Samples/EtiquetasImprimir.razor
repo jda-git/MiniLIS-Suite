@@ -216,9 +216,15 @@ else
                     {
                         Kind = LabelKind.Tube,
                         Selected = false,
-                        SampleNumber = s.SampleNumber,
+                        // El número de la etiqueta es el del tubo DENTRO DE LA MUESTRA
+                        // (26-00018-01, -02…), correlativo entre paneles: es lo que identifica
+                        // físicamente el tubo y lo que se escanea en el citómetro. "T1", "T2"
+                        // siguen siendo el número dentro del panel, que es lo que casa con la
+                        // definición del panel en el equipo.
+                        SampleNumber = SampleTubeLabel.Build(s.SampleNumber, tube.SampleSequence),
                         TypeCode = s.SampleType.ToCode(),
-                        TubeLine = $"T{tube.TubeNumber}: {tube.MarkerList}"
+                        TubeLine = $"T{tube.TubeNumber}: {tube.MarkerList}",
+                        PanelLine = panel.Panel?.Code ?? panel.CustomText
                     });
                 }
             }

@@ -168,6 +168,7 @@ namespace MiniLIS.Infrastructure.Services
             // leídos (M-4).
             var panelVersionsText = PanelVersionsTextFor(fullReport);
             await ResolveAnalyticalLimitationsAsync(fullReport);
+            var notaPanelManual = await _masterService.GetSettingAsync(CustomPanelScopeNoteKey) ?? DefaultCustomPanelScopeNote;
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
 
@@ -325,7 +326,7 @@ namespace MiniLIS.Infrastructure.Services
                                 col.Item().PaddingBottom(11); 
                         }
 
-                        var tubosEmpleados = BuildTubosEmpleados(fullReport.Sample);
+                        var tubosEmpleados = BuildTubosEmpleados(fullReport.Sample, notaPanelManual);
 
                         if (tubosEmpleados.Any() || !string.IsNullOrWhiteSpace(fullReport.PanelsUsedText))
                         {
@@ -614,6 +615,7 @@ namespace MiniLIS.Infrastructure.Services
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
             await ResolveAnalyticalLimitationsAsync(fullReport);
+            var notaPanelManualOdt = await _masterService.GetSettingAsync(CustomPanelScopeNoteKey) ?? DefaultCustomPanelScopeNote;
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
             var logoAlignment = await _masterService.GetSettingAsync("Header:LogoAlignment") ?? "Left";
@@ -683,14 +685,14 @@ namespace MiniLIS.Infrastructure.Services
                 var contentEntry = archive.CreateEntry("content.xml");
                 using (var writer = new StreamWriter(contentEntry.Open()))
                 {
-                    writer.Write(GenerateOdtContentXml(fullReport, hasLogo, headerLine1, headerLine2, logoAlignment, previousStudies));
+                    writer.Write(GenerateOdtContentXml(fullReport, hasLogo, headerLine1, headerLine2, logoAlignment, previousStudies, notaPanelManualOdt));
                 }
             }
 
             return ms.ToArray();
         }
 
-        private string GenerateOdtContentXml(SampleReport report, bool hasLogo, string header1, string header2, string logoAlignment, List<PatientStudyHistoryItem> previousStudies)
+        private string GenerateOdtContentXml(SampleReport report, bool hasLogo, string header1, string header2, string logoAlignment, List<PatientStudyHistoryItem> previousStudies, string notaPanelManual)
         {
             var sb = new StringBuilder();
             sb.Append(@"<?xml version=""1.0"" encoding=""UTF-8""?>");
@@ -809,7 +811,7 @@ namespace MiniLIS.Infrastructure.Services
             }
 
             // PANELES EMPLEADOS
-            var tubosEmpleados = BuildTubosEmpleados(s);
+            var tubosEmpleados = BuildTubosEmpleados(s, notaPanelManual);
             if (tubosEmpleados.Any() || !string.IsNullOrWhiteSpace(report.PanelsUsedText))
             {
                 sb.Append($@"<text:p text:style-name=""SectionBlue"">PANELES EMPLEADOS</text:p>");
@@ -1411,18 +1413,55 @@ namespace MiniLIS.Infrastructure.Services
         /// ahí se imprime ese texto, de modo que reimprimir un informe emitido da siempre lo
         /// mismo aunque cambie el formato de versión o se anule algo después.
         /// </summary>
+        /// <summary>
+        /// Línea de versiones de panel del informe. Declara la versión empleada de cada panel
+        /// del que se haya leído algún tubo y, si no se ejecutó entero, <b>dice que es parcial y
+        /// cuáles se hicieron</b>: «LEUCEMIA-AGUDA · v2.0 (parcial: T1, T3)».
+        ///
+        /// Antes declaraba la versión sin más en cuanto se leía un tubo, de modo que un estudio
+        /// de dos tubos de cuatro se presentaba como el panel acreditado completo. Da igual cómo
+        /// se haya llegado a ejecutar solo una parte —eligiendo los tubos al registrar, o
+        /// justificando después los que no se hicieron—: lo que se declara es lo que se hizo.
+        ///
+        /// Los tubos opcionales de la versión no cuentan para decidir si está completo: no
+        /// hacerlos es lo normal, no una ejecución parcial.
+        /// </summary>
         public static string ComputePanelVersionsText(Sample? sample)
             => string.Join(", ", sample?.Panels
                 .Where(sp => !sp.IsVoided && sp.PanelVersion != null && sp.Tubes.Any(t => t.IsRead && !t.IsVoided))
                 .OrderBy(sp => sp.DisplayOrder)
-                .Select(sp => sp.PanelVersion!.DisplayCode) ?? Enumerable.Empty<string>());
+                .Select(DescribePanelVersion) ?? Enumerable.Empty<string>());
+
+        private static string DescribePanelVersion(SamplePanel sp)
+        {
+            var codigo = sp.PanelVersion!.DisplayCode;
+
+            var ejecutados = sp.Tubes.Where(t => t.IsRead && !t.IsVoided)
+                                     .Select(t => t.TubeNumber)
+                                     .Distinct().OrderBy(n => n).ToList();
+            var esperados = sp.PanelVersion.Tubes.Where(t => !t.IsOptional)
+                                                .Select(t => t.TubeNumber)
+                                                .Distinct().ToHashSet();
+
+            // Sin la definición de la versión cargada no se puede afirmar que falte nada: se
+            // declara como siempre antes que arriesgar un "(parcial)" falso.
+            if (esperados.Count == 0 || esperados.All(ejecutados.Contains)) return codigo;
+
+            return $"{codigo} (parcial: {string.Join(", ", ejecutados.Select(n => "T" + n))})";
+        }
 
         public static string PanelVersionsTextFor(SampleReport report)
             => report.IsFinalized && !string.IsNullOrWhiteSpace(report.PanelVersionsText)
                 ? report.PanelVersionsText!
                 : ComputePanelVersionsText(report.Sample);
 
-        private static List<(string Descripcion, string Nota)> BuildTubosEmpleados(Sample? sample)
+        /// <summary>Clave del ajuste con la frase que acompaña a los tubos de un panel escrito
+        /// a mano. Configurable porque la redacción exacta la fija el laboratorio.</summary>
+        public const string CustomPanelScopeNoteKey = "Report:CustomPanelScopeNote";
+
+        public const string DefaultCustomPanelScopeNote = "Ensayo no incluido en el alcance de acreditación.";
+
+        private static List<(string Descripcion, string Nota)> BuildTubosEmpleados(Sample? sample, string? notaPanelManual = null)
         {
             var filas = new List<(string, string)>();
             if (sample?.Panels == null) return filas;
@@ -1440,7 +1479,12 @@ namespace MiniLIS.Infrastructure.Services
                     // SamplePanel.PanelVersionId, que es la que se empleó de verdad.
                     var definicion = sp.PanelVersion?.Tubes.FirstOrDefault(pt => pt.Id == tubo.PanelTubeId)
                                      ?? sp.PanelVersion?.Tubes.FirstOrDefault(pt => pt.TubeNumber == tubo.TubeNumber);
-                    var nota = definicion?.Notes ?? "";
+                    // Un panel escrito a mano no tiene definición ni acreditación: lo dice en
+                    // vez de dejar la nota en blanco, que no distingue "no aplica" de "nadie la
+                    // escribió".
+                    var nota = sp.PanelVersionId == null
+                        ? (notaPanelManual ?? DefaultCustomPanelScopeNote)
+                        : definicion?.Notes ?? "";
                     filas.Add(($"{nombrePanel} — T{tubo.TubeNumber}: {tubo.MarkerList}", nota.Trim()));
                 }
             }

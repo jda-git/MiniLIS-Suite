@@ -7,6 +7,13 @@ namespace MiniLIS.Infrastructure.Services
     public class WorklistTemplateContext
     {
         public string SampleNumber { get; init; } = string.Empty;
+
+        /// <summary>Identificador físico del tubo, el mismo que lleva impreso su etiqueta
+        /// (26-00018-01). Vacío en los perfiles que no bajan a tubo.</summary>
+        public string SampleTubeId { get; init; } = string.Empty;
+
+        /// <summary>Número del tubo dentro de la muestra (1, 2, 3…), correlativo entre paneles.</summary>
+        public int SampleSequence { get; init; }
         public string SampleTypeCode { get; init; } = string.Empty;
         public string SampleTypeName { get; init; } = string.Empty;
         public int TubeNumber { get; init; }
@@ -49,6 +56,8 @@ namespace MiniLIS.Infrastructure.Services
         {
             return (template ?? string.Empty)
                 .Replace("{SampleNumber}", ctx.SampleNumber)
+                .Replace("{SampleTubeId}", ctx.SampleTubeId)
+                .Replace("{SampleSequence}", ctx.SampleSequence > 0 ? ctx.SampleSequence.ToString() : string.Empty)
                 .Replace("{SampleTypeCode}", ctx.SampleTypeCode)
                 .Replace("{SampleTypeName}", ctx.SampleTypeName)
                 .Replace("{TubeNumber}", ctx.TubeNumber.ToString())

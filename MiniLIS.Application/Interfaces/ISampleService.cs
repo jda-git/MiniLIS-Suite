@@ -5,12 +5,29 @@ using MiniLIS.Domain.Entities;
 
 namespace MiniLIS.Application.Interfaces
 {
+    /// <summary>
+    /// Panel escrito a mano para un paciente concreto: no está en el catálogo, no tiene versión
+    /// y no declara acreditación. Lleva uno o varios tubos, cada uno con su combinación escrita
+    /// por quien registra la muestra.
+    /// </summary>
+    public class CustomPanelInput
+    {
+        /// <summary>Nombre del panel tal y como se quiere ver en el informe.</summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>Una combinación de marcadores por tubo, en el orden en que se prepararán.</summary>
+        public List<string> Tubes { get; set; } = new();
+    }
+
     public interface ISampleService
     {
         Task<List<Sample>> GetFilteredSamplesAsync(string? searchTerm, SampleStatus? status, DateTime? fromDate, DateTime? toDate, SampleType? sampleType = null, int? panelId = null, ReceptionStatus? receptionStatus = null);
         Task<bool> UpdateSampleStatusAsync(int sampleId, SampleStatus status, int? userId = null);
         Task<byte[]> ExportSamplesToCsvAsync(List<Sample> samples, ExportIdentityLevel nivel = ExportIdentityLevel.Ninguno);
-        Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<string>? customPanelTexts = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null, DeferredEntryInput? deferredEntry = null);
+        /// <summary><paramref name="panelIds"/> pide el panel entero. <paramref name="panelTubeSelection"/>
+        /// pide solo algunos de sus tubos: la clave es el panel y el valor, los números de tubo
+        /// de su versión vigente. Un panel que aparezca en los dos manda la selección.</summary>
+        Task<Sample> RegisterSampleAsync(int patientId, ClinicalRequest request, string sampleDiagnosis, SampleType sampleType, string? sampleTypeOther = null, string studyPanel = "", bool hasIncident = false, string incidentNotes = "", List<int>? panelIds = null, List<CustomPanelInput>? customPanels = null, string? manualSampleNumber = null, int? registeredByUserId = null, ReceptionInput? reception = null, DeferredEntryInput? deferredEntry = null, Dictionary<int, List<int>>? panelTubeSelection = null);
         Task<Sample?> GetSampleByIdAsync(int sampleId);
         Task<List<Sample>> GetSamplesByIdsAsync(List<int> sampleIds);
 
@@ -23,6 +40,17 @@ namespace MiniLIS.Application.Interfaces
         // --- Panel management ---
         Task<List<SamplePanel>> GetSamplePanelsAsync(int sampleId);
         Task SetSamplePanelsAsync(int sampleId, List<SamplePanel> panels);
+
+        /// <summary>
+        /// Añade a un panel ya solicitado tubos de su versión que no se pidieron al registrar
+        /// (panel parcial). Los números son los de la versión congelada del panel, y se
+        /// conservan tal cual: añadir el T2 crea el T2, no "el siguiente".
+        /// </summary>
+        Task AddPanelTubesAsync(int samplePanelId, List<int> tubeNumbers, int? userId = null);
+
+        /// <summary>Tubos de la versión del panel que todavía no se han solicitado, para poder
+        /// ofrecerlos. Lista vacía si el panel está completo, anulado o no tiene versión.</summary>
+        Task<List<PendingTube>> GetAddableTubesAsync(int samplePanelId);
 
         /// <summary>Marca un tubo concreto como leído/no leído (M-4). Acción inmediata, auditable por separado del resto de la edición.</summary>
         Task ToggleSampleTubeReadAsync(int sampleTubeId, bool isRead, int? userId = null);

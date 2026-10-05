@@ -85,7 +85,9 @@ namespace MiniLIS.Infrastructure.Services
             var rows = new List<(Sample, SamplePanel, SampleTube?)>();
             foreach (var s in samples)
             {
-                var requestedPanels = s.Panels.Where(p => p.IsRequested && p.PanelVersion != null).ToList();
+                // Incluye los paneles escritos a mano (sin versión): sus tubos también hay que
+                // prepararlos y adquirirlos. Los perfiles por panel usan su texto como nombre.
+                var requestedPanels = s.Panels.Where(p => p.IsRequested && !p.IsVoided).ToList();
 
                 if (granularity == WorklistGranularity.PorPanel)
                 {
@@ -159,11 +161,16 @@ namespace MiniLIS.Infrastructure.Services
         private WorklistTemplateContext BuildContext(Sample sample, SamplePanel panel, SampleTube? tube, DateTime worklistDateUtc, int sequence, int positionInGroup, int groupIndex, List<string> modifiedFields)
         {
             var sampleTypeCode = sample.SampleType.ToCode();
-            var panelCode = panel.PanelVersion!.Panel?.Code ?? string.Empty;
-            var panelName = panel.PanelVersion.Panel?.Name ?? string.Empty;
+
+            // Un panel escrito a mano no tiene versión ni código de catálogo: su propio texto
+            // hace de nombre y de código, y se queda sin número de versión. El equipo no podrá
+            // emparejarlo con una plantilla suya, que es justo lo que significa un panel manual.
+            var version = panel.PanelVersion;
+            var panelCode = version?.Panel?.Code ?? panel.CustomText ?? string.Empty;
+            var panelName = version?.Panel?.Name ?? panel.CustomText ?? string.Empty;
             // v4: "1.0" (mayor.menor). Antes era "02": los perfiles que usen {PanelVersion}
             // deben revalidarse frente al instrumento.
-            var panelVersionStr = $"{panel.PanelVersion.VersionMajor}.{panel.PanelVersion.VersionMinor}";
+            var panelVersionStr = version != null ? $"{version.VersionMajor}.{version.VersionMinor}" : string.Empty;
 
             // Granularidad PorPanel (BD FACSDiva/BD FACSuite): no hay un tubo concreto que
             // representar -- el panel completo (y sus tubos) los conoce el equipo por su
@@ -171,7 +178,7 @@ namespace MiniLIS.Infrastructure.Services
             var tubeNumber = tube?.TubeNumber ?? 0;
             var tubeNumberPadded = tube != null ? tube.TubeNumber.ToString("D2") : string.Empty;
             var fcsFileName = tube != null
-                ? tube.FcsFileName ?? FcsFileNaming.GenerateFileName(sample.SampleNumber, sampleTypeCode, tube.TubeNumber, panelCode, panel.PanelVersion.FileToken)
+                ? tube.FcsFileName ?? FcsFileNaming.GenerateFileName(sample.SampleNumber, sampleTypeCode, tube.TubeNumber, panelCode, version?.FileToken ?? "manual")
                 : string.Empty;
             var markerListRaw = tube != null
                 ? tube.MarkerList
@@ -181,7 +188,7 @@ namespace MiniLIS.Infrastructure.Services
             var sampleTypeCodeClean = FcsFileNaming.Sanitize(sampleTypeCode, out var m2); if (m2) modifiedFields.Add("SampleTypeCode");
             var sampleTypeNameClean = FcsFileNaming.Sanitize(sample.SampleType.ToDisplayName(), out var m3); if (m3) modifiedFields.Add("SampleTypeName");
             var panelCodeClean = FcsFileNaming.Sanitize(panelCode, out var m4); if (m4) modifiedFields.Add("PanelCode");
-            var panelDisplayCodeClean = FcsFileNaming.Sanitize(panel.PanelVersion.DisplayCode, out var m5); if (m5) modifiedFields.Add("PanelDisplayCode");
+            var panelDisplayCodeClean = FcsFileNaming.Sanitize(version?.DisplayCode ?? panelCode, out var m5); if (m5) modifiedFields.Add("PanelDisplayCode");
             var markerListClean = FcsFileNaming.Sanitize(markerListRaw, out var m6); if (m6) modifiedFields.Add("MarkerList");
             var panelNameClean = FcsFileNaming.Sanitize(panelName, out var m7); if (m7) modifiedFields.Add("PanelName");
             var caseNumberClean = FcsFileNaming.Sanitize(sample.ClinicalRequest?.RequestNumber ?? string.Empty, out var m8); if (m8) modifiedFields.Add("CaseNumber");
@@ -189,6 +196,10 @@ namespace MiniLIS.Infrastructure.Services
             return new WorklistTemplateContext
             {
                 SampleNumber = sampleNumberClean,
+                // Sin tubo concreto (granularidad por panel o por muestra) no hay identificador
+                // de tubo que dar: vacío antes que inventar uno que no está en ninguna etiqueta.
+                SampleTubeId = tube != null ? SampleTubeLabel.Build(sampleNumberClean, tube.SampleSequence) : string.Empty,
+                SampleSequence = tube?.SampleSequence ?? 0,
                 SampleTypeCode = sampleTypeCodeClean,
                 SampleTypeName = sampleTypeNameClean,
                 TubeNumber = tubeNumber,
@@ -346,8 +357,11 @@ namespace MiniLIS.Infrastructure.Services
             return ms.ToArray();
         }
 
-        public async Task<List<WorklistExportProfile>> GetProfilesAsync() =>
-            await _db.WorklistExportProfiles.OrderBy(p => p.Name).ToListAsync();
+        public async Task<List<WorklistExportProfile>> GetProfilesAsync(bool soloActivos = false) =>
+            await _db.WorklistExportProfiles
+                .Where(p => !soloActivos || p.IsActive)
+                .OrderBy(p => p.Name)
+                .ToListAsync();
 
         public async Task<WorklistExportProfile?> GetProfileWithColumnsAsync(int profileId) =>
             await _db.WorklistExportProfiles.Include(p => p.Columns.OrderBy(c => c.DisplayOrder)).FirstOrDefaultAsync(p => p.Id == profileId);

@@ -280,6 +280,14 @@ namespace MiniLIS.Tests
                 // sigue coincidiendo exactamente en "previousMigration" -- se insertan las
                 // filas D4 con el DbSet normal (rellena RowVersion y el resto de columnas
                 // requeridas como lo haría la aplicación real) en vez de un INSERT crudo.
+                // El modelo de EF es el de HOY, pero el esquema se ha parado en una migración
+                // antigua: cualquier columna que Samples haya ganado después falta en la tabla
+                // y el INSERT del DbSet fallaría. Se añaden a mano antes de insertar; no
+                // intervienen en lo que esta migración hace (renumerar a D5), así que no
+                // falsean nada. Una columna nueva en Samples pedirá una línea más aquí.
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE Samples ADD COLUMN LastTubeSequence INTEGER NOT NULL DEFAULT 0;");
+
                 var patient = EntityBuilders.NewPatient(nhc: "NHC-MIG");
                 var request = EntityBuilders.NewRequest(patient, requestNumber: "REQ-MIG");
                 context.Samples.Add(EntityBuilders.NewSample(request, sampleNumber: "26-0009"));

@@ -245,12 +245,28 @@
                         </label>
                         @if (isSelected && item.Tubes.Any())
                         {
+                            @* Los tubos SOLICITADOS de este estudio, no los del catálogo: un panel
+                               pedido en parte enseñaba aquí los cuatro tubos de la versión como si
+                               se hubieran pedido todos. Los que faltan salen atenuados. *@
+                            var pedidos = TubosSolicitados(item.Panel.Id);
                             <div class="panel-tubes">
                                 @foreach (var tube in item.Tubes)
                                 {
-                                    <span class="tube-tag">T@(tube.TubeNumber.ToString("D2")): @tube.MarkerList</span>
+                                    var incluido = pedidos == null || pedidos.Contains(tube.TubeNumber);
+                                    <span class="tube-tag @(incluido ? "" : "tube-tag-off")"
+                                          title="@(incluido ? null : "No solicitado en este estudio")">
+                                        T@(tube.TubeNumber.ToString("D2")): @tube.MarkerList
+                                    </span>
                                 }
                             </div>
+                            @if (pedidos != null && pedidos.Count < item.Tubes.Count)
+                            {
+                                <div class="panel-partial-note">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    Panel <strong>parcial</strong>: @pedidos.Count de @item.Tubes.Count tubos.
+                                    Para añadir los que faltan, use <strong>Paneles de Estudio</strong> en la bandeja técnica.
+                                </div>
+                            }
                         }
                     </div>
                 }
@@ -447,6 +463,8 @@
     .panel-tube-count { font-size:10px; color:#64748b; font-weight:600; background:#f1f5f9; padding:2px 8px; border-radius:8px; }
     .panel-tubes { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; padding-left:26px; }
     .tube-tag { background:#e0e7ff; color:#3730a3; font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; }
+    .tube-tag-off { background:#f1f5f9; color:#94a3b8; text-decoration:line-through; }
+    .panel-partial-note { font-size:11.5px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:4px 8px; margin-top:6px; }
 </style>
 
 @code {
@@ -466,6 +484,14 @@
     private List<string> customPanels = new();
     // SamplePanel ya persistidos, para reenviar su Id y así conservar sus tubos/lectura (M-4).
     private List<SamplePanel> existingPanels = new();
+
+    /// <summary>Números de tubo realmente solicitados de un panel, o null si el panel no está
+    /// en este estudio (al marcarlo se pedirá entero).</summary>
+    private HashSet<int>? TubosSolicitados(int panelId)
+    {
+        var sp = existingPanels.FirstOrDefault(p => p.PanelId == panelId);
+        return sp == null ? null : sp.Tubes.Select(t => t.TubeNumber).ToHashSet();
+    }
 
     // Keep references to original entities for updating
     private Sample? originalSample;

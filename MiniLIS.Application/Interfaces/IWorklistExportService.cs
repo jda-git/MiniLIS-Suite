@@ -9,6 +9,7 @@ namespace MiniLIS.Application.Interfaces
     {
         public int SampleId { get; init; }
         public string SampleNumber { get; init; } = string.Empty;
+
         public SampleType SampleType { get; init; }
         public DateTime? ReceivedAtUtc { get; init; }
         public List<string> Panels { get; init; } = new();
@@ -44,7 +45,11 @@ namespace MiniLIS.Application.Interfaces
         /// qué muestras se incluyeron con qué perfil.</summary>
         Task<WorklistExportResult> ExportAsync(List<int> sampleIds, int profileId);
 
-        Task<List<WorklistExportProfile>> GetProfilesAsync();
+        /// <summary>Perfiles de exportación. <paramref name="soloActivos"/> para la pantalla
+        /// que genera la lista: un perfil desactivado está a medio configurar o a la espera de
+        /// validarse contra el equipo, y no debe poder elegirse para una carga real. La pantalla
+        /// de Configuración los pide todos, que para eso los edita.</summary>
+        Task<List<WorklistExportProfile>> GetProfilesAsync(bool soloActivos = false);
         Task<WorklistExportProfile?> GetProfileWithColumnsAsync(int profileId);
         Task<WorklistExportProfile> UpsertProfileAsync(WorklistExportProfile profile, List<WorklistExportColumn> columns);
         Task MarkProfileValidatedAsync(int profileId);

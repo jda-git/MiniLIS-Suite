@@ -406,6 +406,50 @@ namespace MiniLIS.Infrastructure.Seed
             }
 
             {
+                // Variante por tubo del perfil del Canto II, DESACTIVADA: no se ofrece para
+                // generar una carga real hasta haberla probado contra el equipo.
+                //
+                // El perfil en uso manda una entrada por panel, que es como BD FACSLink
+                // documenta el interfaz: la entrada referencia por NOMBRE un Panel Template de
+                // BD FACSDiva (≤ 15 caracteres, idéntico a los dos lados) y es el equipo quien
+                // sabe qué tubos lleva ese panel y con qué marcadores. Esta variante prueba la
+                // hipótesis contraria —una entrada por tubo, identificada por el código impreso
+                // en su etiqueta— cambiando UNA sola cosa, la granularidad, para que la
+                // comparación contra el equipo sea concluyente. Si BD FACSDiva la importa, el
+                // paso siguiente es añadir los marcadores del tubo como elemento propio.
+                await SeedWorklistProfileAsync(context, new WorklistExportProfile
+                {
+                    Name = "FACSDiva — Canto II (por tubo, sin validar)",
+                    TargetInstrument = "FACSDiva-PorTubo",
+                    FileFormat = WorklistFileFormat.Xml,
+                    FileExtension = "xml",
+                    Encoding = "UTF-8",
+                    LineEnding = "CRLF",
+                    Granularity = WorklistGranularity.PorTubo,
+                    XmlRootElement = "Worklist",
+                    XmlGroupElement = "Carousel",
+                    XmlRowElement = "Specimen",
+                    MaxRowsPerGroup = 40,
+                    MaxGroupsPerFile = 5,
+                    IsActive = false,
+                    ValidatedAgainstInstrument = false,
+                    Columns = new List<WorklistExportColumn>
+                    {
+                        // El identificador del TUBO (26-00018-01), que es el que lleva impreso
+                        // su etiqueta: así lo que se escanea en el equipo es exactamente lo que
+                        // viene en la lista.
+                        new() { DisplayOrder = 1, ColumnHeader = "SampleID", ValueTemplate = "{SampleTubeId}" },
+                        new() { DisplayOrder = 2, ColumnHeader = "PanelName", ValueTemplate = "{PanelName}" },
+                        new() { DisplayOrder = 3, ColumnHeader = "SampleName", ValueTemplate = "{SampleTubeId}" },
+                        new() { DisplayOrder = 4, ColumnHeader = "CaseNumber", ValueTemplate = "{CaseNumber}" },
+                        new() { DisplayOrder = 5, ColumnHeader = "PrimaryTubeType", ValueTemplate = "" },
+                        new() { DisplayOrder = 6, ColumnHeader = "PrimaryRackPosition", ValueTemplate = "{PositionInGroup}" },
+                        new() { DisplayOrder = 7, ColumnHeader = "CarouselPosition", ValueTemplate = "{PositionInGroup}" }
+                    }
+                });
+            }
+
+            {
                 await SeedWorklistProfileAsync(context, new WorklistExportProfile
                 {
                     Name = "FACSuite — FACSLyric",

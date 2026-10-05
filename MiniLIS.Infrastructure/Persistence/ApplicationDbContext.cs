@@ -286,6 +286,7 @@ namespace MiniLIS.Infrastructure.Persistence
                 }
             }
 
+            AssignSampleTubeSequences();
             ApplyAuditing(currentUserId);
             var auditEntries = BeforeSaveChanges(currentUserId, currentUsername, actionContext);
             
@@ -308,6 +309,7 @@ namespace MiniLIS.Infrastructure.Persistence
                 actionContext = _currentUserService.ActionContext;
             }
 
+            AssignSampleTubeSequences();
             ApplyAuditing(currentUserId);
             var auditEntries = BeforeSaveChanges(currentUserId, currentUsername, actionContext);
 
@@ -315,6 +317,55 @@ namespace MiniLIS.Infrastructure.Persistence
 
             await AfterSaveChanges(auditEntries);
             return result;
+        }
+
+        /// <summary>
+        /// Da número de tubo dentro de la muestra a los tubos nuevos (SampleTube.SampleSequence).
+        /// Se hace aquí, en el guardado, y no en los cuatro sitios que crean tubos: así ninguno
+        /// puede olvidarlo y salir un tubo sin identificador en la etiqueta.
+        ///
+        /// El número continúa desde el mayor que haya tenido esa muestra, contando también los
+        /// tubos anulados: el número identifica un tubo físico ya etiquetado y no se reutiliza.
+        /// </summary>
+        private void AssignSampleTubeSequences()
+        {
+            var pendientes = ChangeTracker.Entries<SampleTube>()
+                .Where(e => e.State == EntityState.Added && e.Entity.SampleSequence == 0)
+                .Select(e => e.Entity)
+                .ToList();
+            if (pendientes.Count == 0) return;
+
+            // La muestra de cada tubo: su panel puede ser también nuevo (todavía sin Id), así
+            // que se resuelve por la navegación antes de mirar la base.
+            var porMuestra = new Dictionary<int, List<SampleTube>>();
+            foreach (var tubo in pendientes)
+            {
+                var sampleId = tubo.SamplePanel?.SampleId ?? 0;
+                if (sampleId == 0 && tubo.SamplePanelId != 0)
+                    sampleId = SamplePanels.Local.FirstOrDefault(sp => sp.Id == tubo.SamplePanelId)?.SampleId
+                               ?? SamplePanels.AsNoTracking().Where(sp => sp.Id == tubo.SamplePanelId).Select(sp => sp.SampleId).FirstOrDefault();
+                if (sampleId == 0) continue; // sin muestra resoluble: lo numerará el siguiente guardado
+
+                if (!porMuestra.TryGetValue(sampleId, out var lista)) porMuestra[sampleId] = lista = new List<SampleTube>();
+                lista.Add(tubo);
+            }
+            if (porMuestra.Count == 0) return;
+
+            var ids = porMuestra.Keys.ToList();
+            // El contador vive en la muestra: el máximo de los tubos existentes no vale porque
+            // retirar un panel borra sus filas y el número volvería a repartirse.
+            var muestras = Samples.Where(s => ids.Contains(s.Id)).ToDictionary(s => s.Id);
+
+            foreach (var (sampleId, tubos) in porMuestra)
+            {
+                if (!muestras.TryGetValue(sampleId, out var muestra)) continue;
+                var siguiente = muestra.LastTubeSequence;
+
+                foreach (var tubo in tubos.OrderBy(t => t.SamplePanel?.DisplayOrder ?? 0).ThenBy(t => t.TubeNumber))
+                    tubo.SampleSequence = ++siguiente;
+
+                muestra.LastTubeSequence = siguiente;
+            }
         }
 
         private void ApplyAuditing(int? currentUserId)

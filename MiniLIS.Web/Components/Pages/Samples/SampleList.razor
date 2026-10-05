@@ -342,6 +342,14 @@
                                             @if (sp.PanelVersion != null)
                                             {
                                                 <span class="text-muted small ms-1">(@sp.PanelVersion.DisplayCode)</span>
+                                                @* Un panel del que no se pidieron todos sus tubos: sin esto, "1/1 leídos"
+                                                   se lee como panel terminado cuando falta la mitad por pedir. *@
+                                                @if (TubosPorAnadir(sp).Any())
+                                                {
+                                                    <span class="partial-badge" title="No se solicitaron todos los tubos de esta versión">
+                                                        parcial · @sp.Tubes.Count de @sp.PanelVersion.Tubes.Count
+                                                    </span>
+                                                }
                                             }
                                             @if (sp.IsVoided)
                                             {
@@ -590,6 +598,44 @@
                                             </tr>
                                         }
                                     }
+                                    @* Tubos de la versión que no se pidieron al registrar: desde aquí
+                                       se incorporan al estudio sin tener que rehacer el panel. Conservan su
+                                       número (añadir el T2 crea el T2), que es lo que los enlaza con su
+                                       fórmula, su nota de alcance y el nombre de su fichero FCS. *@
+                                    var porAnadir = TubosPorAnadir(sp);
+                                    @if (porAnadir.Any() && !sp.IsVoided && sp.Id != 0)
+                                    {
+                                        <tr class="addable-row">
+                                            <td colspan="4" class="ps-4">
+                                                <div class="addable-box">
+                                                    <div class="addable-head">
+                                                        <i class="bi bi-plus-circle me-1"></i>
+                                                        Tubos de @sp.PanelVersion?.VersionLabel sin solicitar
+                                                    </div>
+                                                    @foreach (var disponible in porAnadir)
+                                                    {
+                                                        var numero = disponible.TubeNumber;
+                                                        <label class="addable-tube">
+                                                            <input type="checkbox"
+                                                                   checked="@TubosMarcadosParaAnadir(sp.Id).Contains(numero)"
+                                                                   @onchange="@((ChangeEventArgs e) => ToggleTuboPorAnadir(sp.Id, numero, (bool)(e.Value ?? false)))" />
+                                                            <span class="fw-semibold">T@(numero)</span>
+                                                            <span class="text-secondary">@disponible.MarkerList</span>
+                                                            @if (disponible.IsOptional)
+                                                            {
+                                                                <span class="optional-chip">opcional</span>
+                                                            }
+                                                        </label>
+                                                    }
+                                                    <button type="button" class="btn btn-sm btn-outline-primary mt-2"
+                                                            disabled="@(!TubosMarcadosParaAnadir(sp.Id).Any())"
+                                                            @onclick="@(() => AnadirTubos(sp))">
+                                                        <i class="bi bi-plus-lg me-1"></i>Añadir al estudio
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
                                 }
                             </tbody>
                         </table>
@@ -628,6 +674,14 @@
 }
 
 <style>
+    /* ── Panel parcial: tubos sin solicitar ───────────────── */
+    .partial-badge { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 700; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px; padding: 1px 8px; vertical-align: middle; }
+    .addable-row td { background: #f8fafc; }
+    .addable-box { border: 1px dashed #cbd5e1; border-radius: 8px; padding: 8px 12px; background: #fff; }
+    .addable-head { font-size: 11.5px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+    .addable-tube { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin: 0 0 3px; cursor: pointer; }
+    .optional-chip { font-size: 10px; font-weight: 700; color: #475569; background: #f1f5f9; border-radius: 999px; padding: 0 7px; }
+
     /* ── Page ─────────────────────────────────────────────── */
     .bandeja-page {
         padding: 28px 32px;
@@ -1253,6 +1307,46 @@
     private List<SamplePanel> modalPanels = new();
     private List<Panel> allPanelsForModal = new();
     private int modalAddPanelId = 0;
+
+    /// <summary>Tubos marcados para incorporar, por panel del estudio. Se vacía al añadirlos.</summary>
+    private readonly Dictionary<int, HashSet<int>> tubosPorAnadir = new();
+
+    /// <summary>Tubos de la versión del panel que no se pidieron al registrar. Se calcula sobre
+    /// lo que ya está cargado: la versión y sus tubos vienen con el panel.</summary>
+    private static List<PanelTube> TubosPorAnadir(SamplePanel sp)
+    {
+        if (sp.PanelVersion == null || sp.IsVoided) return new List<PanelTube>();
+        var pedidos = sp.Tubes.Select(t => t.TubeNumber).ToHashSet();
+        return sp.PanelVersion.Tubes.Where(t => !pedidos.Contains(t.TubeNumber)).OrderBy(t => t.TubeNumber).ToList();
+    }
+
+    private HashSet<int> TubosMarcadosParaAnadir(int samplePanelId) =>
+        tubosPorAnadir.TryGetValue(samplePanelId, out var set) ? set : new HashSet<int>();
+
+    private void ToggleTuboPorAnadir(int samplePanelId, int tubeNumber, bool marcado)
+    {
+        if (!tubosPorAnadir.TryGetValue(samplePanelId, out var set)) tubosPorAnadir[samplePanelId] = set = new HashSet<int>();
+        if (marcado) set.Add(tubeNumber); else set.Remove(tubeNumber);
+    }
+
+    private async Task AnadirTubos(SamplePanel sp)
+    {
+        var elegidos = TubosMarcadosParaAnadir(sp.Id).ToList();
+        if (elegidos.Count == 0) return;
+
+        try
+        {
+            await SampleService.AddPanelTubesAsync(sp.Id, elegidos, currentUserId);
+            tubosPorAnadir.Remove(sp.Id);
+            modalErrorMessage = null;
+            // Se recargan los paneles para traer los tubos nuevos con su Id y su numeración.
+            modalPanels = await SampleService.GetSamplePanelsAsync(sp.SampleId);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+        {
+            modalErrorMessage = ex.Message;
+        }
+    }
     private string? modalErrorMessage;
     private int? currentUserId;
     private string? currentUserName;

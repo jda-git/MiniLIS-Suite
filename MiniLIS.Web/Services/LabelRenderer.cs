@@ -26,6 +26,9 @@ namespace MiniLIS.Web.Services
 
         public string? DateLine;
         public string? TubeLine;
+        /// <summary>Panel al que pertenece el tubo. Va en su etiqueta para poder emparejarla
+        /// con el panel configurado en el citómetro sin tener que consultar el LIS.</summary>
+        public string? PanelLine;
         public string? AliquotTypeLine;
         /// <summary>Nombre completo del tipo de alícuota (Células, Pellet, DNA...).</summary>
         public string? TypeName;
@@ -130,6 +133,10 @@ namespace MiniLIS.Web.Services
 
             if (item.Kind == LabelKind.Tube)
             {
+                // Panel y tubo: el técnico ve de un vistazo a qué panel del citómetro
+                // corresponde este tubo sin tener que volver al LIS.
+                if (!string.IsNullOrWhiteSpace(item.PanelLine))
+                    sb.Append($@"<div class=""label-tube"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.PanelLine)}</div>");
                 sb.Append($@"<div class=""label-tube"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.TubeLine ?? "")}</div>");
                 return;
             }

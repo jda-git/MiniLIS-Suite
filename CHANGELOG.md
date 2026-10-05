@@ -30,6 +30,122 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.6.1
+
+Corrige lo que faltaba de la v4.6.0: un panel pedido en parte no se podía completar después.
+
+- **Se pueden añadir los tubos que faltan.** En *Paneles de Estudio* (bandeja técnica), un
+  panel parcial muestra ahora los tubos de su versión que no se solicitaron, con una casilla
+  para incorporarlos al estudio. El tubo **conserva su número de la versión** —añadir el T2
+  crea el T2, no «el siguiente»— y recibe su propia etiqueta continuando la numeración de la
+  muestra. Queda en la auditoría (`AddTubes`).
+- **El panel se marca como parcial** junto a su versión («parcial · 1 de 4»). Sin eso, un
+  «1/1 leídos» con la señal de completo daba a entender que el panel estaba terminado cuando
+  faltaba la mitad por pedir.
+- **La pantalla de edición del registro ya no miente**: enseñaba los cuatro tubos del catálogo
+  como si se hubieran pedido todos. Ahora los no solicitados salen tachados y, debajo, una nota
+  dice cuántos tubos lleva el estudio y dónde añadir los que falten.
+- Al cargar los paneles de un estudio se traen también los tubos de su versión, que es lo que
+  permite saber cuáles quedan por incorporar.
+
+## v4.6.0
+
+Versión **MENOR**: no cambia ningún informe ya emitido, pero **sí cambia cómo se declara el
+panel** en los informes nuevos. Conviene revisarlo contra el PNT antes de usarlo en rutina.
+
+### Pedir solo algunos tubos de un panel
+
+Al registrar la muestra, un panel con más de un tubo permite elegir cuáles se van a hacer. Por
+defecto vienen todos marcados: si no se toca nada, el comportamiento es el de siempre.
+
+- **Se conserva el número de tubo de la versión.** Si se piden el T1 y el T3, siguen siendo T1
+  y T3, no se renumeran a T1 y T2: ese número enlaza el tubo con su definición, su fórmula, su
+  nota de alcance de acreditación y el nombre de su fichero FCS.
+- Un panel marcado del que se quitan todos los tubos no se puede registrar.
+- La pantalla avisa de que el informe lo declarará como parcial.
+
+### El informe declara el panel parcial
+
+La línea de versiones de panel pasa a decir **`LEUCEMIA-AGUDA · v2.0 (parcial: T1, T3)`**
+cuando no se ejecutaron todos los tubos obligatorios de la versión.
+
+Antes declaraba la versión sin más en cuanto se leía **un** tubo, de modo que un estudio de dos
+tubos de cuatro se presentaba como el panel acreditado completo. Da igual cómo se haya llegado
+a hacer solo una parte —eligiendo los tubos al registrar o justificando después los que no se
+hicieron—: lo que se declara es lo que se hizo. Los tubos opcionales de la versión no cuentan.
+
+Los informes **ya validados no cambian**: su texto quedó congelado al validarlos.
+
+### Panel escrito a mano con varios tubos
+
+El panel personalizado deja de ser una línea suelta: lleva un nombre y **uno o varios tubos**,
+cada uno con su combinación escrita a mano. No tiene versión ni acreditación, y eso no cambia.
+
+Lo que sí cambia es que **entra en el flujo como un panel más**:
+
+- **Sus tubos salen en la hoja de carga del citómetro.** Antes se descartaban por no tener
+  versión, así que un panel manual nunca llegaba al equipo.
+- **Sus tubos sin leer impiden validar el informe**, igual que los demás: hay que leerlos o
+  justificar por qué no se hicieron. Antes se colaban por el mismo filtro, y el informe se
+  validaba sin constancia de qué se hizo con ellos.
+- Sus tubos llevan en «PANELES EMPLEADOS» una **nota de alcance** —por omisión «Ensayo no
+  incluido en el alcance de acreditación.»— configurable con la clave
+  `Report:CustomPanelScopeNote`. Antes la nota salía en blanco, que no distingue «no aplica»
+  de «nadie la escribió».
+- **No declara versión de panel**, que es lo correcto: no se declara acreditación de algo que
+  no la tiene.
+
+## v4.5.0
+
+Versión **MENOR**: no cambia el informe. Da identificador propio a cada tubo y lo lleva a la
+etiqueta y a la lista de carga.
+
+### Cada tubo con su número y su etiqueta
+
+Cada tubo tiene ahora un número **dentro de la muestra**, correlativo y **continuo entre
+paneles**: un panel de cuatro tubos ocupa del 1 al 4 y el panel que se añada después empieza
+en el 5. La etiqueta del tubo lleva ese identificador como texto y **como código de barras**:
+
+```
+26-00018-01              MO
+LEUCEMIA-AGUDA
+T1: 16/13/34/11b/45/117/DR/10
+```
+
+- **El número no se reutiliza nunca.** El contador vive en la muestra y solo sube: si se
+  retira un panel, sus números se pierden y el siguiente tubo continúa la serie. Reutilizarlos
+  pondría el mismo identificador en dos tubos físicos distintos.
+- Lo asigna el propio guardado, no cada pantalla que crea tubos: hay cuatro sitios que los
+  crean y basta olvidar uno para que salga una etiqueta sin identificador.
+- **«T1, T2»… siguen siendo el número dentro del panel**, que es lo que casa con la definición
+  del panel en el citómetro. Son dos cosas distintas y las dos hacen falta.
+- La etiqueta añade el **código del panel**, para emparejarla con el panel del equipo sin
+  volver al LIS.
+
+**Migración.** Los tubos ya registrados se numeran por el orden del panel y, dentro de él, por
+el número de tubo —el mismo orden en que se ven en pantalla—, y el contador de cada muestra
+queda en su último número. Comprobado sobre una copia de la base de desarrollo: 46 tubos
+numerados, ninguno repetido dentro de una muestra y el resto de columnas idénticas.
+
+### Lista de carga
+
+- Token nuevo **`{SampleTubeId}`**: el identificador del tubo tal y como va impreso en su
+  etiqueta (`26-00018-01`). Y **`{SampleSequence}`**, solo el número.
+- Perfil nuevo **«FACSDiva — Canto II (por tubo, sin validar)»**, **desactivado**: una entrada
+  por tubo en vez de una por panel, identificada por el código de su etiqueta. Cambia una sola
+  cosa respecto al perfil en uso —la granularidad—, para poder comparar los dos ficheros
+  contra el equipo y que la prueba sea concluyente.
+- **Un perfil desactivado ya no se ofrece** en la pantalla que genera la hoja de trabajo. Se
+  listaban todos, de modo que un perfil a medio configurar podía usarse para una carga real.
+  En Configuración siguen apareciendo todos, que para eso se editan allí.
+
+**Sobre la equivalencia con el citómetro.** BD FACSLink documenta que la entrada de la lista
+referencia **por nombre** un Panel Template de BD FACSDiva, con dos condiciones: nombre
+idéntico a los dos lados y **15 caracteres o menos**. Los tubos y sus combinaciones viven en
+la plantilla del equipo, no en la lista. Los cinco paneles actuales cumplen el límite
+(`LEUCEMIA-AGUDA` 14, `MIELOMA` 7, `CD34` 4, `LNH` 3, `SMD` 3). Por eso el perfil por tubo
+nace desactivado: hay que comprobar antes que el equipo lo acepta.
+
 ## v4.4.0
 
 Versión **MENOR**: no toca el informe. Cambia cómo salen los datos de paciente en las
