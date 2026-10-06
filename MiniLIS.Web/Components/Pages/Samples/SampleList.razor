@@ -660,6 +660,42 @@
                         </button>
                     </div>
                 </div>
+
+                @* Panel escrito a mano para esta muestra: sin versión ni acreditación, con los
+                   tubos que haga falta. Mismo contenido que al registrar, para no tener que
+                   volver al alta cuando el panel se decide después. *@
+                <div class="add-panel-container p-3 rounded-3 bg-light border border-light mb-1 mt-2">
+                    <label class="form-label-small m-0 mb-2 fw-semibold text-secondary d-flex align-items-center">
+                        <i class="bi bi-pencil-square text-warning me-1"></i>Añadir panel personalizado
+                        <span class="text-muted fw-normal ms-2">sin versión ni acreditación</span>
+                    </label>
+                    <input type="text" class="form-select form-select-sm stats-input bg-white mb-2"
+                           placeholder="Nombre del panel (p. ej. Estudio dirigido)" @bind="customPanelName" />
+                    @for (var i = 0; i < customPanelTubes.Count; i++)
+                    {
+                        var idx = i;
+                        <div class="d-flex gap-2 align-items-center mb-1">
+                            <span class="fw-semibold text-secondary small" style="min-width:28px;">T@((idx + 1).ToString("D2"))</span>
+                            <input type="text" class="form-select form-select-sm stats-input bg-white flex-grow-1"
+                                   placeholder="Marcadores del tubo (p. ej. CD3/CD4/CD8)"
+                                   value="@customPanelTubes[idx]"
+                                   @onchange="@((ChangeEventArgs e) => customPanelTubes[idx] = e.Value?.ToString() ?? "")" />
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="Quitar tubo"
+                                    disabled="@(customPanelTubes.Count <= 1)" @onclick="@(() => customPanelTubes.RemoveAt(idx))">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                    }
+                    <div class="d-flex gap-2 mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => customPanelTubes.Add(""))">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir tubo
+                        </button>
+                        <button type="button" class="btn btn-sm btn-warning fw-bold"
+                                disabled="@(!PuedeAnadirPanelManual)" @onclick="AddCustomPanelToModal">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir panel
+                        </button>
+                    </div>
+                </div>
                 
                 <!-- Footer Buttons -->
                 <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top border-light">
@@ -1308,6 +1344,38 @@
     private List<Panel> allPanelsForModal = new();
     private int modalAddPanelId = 0;
 
+    // Panel escrito a mano que se está componiendo en la ventana.
+    private string customPanelName = "";
+    private List<string> customPanelTubes = new() { "" };
+
+    private bool PuedeAnadirPanelManual =>
+        !string.IsNullOrWhiteSpace(customPanelName) && customPanelTubes.Any(t => !string.IsNullOrWhiteSpace(t));
+
+    /// <summary>Lo añade a la lista en memoria; se crea de verdad al guardar la ventana, igual
+    /// que los paneles del catálogo que se añaden desde el desplegable.</summary>
+    private void AddCustomPanelToModal()
+    {
+        if (!PuedeAnadirPanelManual) return;
+
+        var sp = new SamplePanel
+        {
+            SampleId = panelModalSample?.Id ?? 0,
+            PanelId = null,
+            CustomText = customPanelName.Trim(),
+            IsRequested = true,
+            DisplayOrder = modalPanels.Count + 1
+        };
+
+        var n = 1;
+        foreach (var marcadores in customPanelTubes.Select(t => (t ?? "").Trim()).Where(t => t.Length > 0))
+            sp.Tubes.Add(new SampleTube { TubeNumber = n++, MarkerList = marcadores });
+
+        modalPanels.Add(sp);
+        customPanelName = "";
+        customPanelTubes = new List<string> { "" };
+        modalErrorMessage = null;
+    }
+
     /// <summary>Tubos marcados para incorporar, por panel del estudio. Se vacía al añadirlos.</summary>
     private readonly Dictionary<int, HashSet<int>> tubosPorAnadir = new();
 
@@ -1678,6 +1746,9 @@
         // devueltas (con sus SampleTube ya cargados) en vez de reconstruirlas a mano,
         // para no tener que enumerar cada campo nuevo aquí cada vez que el modelo cambie.
         modalPanels = await SampleService.GetSamplePanelsAsync(sample.Id);
+        // El compositor del panel manual empieza en blanco cada vez que se abre la ventana.
+        customPanelName = "";
+        customPanelTubes = new List<string> { "" };
         if (!incidentReasons.Any())
         {
             incidentReasons = await MasterService.GetAllTubeReadIncidentReasonsAsync();
@@ -1873,6 +1944,8 @@
     {
         panelModalSample = null;
         modalErrorMessage = null;
+        customPanelName = "";
+        customPanelTubes = new List<string> { "" };
     }
 
     private string GetStatusClass(SampleStatus status) => status switch

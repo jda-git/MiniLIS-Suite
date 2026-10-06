@@ -15,7 +15,14 @@ namespace MiniLIS.Web.Services
     {
         public LabelKind Kind;
         public bool Selected;
+        /// <summary>Lo que va grande junto al código de barras. En un tubo es su identificador
+        /// completo (26-00017-01), no el de la muestra.</summary>
         public string SampleNumber = "";
+
+        /// <summary>Número de la muestra sin el sufijo del tubo (26-00017). Es lo que se lee en
+        /// la banda vertical de la etiqueta de tubo, donde interesa identificar el estudio.</summary>
+        public string? SampleNumberPlain;
+
         public string TypeCode = "";
 
         public string? Nhc;
@@ -29,6 +36,9 @@ namespace MiniLIS.Web.Services
         /// <summary>Panel al que pertenece el tubo. Va en su etiqueta para poder emparejarla
         /// con el panel configurado en el citómetro sin tener que consultar el LIS.</summary>
         public string? PanelLine;
+
+        /// <summary>Marcadores que van en la banda vertical de la etiqueta de tubo.</summary>
+        public string? VerticalMarkers;
         public string? AliquotTypeLine;
         /// <summary>Nombre completo del tipo de alícuota (Células, Pellet, DNA...).</summary>
         public string? TypeName;
@@ -125,21 +135,71 @@ namespace MiniLIS.Web.Services
                 sb.Append($@"<div class=""label-noid"" style=""font-size:{s.Type2SecondaryFontPt}pt;"">Nº LAB NO CODIFICABLE</div>");
         }
 
-        // ── Tubo y alícuota: sin cambios respecto al diseño anterior ────────────────
-        private static void RenderTuboOAlicuota(StringBuilder sb, LabelItem item, LabelSettings s)
+        // ── Tubo ────────────────────────────────────────────────────────────────────
+        //   El tubo vive de pie en la gradilla, así que lo que queda a la vista es un lado y no
+        //   la cara entera. La etiqueta reserva una banda vertical a la izquierda con el nº de
+        //   muestra y los marcadores girados, legibles sin sacar el tubo, y encoge el código de
+        //   barras y sus textos hacia la derecha.
+        //
+        //   ┌──┬──────────────────────────┐
+        //   │26│ ‖‖│‖││‖│‖‖│              │
+        //   │16│ 26-00017-01          MO  │
+        //   │  │ T1: 16/13/34/11b/45/…    │
+        //   └──┴──────────────────────────┘
+        private static void RenderTubo(StringBuilder sb, LabelItem item, LabelSettings s)
         {
-            sb.Append(Barcode(item.BarcodeData ?? item.SampleNumber, s.BarcodeHeightMm, s));
-            FilaPrincipal(sb, item, s.MainFontPt, s.ShowSampleType && item.Kind != LabelKind.Aliquot);
-
-            if (item.Kind == LabelKind.Tube)
+            var banda = s.TubeStripWidthMm;
+            if (banda <= 0)
             {
-                // Panel y tubo: el técnico ve de un vistazo a qué panel del citómetro
-                // corresponde este tubo sin tener que volver al LIS.
-                if (!string.IsNullOrWhiteSpace(item.PanelLine))
-                    sb.Append($@"<div class=""label-tube"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.PanelLine)}</div>");
-                sb.Append($@"<div class=""label-tube"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.TubeLine ?? "")}</div>");
+                // Banda desactivada: la etiqueta de tubo de siempre.
+                RenderTuboSinBanda(sb, item, s, s.WidthMm - 2 * s.MarginMm);
                 return;
             }
+
+            var anchoUtil = s.WidthMm - 2 * s.MarginMm - banda - SeparacionBandaMm;
+
+            sb.Append(@"<div class=""label-split"">");
+            sb.Append($@"<div class=""label-vstrip"" style=""width:{Mm(banda)};"">");
+
+            // Primera línea (la más a la izquierda): el estudio y el tipo de muestra.
+            var cabecera = string.Join("  ", new[] { item.SampleNumberPlain, item.TypeCode }
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+            sb.Append($@"<div class=""label-vline"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(cabecera)}</div>");
+
+            // Segunda línea: los marcadores, que es lo que el técnico necesita ver con el tubo
+            // puesto. Se recorta solo lo que no cabe (overflow), no se abrevia aquí.
+            if (!string.IsNullOrWhiteSpace(item.VerticalMarkers))
+                sb.Append($@"<div class=""label-vline label-vline-soft"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.VerticalMarkers)}</div>");
+
+            sb.Append("</div>");
+
+            sb.Append(@"<div class=""label-vmain"">");
+            RenderTuboSinBanda(sb, item, s, anchoUtil);
+            sb.Append("</div>");
+            sb.Append("</div>");
+        }
+
+        /// <summary>Separación entre la banda vertical y el código de barras.</summary>
+        private const double SeparacionBandaMm = 1.0;
+
+        private static void RenderTuboSinBanda(StringBuilder sb, LabelItem item, LabelSettings s, double anchoDisponibleMm)
+        {
+            sb.Append(Barcode(item.BarcodeData ?? item.SampleNumber, s.BarcodeHeightMm, s, anchoDisponibleMm));
+            FilaPrincipal(sb, item, s.MainFontPt, s.ShowSampleType);
+            sb.Append($@"<div class=""label-tube"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.TubeLine ?? "")}</div>");
+        }
+
+        // ── Alícuota ────────────────────────────────────────────────────────────────
+        private static void RenderTuboOAlicuota(StringBuilder sb, LabelItem item, LabelSettings s)
+        {
+            if (item.Kind == LabelKind.Tube)
+            {
+                RenderTubo(sb, item, s);
+                return;
+            }
+
+            sb.Append(Barcode(item.BarcodeData ?? item.SampleNumber, s.BarcodeHeightMm, s));
+            FilaPrincipal(sb, item, s.MainFontPt, mostrarTipo: false);
 
             sb.Append($@"<div class=""label-tube"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.AliquotTypeLine ?? "")}</div>");
 
@@ -218,7 +278,7 @@ namespace MiniLIS.Web.Services
         public static double AltoDisponibleMm(LabelSettings s) => s.HeightMm - 2 * s.MarginMm;
 
         // Code 128B dibujado directamente en SVG, sin dependencias de imagen (F-5).
-        private static string Barcode(string data, double altoMm, LabelSettings s)
+        private static string Barcode(string data, double altoMm, LabelSettings s, double? anchoDisponibleMm = null)
         {
             var widths = Code128Encoder.EncodeToModuleWidths(data);
             var totalModules = widths.Sum();
@@ -226,8 +286,11 @@ namespace MiniLIS.Web.Services
             // Ancho de módulo FIJO (0,33 mm), no el que haga falta para llenar la etiqueta:
             // estirar un código corto produce barras demasiado gruesas que un lector de mano no
             // decodifica (comprobado). Solo se reduce si el código no cabría con ese ancho.
+            //
+            // anchoDisponibleMm lo pasa la etiqueta de tubo, que cede parte del ancho a su banda
+            // vertical: sin eso el código se saldría por la derecha en vez de encogerse.
             const double moduloObjetivoMm = 0.33;
-            double disponible = s.WidthMm - 2 * s.MarginMm;
+            double disponible = anchoDisponibleMm ?? (s.WidthMm - 2 * s.MarginMm);
             double modulo = Math.Min(moduloObjetivoMm, Math.Max(0.25, disponible / totalModules));
             double anchoMm = modulo * totalModules;
 

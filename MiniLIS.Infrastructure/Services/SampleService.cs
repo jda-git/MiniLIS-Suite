@@ -339,8 +339,18 @@ namespace MiniLIS.Infrastructure.Services
                 query = query.Where(s => s.ReceptionDate <= end);
             }
 
+            // Desempate por número de muestra descendente: varias muestras pueden compartir
+            // fecha y hora (un alta en lote, o una fecha tecleada sin hora), y sin criterio
+            // explícito el motor las devuelve en el orden en que se insertaron, de modo que
+            // dentro del mismo instante salían de la más antigua a la más reciente, al revés
+            // que el resto del listado.
+            //
+            // Ordenar el número como texto es correcto con el formato AA-NNNNN: el año va
+            // delante y la secuencia lleva ceros a la izquierda, así que el orden alfabético
+            // coincide con el cronológico (26-00019 > 26-00018 > 25-99999).
             var results = await query
                 .OrderByDescending(s => s.ReceptionDate)
+                .ThenByDescending(s => s.SampleNumber)
                 .ToListAsync();
 
             // M-2: toda búsqueda por texto devuelve identificadores de paciente (nombre,
@@ -581,8 +591,26 @@ namespace MiniLIS.Infrastructure.Services
                         newSp.PanelVersionId = version.Id;
                         AddTubesFromVersion(newSp, version, sample);
                     }
-                    else
+                    else if (p.Tubes.Any())
                     {
+                        // Panel escrito a mano con sus tubos ya redactados por la pantalla.
+                        var n = 1;
+                        foreach (var t in p.Tubes.OrderBy(t => t.TubeNumber))
+                        {
+                            var marcadores = (t.MarkerList ?? string.Empty).Trim();
+                            if (marcadores.Length == 0) continue;
+                            newSp.Tubes.Add(new SampleTube
+                            {
+                                TubeNumber = n++,
+                                MarkerList = marcadores.Length > 300 ? marcadores[..300] : marcadores
+                            });
+                        }
+                    }
+
+                    if (!p.PanelId.HasValue && !newSp.Tubes.Any())
+                    {
+                        // Sin tubos redactados, el propio nombre hace de único tubo: es como se
+                        // comportaba el panel manual de una sola línea.
                         newSp.Tubes.Add(new SampleTube { TubeNumber = 1, MarkerList = p.CustomText ?? string.Empty });
                     }
 

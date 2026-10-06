@@ -224,7 +224,10 @@ namespace MiniLIS.Infrastructure.Services
             int total = await q.CountAsync();
 
             var rows = await q
+                // Mismo desempate que la bandeja técnica (ver SampleService): sin él, las
+                // muestras que comparten fecha salen en orden de inserción.
                 .OrderByDescending(s => s.ReceptionDate)
+                .ThenByDescending(s => s.SampleNumber)
                 .Take(maxResults)
                 .Select(s => new
                 {

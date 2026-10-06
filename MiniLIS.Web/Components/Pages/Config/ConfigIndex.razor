@@ -793,6 +793,11 @@
                         <label class="field-label">Copias por muestra</label>
                         <input type="number" min="1" max="10" class="field-input" @bind="labelSettings.CopiesPerSample" />
                     </div>
+                    <div class="form-field">
+                        <label class="field-label">Banda vertical del tubo (mm)</label>
+                        <input type="number" step="0.5" min="0" max="20" class="field-input" @bind="labelSettings.TubeStripWidthMm" />
+                        <span class="lbl-hint">Franja girada que se lee con el tubo de pie. A 0 se desactiva.</span>
+                    </div>
                 </div>
                 <div class="inline-form-grid">
                     <div class="form-field">

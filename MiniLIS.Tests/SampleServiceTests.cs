@@ -275,5 +275,43 @@ namespace MiniLIS.Tests
             var updatedSample = await testCtx.Samples.FindAsync(sampleId);
             updatedSample!.Status.Should().Be(SampleStatus.ReportadaParcial);
         }
+
+        [Fact]
+        public async Task La_bandeja_ordena_por_numero_descendente_cuando_coincide_la_fecha()
+        {
+            // Varias altas pueden compartir fecha y hora (un lote, o una fecha sin hora). Sin
+            // desempate explícito salían en orden de inserción, es decir de la más antigua a la
+            // más reciente dentro del mismo instante, al revés que el resto del listado.
+            using var db = new TestDb();
+            var mismaFecha = new DateTime(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc);
+
+            using (var ctx = db.CreateContext())
+            {
+                var patient = EntityBuilders.NewPatient(nhc: "NHC-ORD");
+                var request = EntityBuilders.NewRequest(patient, "REQ-ORD");
+                foreach (var numero in new[] { "26-00017", "26-00019", "26-00018" })
+                {
+                    var sample = EntityBuilders.NewSample(request, sampleNumber: numero);
+                    sample.ReceptionDate = mismaFecha;
+                    sample.ReceivedAtUtc = mismaFecha;
+                    ctx.Samples.Add(sample);
+                }
+                // Y una anterior, para comprobar que la fecha sigue mandando sobre el número.
+                var antigua = EntityBuilders.NewSample(request, sampleNumber: "26-00099");
+                antigua.ReceptionDate = mismaFecha.AddDays(-3);
+                antigua.ReceivedAtUtc = antigua.ReceptionDate;
+                ctx.Samples.Add(antigua);
+                await ctx.SaveChangesAsync();
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                var numbering = new NumberingService(ctx, Microsoft.Extensions.Logging.Abstractions.NullLogger<NumberingService>.Instance);
+                var resultado = await CreateService(ctx, numbering).GetFilteredSamplesAsync(null, null, null, null);
+
+                resultado.Select(s => s.SampleNumber)
+                    .Should().Equal("26-00019", "26-00018", "26-00017", "26-00099");
+            }
+        }
     }
 }

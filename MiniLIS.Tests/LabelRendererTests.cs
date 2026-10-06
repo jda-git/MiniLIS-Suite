@@ -168,5 +168,93 @@ namespace MiniLIS.Tests
             s.SampleLabelFormat.Should().Be(LabelFormats.Tipo1);
             s.Type2BarcodeHeightMm.Should().Be(4);
         }
+
+        // ── Etiqueta de tubo con banda vertical ─────────────────────────────────────
+        // El tubo va de pie en la gradilla: lo que se ve es un costado. La banda de la
+        // izquierda lleva girados el nº de muestra y los marcadores.
+
+        private static LabelItem Tubo() => new()
+        {
+            Kind = LabelKind.Tube,
+            SampleNumber = "26-00017-01",
+            SampleNumberPlain = "26-00017",
+            TypeCode = "MO",
+            TubeLine = "T1: 16/13/34/11b/45/117/DR/10",
+            VerticalMarkers = "16/13/34/11b/45/117/DR/10",
+            PanelLine = "LEUCEMIA-AGUDA"
+        };
+
+        private static LabelSettings AjustesTubo(double bandaMm = 7) =>
+            new() { SampleLabelFormat = LabelFormats.Tipo1, TubeStripWidthMm = bandaMm };
+
+        [Fact]
+        public void La_etiqueta_de_tubo_lleva_la_banda_con_la_muestra_y_los_marcadores()
+        {
+            var html = System.Net.WebUtility.HtmlDecode(LabelRenderer.Render(Tubo(), AjustesTubo()));
+
+            html.Should().Contain("label-vstrip");
+            html.Should().Contain("26-00017  MO", "en la banda va el estudio, no el identificador del tubo");
+            html.Should().Contain("label-vline");
+            // Los marcadores aparecen dos veces: girados en la banda y en la línea del tubo.
+            html.Should().Contain("16/13/34/11b/45/117/DR/10");
+        }
+
+        [Fact]
+        public void La_etiqueta_de_tubo_ya_no_lleva_la_linea_del_panel()
+        {
+            // Se quitó al dejar sitio a la banda: los marcadores ya identifican el panel.
+            var html = System.Net.WebUtility.HtmlDecode(LabelRenderer.Render(Tubo(), AjustesTubo()));
+
+            html.Should().NotContain("LEUCEMIA-AGUDA");
+        }
+
+        [Fact]
+        public void El_codigo_de_barras_del_tubo_se_encoge_para_dejar_sitio_a_la_banda()
+        {
+            // Sin encogerlo se saldría por la derecha en vez de caber en lo que le queda.
+            var conBanda = LabelRenderer.Render(Tubo(), AjustesTubo(bandaMm: 10));
+            var sinBanda = LabelRenderer.Render(Tubo(), AjustesTubo(bandaMm: 0));
+
+            AnchoDelCodigo(conBanda).Should().BeLessThan(AnchoDelCodigo(sinBanda));
+        }
+
+        [Fact]
+        public void A_cero_la_banda_desaparece_y_queda_la_etiqueta_de_antes()
+        {
+            var html = System.Net.WebUtility.HtmlDecode(LabelRenderer.Render(Tubo(), AjustesTubo(bandaMm: 0)));
+
+            html.Should().NotContain("label-vstrip");
+            html.Should().Contain("26-00017-01");
+            html.Should().Contain("T1: 16/13/34/11b/45/117/DR/10");
+        }
+
+        [Fact]
+        public void La_etiqueta_de_alicuota_no_cambia()
+        {
+            var alicuota = new LabelItem
+            {
+                Kind = LabelKind.Aliquot,
+                SampleNumber = "26-00017",
+                TypeCode = "CEL",
+                AliquotTypeLine = "CEL 1/20",
+                BarcodeData = "26-00017(T1)",
+                DateLine = "06/10/2026",
+                TypeName = "Células"
+            };
+
+            var html = System.Net.WebUtility.HtmlDecode(LabelRenderer.Render(alicuota, AjustesTubo()));
+
+            html.Should().NotContain("label-vstrip", "la banda es solo para los tubos de panel");
+            html.Should().Contain("CEL 1/20");
+            html.Should().Contain("Células");
+        }
+
+        /// <summary>Ancho en mm del primer código de barras del marcado.</summary>
+        private static double AnchoDelCodigo(string html)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(html, @"class=""label-barcode"" width=""([0-9.]+)mm""");
+            m.Success.Should().BeTrue("la etiqueta debe llevar un código de barras");
+            return double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        }
     }
 }

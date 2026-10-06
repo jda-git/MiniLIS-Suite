@@ -222,8 +222,12 @@ else
                         // siguen siendo el número dentro del panel, que es lo que casa con la
                         // definición del panel en el equipo.
                         SampleNumber = SampleTubeLabel.Build(s.SampleNumber, tube.SampleSequence),
+                        // El de la muestra, sin el sufijo del tubo: es lo que va en la banda
+                        // vertical, donde interesa identificar el estudio de un vistazo.
+                        SampleNumberPlain = s.SampleNumber,
                         TypeCode = s.SampleType.ToCode(),
                         TubeLine = $"T{tube.TubeNumber}: {tube.MarkerList}",
+                        VerticalMarkers = tube.MarkerList,
                         PanelLine = panel.Panel?.Code ?? panel.CustomText
                     });
                 }

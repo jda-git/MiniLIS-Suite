@@ -318,5 +318,69 @@ namespace MiniLIS.Tests
                 contenido.Should().NotContain("· v");
             }
         }
+
+        // ── Panel manual añadido desde el gestor de paneles ────────────────────────────
+        // La ventana compone el panel en memoria y lo manda con sus tubos; el servicio los
+        // respeta en vez de crear uno solo con el nombre, que era lo único que sabía hacer.
+
+        [Fact]
+        public async Task El_gestor_de_paneles_crea_un_panel_manual_con_sus_tubos()
+        {
+            using var db = new TestDb();
+            var (request, patientId) = await SeedPatientAsync(db, "NHC-GESTOR");
+
+            int sampleId;
+            using (var ctx = db.CreateContext())
+                sampleId = (await Service(ctx).RegisterSampleAsync(patientId, request, "", SampleType.MedulaOsea)).Id;
+
+            using (var ctx = db.CreateContext())
+            {
+                var manual = new SamplePanel
+                {
+                    SampleId = sampleId, PanelId = null, CustomText = "Estudio dirigido",
+                    IsRequested = true, DisplayOrder = 1
+                };
+                manual.Tubes.Add(new SampleTube { TubeNumber = 1, MarkerList = "CD3/CD4/CD8" });
+                manual.Tubes.Add(new SampleTube { TubeNumber = 2, MarkerList = "CD19/CD20" });
+
+                await Service(ctx).SetSamplePanelsAsync(sampleId, new List<SamplePanel> { manual });
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                var sp = await ctx.SamplePanels.Include(p => p.Tubes).SingleAsync(p => p.SampleId == sampleId);
+
+                sp.CustomText.Should().Be("Estudio dirigido");
+                sp.PanelVersionId.Should().BeNull();
+                sp.Tubes.OrderBy(t => t.TubeNumber).Select(t => t.MarkerList)
+                    .Should().Equal("CD3/CD4/CD8", "CD19/CD20");
+                // Y cada uno con su etiqueta propia dentro de la muestra.
+                sp.Tubes.Select(t => t.SampleSequence).OrderBy(x => x).Should().Equal(1, 2);
+            }
+        }
+
+        [Fact]
+        public async Task Un_panel_manual_sin_tubos_redactados_sigue_creando_uno_con_su_nombre()
+        {
+            // Compatibilidad con la pantalla de edición, que todavía manda solo el nombre.
+            using var db = new TestDb();
+            var (request, patientId) = await SeedPatientAsync(db, "NHC-GESTOR2");
+
+            int sampleId;
+            using (var ctx = db.CreateContext())
+                sampleId = (await Service(ctx).RegisterSampleAsync(patientId, request, "", SampleType.MedulaOsea)).Id;
+
+            using (var ctx = db.CreateContext())
+                await Service(ctx).SetSamplePanelsAsync(sampleId, new List<SamplePanel>
+                {
+                    new() { SampleId = sampleId, CustomText = "Solo el nombre", IsRequested = true, DisplayOrder = 1 }
+                });
+
+            using (var ctx = db.CreateContext())
+            {
+                var sp = await ctx.SamplePanels.Include(p => p.Tubes).SingleAsync(p => p.SampleId == sampleId);
+                sp.Tubes.Should().ContainSingle().Which.MarkerList.Should().Be("Solo el nombre");
+            }
+        }
     }
 }

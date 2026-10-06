@@ -114,6 +114,12 @@ namespace MiniLIS.Application.Interfaces
         public bool ShowReceptionDate { get; set; } = true;
         public int CopiesPerSample { get; set; } = 1;
 
+        /// <summary>Ancho de la banda vertical de la etiqueta de TUBO, en milímetros. Es la
+        /// franja de la izquierda que queda legible con el tubo de pie en la gradilla; el
+        /// código de barras y sus textos se encogen y se desplazan para dejarle sitio.
+        /// A 0 se desactiva y la etiqueta de tubo vuelve a ser como antes.</summary>
+        public double TubeStripWidthMm { get; set; } = 7;
+
         // --- Formato de la etiqueta de MUESTRA (las de tubo y alícuota no cambian) ---------
         // Los ajustes se guardan como JSON en SystemSettings: una configuración guardada antes
         // de existir estos campos los recibe con su valor por defecto, sin migración.

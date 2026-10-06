@@ -30,6 +30,57 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.7.0
+
+Versión **MENOR**: solo cambia el diseño de la etiqueta de tubo. Antes de imprimir una tanda
+conviene sacar una de prueba y comprobarla sobre el tubo real.
+
+### La etiqueta de tubo se lee con el tubo de pie
+
+El tubo vive de pie en la gradilla, así que lo que queda a la vista es un costado y no la cara
+entera. La etiqueta reserva ahora una **banda vertical a la izquierda** con dos líneas giradas,
+legibles sin sacar el tubo:
+
+- La primera, el **número de muestra y el tipo** (`26-00017  MO`).
+- La segunda, los **marcadores** del tubo, los que quepan.
+
+Se leen **de abajo arriba**, que es como quedan derechas con el tubo en su posición normal.
+
+El código de barras y los textos de debajo **se encogen y se desplazan a la derecha** para
+dejarle sitio: el código calcula su ancho sobre lo que le queda, no sobre la etiqueta entera,
+así que no se sale por el borde.
+
+Se quita de la etiqueta de tubo la línea con el código del panel: los marcadores ya lo
+identifican y el sitio hace falta. El identificador del tubo (`26-00017-01`) y la línea
+`T1: 16/13/…` se mantienen.
+
+El ancho de la banda se configura en **Configuración → Etiquetas** («Banda vertical del tubo»),
+por omisión 7 mm. **A 0 se desactiva** y la etiqueta de tubo vuelve a ser la anterior.
+
+Las etiquetas de **muestra y de alícuota no cambian**.
+
+### Panel personalizado desde el gestor de paneles
+
+**Paneles de Estudio** (bandeja técnica) permite ahora añadir un panel escrito a mano con uno o
+varios tubos, igual que al registrar la muestra. Antes solo dejaba añadir paneles del catálogo,
+de modo que un panel decidido después del alta obligaba a volver al registro.
+
+Sin versión ni acreditación, como corresponde: no declara versión en el informe y sus tubos
+llevan la nota de fuera de alcance. Sus tubos cuentan para la hoja de carga y para la
+validación, como los demás.
+
+El guardado respeta los tubos redactados; una pantalla que mande solo el nombre sigue creando
+un tubo único con él, que es lo que hace la edición del registro.
+
+### Orden de los listados
+
+La bandeja técnica y el buscador ordenan por fecha de recepción descendente, pero **no
+desempataban**: varias muestras con la misma fecha y hora —un alta en lote, o una fecha
+tecleada sin hora— salían en el orden en que se insertaron, es decir de la más antigua a la más
+reciente dentro del mismo instante, justo al revés que el resto del listado.
+
+Ahora desempatan por **número de muestra descendente**.
+
 ## v4.6.1
 
 Corrige lo que faltaba de la v4.6.0: un panel pedido en parte no se podía completar después.

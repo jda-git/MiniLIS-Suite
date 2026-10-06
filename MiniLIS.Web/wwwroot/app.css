@@ -213,6 +213,29 @@ body {
 .label-noid { background: #0f172a; color: #fff; font-weight: 700; padding: 0.5mm 1mm; display: inline-block; margin-top: 0.3mm; }
 .label-tube { color: #1e293b; margin-top: 0.3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
+/* ═══ Etiqueta de tubo con banda vertical ═══
+   El tubo está de pie en la gradilla: lo que queda a la vista es un costado, no la cara. La
+   banda de la izquierda lleva el nº de muestra y los marcadores girados para leerlos sin
+   sacar el tubo, y el resto de la etiqueta se encoge hacia la derecha.
+
+   writing-mode vertical-rl gira el texto; el rotate(180deg) lo pone a leer DE ABAJO ARRIBA,
+   que es como queda derecho con el tubo en su posición normal. Sin el rotate se leería al
+   revés, de arriba abajo. */
+.label-split { display: flex; flex-direction: row; align-items: stretch; width: 100%; height: 100%; gap: 1mm; }
+.label-vstrip { display: flex; flex-direction: row; flex-shrink: 0; gap: 0.5mm; overflow: hidden; }
+.label-vline {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    overflow: hidden;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1;
+}
+.label-vline-soft { font-weight: 400; color: #1e293b; }
+/* El contenido de la derecha ocupa lo que queda y no empuja a la banda. */
+.label-vmain { display: flex; flex-direction: column; justify-content: center; flex: 1 1 0; min-width: 0; overflow: hidden; }
+
 /* ═══ Ventanas modales propias (.modal-backdrop-custom) ═══
    Aquí y no en la página: las usan la bandeja de muestras y las alícuotas almacenadas.
    Mientras vivieron en el <style> de SampleList, en Excedente el mismo marcado se pintaba
