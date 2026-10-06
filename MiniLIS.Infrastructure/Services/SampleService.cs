@@ -588,8 +588,21 @@ namespace MiniLIS.Infrastructure.Services
                             throw new InvalidOperationException($"El panel seleccionado (Id={p.PanelId}) no tiene ninguna versión vigente.");
                         }
 
+                        // La pantalla puede mandar los tubos elegidos (panel pedido en parte).
+                        // Sin ellos, el panel entra entero, que es lo de siempre.
+                        var elegidos = p.Tubes.Select(t => t.TubeNumber).Distinct().OrderBy(n => n).ToList();
+                        if (elegidos.Count > 0)
+                        {
+                            var disponibles = version.Tubes.Select(t => t.TubeNumber).ToHashSet();
+                            var desconocidos = elegidos.Where(n => !disponibles.Contains(n)).ToList();
+                            if (desconocidos.Any())
+                                throw new InvalidOperationException(
+                                    $"El panel {version.Panel?.Code ?? p.PanelId.ToString()} no tiene el tubo {string.Join(", ", desconocidos)} en su versión vigente.");
+                        }
+
                         newSp.PanelVersionId = version.Id;
-                        AddTubesFromVersion(newSp, version, sample);
+                        newSp.Tubes.Clear();
+                        AddTubesFromVersion(newSp, version, sample, elegidos.Count > 0 ? elegidos : null);
                     }
                     else if (p.Tubes.Any())
                     {

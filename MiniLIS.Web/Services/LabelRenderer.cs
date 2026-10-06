@@ -251,6 +251,33 @@ namespace MiniLIS.Web.Services
             sb.Append("</div>");
         }
 
+        /// <summary>
+        /// Ancho mínimo de módulo (barra estrecha) con el que un lector de mano decodifica un
+        /// Code 128 con fiabilidad a corta distancia. Por debajo, el generador se niega a
+        /// imprimir el código en vez de dar uno que no se podrá leer.
+        /// </summary>
+        public const double ModuloMinimoLegibleMm = 0.19;
+
+        /// <summary>
+        /// Ancho que ocupará el código de barras de un dato, en milímetros, con el espacio
+        /// disponible que se le dé. Devuelve null si no cabe de forma legible. Lo usa la
+        /// pantalla de Configuración para avisar antes de imprimir una tanda.
+        /// </summary>
+        public static double? AnchoCodigoMm(string? datos, double anchoDisponibleMm)
+        {
+            if (string.IsNullOrEmpty(datos)) return null;
+            var modulos = Code128Encoder.EncodeToModuleWidths(datos).Sum();
+            var modulo = Math.Min(0.33, anchoDisponibleMm / modulos);
+            return modulo < ModuloMinimoLegibleMm ? null : modulo * modulos;
+        }
+
+        /// <summary>Ancho útil que le queda al código de barras de una etiqueta de TUBO, una vez
+        /// descontados los márgenes y la banda vertical.</summary>
+        public static double AnchoUtilTuboMm(LabelSettings s) =>
+            s.TubeStripWidthMm > 0
+                ? s.WidthMm - 2 * s.MarginMm - s.TubeStripWidthMm - SeparacionBandaMm
+                : s.WidthMm - 2 * s.MarginMm;
+
         public static bool EsCodificable(string? texto) =>
             !string.IsNullOrEmpty(texto) && texto.All(c => c >= 32 && c <= 127);
 
@@ -291,7 +318,19 @@ namespace MiniLIS.Web.Services
             // vertical: sin eso el código se saldría por la derecha en vez de encogerse.
             const double moduloObjetivoMm = 0.33;
             double disponible = anchoDisponibleMm ?? (s.WidthMm - 2 * s.MarginMm);
-            double modulo = Math.Min(moduloObjetivoMm, Math.Max(0.25, disponible / totalModules));
+
+            // El ancho NUNCA pasa de lo disponible. Antes había un suelo de 0,25 mm por módulo
+            // que, cuando el código no cabía con él, producía un código más ancho que la
+            // etiqueta: el contenedor lo recortaba (overflow:hidden) y el resultado era un
+            // código truncado, es decir ilegible para el lector. Vale más un módulo algo más
+            // fino que un código cortado.
+            double modulo = Math.Min(moduloObjetivoMm, disponible / totalModules);
+
+            // Por debajo de este ancho de módulo el código deja de ser fiable con un lector de
+            // mano. En vez de imprimir algo que no se va a poder leer, se dice por qué.
+            if (modulo < ModuloMinimoLegibleMm)
+                return $@"<div class=""label-noid"" style=""font-size:{s.SecondaryFontPt}pt;"">CÓDIGO NO CABE</div>";
+
             double anchoMm = modulo * totalModules;
 
             var sb = new StringBuilder();

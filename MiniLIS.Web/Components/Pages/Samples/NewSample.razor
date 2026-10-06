@@ -344,52 +344,63 @@
                         }
                     </div>
                 }
-                <!-- Panel escrito a mano: nombre y uno o varios tubos -->
-                <div class="panel-item panel-item-custom">
-                    <div class="d-flex align-items-center gap-2 w-100">
-                        <i class="bi bi-pencil-square text-muted"></i>
-                        <input type="text" class="custom-panel-input" placeholder="Añadir panel personalizado..." @bind="customPanelText" />
-                        <button type="button" class="btn-add-custom" @onclick="AddCustomPanel" disabled="@string.IsNullOrWhiteSpace(customPanelText)">
-                            <i class="bi bi-plus-lg"></i>
+                @* Paneles manuales ya compuestos *@
+                @foreach (var cp in customPanels)
+                {
+                    <div class="panel-item panel-item-active">
+                        <label class="panel-item-header">
+                            <input type="checkbox" checked disabled />
+                            <span class="panel-item-name">@cp.Name</span>
+                            <span class="tube-tag" style="background:#fef3c7; color:#92400e;">Personalizado</span>
+                            <span class="panel-tube-count">Sin versión ni acreditación · @cp.Tubes.Count tubo(s)</span>
+                        </label>
+                        <div class="panel-tubes">
+                            @for (var i = 0; i < cp.Tubes.Count; i++)
+                            {
+                                <span class="tube-tag">T@((i + 1).ToString("D2")): @cp.Tubes[i]</span>
+                            }
+                        </div>
+                        <button type="button" class="btn-remove-custom" @onclick="@(() => customPanels.Remove(cp))">
+                            <i class="bi bi-x"></i>
                         </button>
                     </div>
-                </div>
-                @if (customPanels.Any())
-                {
-                    @foreach (var cp in customPanels)
+                }
+
+                @* Compositor del panel manual: se escribe entero (nombre y tubos) y se añade de
+                   una vez, igual que en el gestor de paneles de la bandeja técnica. *@
+                <div class="panel-item panel-item-custom flex-column align-items-stretch">
+                    <div class="d-flex align-items-center gap-2 w-100 mb-2">
+                        <i class="bi bi-pencil-square text-muted"></i>
+                        <span class="fw-semibold" style="font-size:13px; color:#334155;">Añadir panel personalizado</span>
+                        <span class="panel-tube-count">sin versión ni acreditación</span>
+                    </div>
+                    <input type="text" class="custom-panel-input mb-2" style="width:100%;"
+                           placeholder="Nombre del panel (p. ej. Estudio dirigido)" @bind="customPanelText" />
+                    @for (var i = 0; i < customPanelTubes.Count; i++)
                     {
-                        <div class="panel-item panel-item-active">
-                            <label class="panel-item-header">
-                                <input type="checkbox" checked disabled />
-                                <span class="panel-item-name">@cp.Name</span>
-                                <span class="tube-tag" style="background:#fef3c7; color:#92400e;">Personalizado</span>
-                                <span class="panel-tube-count">Sin versión ni acreditación</span>
-                            </label>
-                            <div class="tube-picker">
-                                @for (var i = 0; i < cp.Tubes.Count; i++)
-                                {
-                                    var idx = i;
-                                    <div class="tube-row">
-                                        <span class="tube-row-n">T@((idx + 1).ToString("D2"))</span>
-                                        <input type="text" class="custom-panel-input" placeholder="Marcadores del tubo (p. ej. 16/13/34/45)"
-                                               value="@cp.Tubes[idx]"
-                                               @onchange="@((ChangeEventArgs e) => cp.Tubes[idx] = e.Value?.ToString() ?? "")" />
-                                        <button type="button" class="btn-remove-custom" title="Quitar tubo"
-                                                @onclick="@(() => cp.Tubes.RemoveAt(idx))" disabled="@(cp.Tubes.Count <= 1)">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </div>
-                                }
-                                <button type="button" class="btn-tube-all" @onclick="@(() => cp.Tubes.Add(""))">
-                                    <i class="bi bi-plus-lg me-1"></i>Añadir tubo
-                                </button>
-                            </div>
-                            <button type="button" class="btn-remove-custom" @onclick="@(() => customPanels.Remove(cp))">
+                        var idx = i;
+                        <div class="tube-row">
+                            <span class="tube-row-n">T@((idx + 1).ToString("D2"))</span>
+                            <input type="text" class="custom-panel-input" style="flex:1 1 0; min-width:0;"
+                                   placeholder="Marcadores del tubo (p. ej. CD3/CD4/CD8)"
+                                   value="@customPanelTubes[idx]"
+                                   @onchange="@((ChangeEventArgs e) => customPanelTubes[idx] = e.Value?.ToString() ?? "")" />
+                            <button type="button" class="btn-tube-all" title="Quitar tubo"
+                                    disabled="@(customPanelTubes.Count <= 1)" @onclick="@(() => customPanelTubes.RemoveAt(idx))">
                                 <i class="bi bi-x"></i>
                             </button>
                         </div>
                     }
-                }
+                    <div class="d-flex gap-2 mt-2">
+                        <button type="button" class="btn-tube-all" @onclick="@(() => customPanelTubes.Add(""))">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir tubo
+                        </button>
+                        <button type="button" class="btn-tube-all fw-bold" style="background:#fef3c7; border-color:#fcd34d; color:#92400e;"
+                                disabled="@(!PuedeAnadirPanelManual)" @onclick="AddCustomPanel">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir panel
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -726,7 +737,11 @@
     private List<PanelWithVigenteVersion> allPanels = new();
     private HashSet<int> selectedPanelIds = new();
     private string customPanelText = "";
+    private List<string> customPanelTubes = new() { "" };
     private List<CustomPanelInput> customPanels = new();
+
+    private bool PuedeAnadirPanelManual =>
+        !string.IsNullOrWhiteSpace(customPanelText) && customPanelTubes.Any(t => !string.IsNullOrWhiteSpace(t));
 
     /// <summary>Tubos elegidos de cada panel seleccionado. Al marcar un panel se rellena con
     /// todos los suyos; quitando alguno, el panel se pide en parte.</summary>
@@ -840,12 +855,15 @@
 
     private void AddCustomPanel()
     {
-        if (!string.IsNullOrWhiteSpace(customPanelText))
+        if (PuedeAnadirPanelManual)
         {
-            // Nace con un tubo vacío: un panel manual sin ningún tubo escrito no tendría nada
-            // que preparar ni que adquirir.
-            customPanels.Add(new CustomPanelInput { Name = customPanelText.Trim(), Tubes = { "" } });
+            customPanels.Add(new CustomPanelInput
+            {
+                Name = customPanelText.Trim(),
+                Tubes = customPanelTubes.Select(t => (t ?? "").Trim()).Where(t => t.Length > 0).ToList()
+            });
             customPanelText = "";
+            customPanelTubes = new List<string> { "" };
         }
     }
 

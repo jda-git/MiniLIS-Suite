@@ -30,6 +30,46 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.7.1
+
+Versión de **PARCHE**: unifica cómo se añaden paneles y tubos en las tres pantallas que lo
+permiten, y corrige el código de barras de la etiqueta de tubo.
+
+### Las tres pantallas funcionan igual
+
+Añadir un panel del catálogo o uno escrito a mano se hacía de tres formas distintas según
+dónde. Ahora es la misma en el **registro**, en **editar registro** y en el **gestor de
+paneles**:
+
+- **Panel del catálogo**: al elegirlo se despliegan sus tubos, **todos marcados**. Quitar
+  alguno lo pide en parte; añadirlo entero no cuesta ningún clic de más. Se conserva el número
+  de tubo de la versión: elegir el T1 y el T3 crea el T1 y el T3, no el T1 y el T2.
+- **Panel escrito a mano**: se compone entero —nombre y tubos— y se añade de una vez, en vez
+  de crearlo y después ir rellenando.
+
+Antes: el gestor de paneles añadía el panel del catálogo **siempre completo** y la edición del
+registro creaba el panel manual con **un solo tubo**, el del nombre.
+
+Los paneles **ya guardados no se tocan** desde el registro ni desde la edición: sus tubos se
+gestionan en *Paneles de Estudio*, donde las acciones son inmediatas y quedan auditadas.
+
+### El código de barras se salía de la etiqueta de tubo
+
+Al dejar sitio a la banda vertical, el identificador de un tubo (156 módulos de Code 128) no
+cabía con el ancho de módulo mínimo que el generador imponía, y en vez de encogerse más
+producía un código **1 mm más ancho que el espacio disponible**. El contenedor lo recortaba, y
+un Code 128 cortado no lo lee ningún lector.
+
+- El ancho del código **nunca pasa de lo disponible**: se quita el suelo de 0,25 mm por módulo
+  que lo provocaba.
+- Por debajo de **0,19 mm por módulo** el código deja de ser fiable con un lector de mano: en
+  ese caso no se imprime y la etiqueta dice **«CÓDIGO NO CABE»**, para verlo antes de gastar
+  una tanda.
+- La banda pasa a **6 mm** por omisión en vez de 7: en la etiqueta de 50 mm deja exactamente
+  0,25 mm por módulo, que es el ancho cómodo. Ensancharla adelgaza las barras.
+
+Las etiquetas de muestra y de alícuota estaban bien y no cambian.
+
 ## v4.7.0
 
 Versión **MENOR**: solo cambia el diseño de la etiqueta de tubo. Antes de imprimir una tanda
@@ -56,6 +96,8 @@ identifican y el sitio hace falta. El identificador del tubo (`26-00017-01`) y l
 
 El ancho de la banda se configura en **Configuración → Etiquetas** («Banda vertical del tubo»),
 por omisión 7 mm. **A 0 se desactiva** y la etiqueta de tubo vuelve a ser la anterior.
+
+Las etiquetas de **muestra y de alícuota no cambian**.
 
 Las etiquetas de **muestra y de alícuota no cambian**.
 

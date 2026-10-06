@@ -249,16 +249,54 @@
                                pedido en parte enseñaba aquí los cuatro tubos de la versión como si
                                se hubieran pedido todos. Los que faltan salen atenuados. *@
                             var pedidos = TubosSolicitados(item.Panel.Id);
-                            <div class="panel-tubes">
-                                @foreach (var tube in item.Tubes)
-                                {
-                                    var incluido = pedidos == null || pedidos.Contains(tube.TubeNumber);
-                                    <span class="tube-tag @(incluido ? "" : "tube-tag-off")"
-                                          title="@(incluido ? null : "No solicitado en este estudio")">
-                                        T@(tube.TubeNumber.ToString("D2")): @tube.MarkerList
-                                    </span>
-                                }
-                            </div>
+                            @if (pedidos == null && item.Tubes.Count > 1)
+                            {
+                                @* Panel recién marcado: todavía no está en el estudio, así que
+                                   aquí se decide con qué tubos entra, todos marcados de entrada.
+                                   Un panel ya guardado no se toca desde esta pantalla: sus tubos
+                                   se gestionan en Paneles de Estudio, donde las acciones son
+                                   inmediatas y quedan auditadas. *@
+                                var elegidos = TubosNuevos(item.Panel.Id);
+                                <div class="tube-picker">
+                                    <div class="tube-picker-head">
+                                        @if (elegidos.Count == item.Tubes.Count)
+                                        {
+                                            <span><strong>Panel completo</strong> <span class="text-muted">— @item.Tubes.Count tubos</span></span>
+                                        }
+                                        else
+                                        {
+                                            <span><strong class="text-warning-emphasis">Panel parcial</strong> <span class="text-muted">— @elegidos.Count de @item.Tubes.Count tubos</span></span>
+                                        }
+                                    </div>
+                                    @foreach (var tube in item.Tubes)
+                                    {
+                                        var marcado = elegidos.Contains(tube.TubeNumber);
+                                        <label class="tube-row @(marcado ? "" : "tube-row-off")">
+                                            <input type="checkbox" checked="@marcado"
+                                                   @onchange="@((ChangeEventArgs e) => ToggleTuboNuevo(item.Panel.Id, tube.TubeNumber, (bool)(e.Value ?? false)))" />
+                                            <span class="tube-row-n">T@(tube.TubeNumber.ToString("D2"))</span>
+                                            <span class="tube-row-markers">@tube.MarkerList</span>
+                                        </label>
+                                    }
+                                    @if (!elegidos.Any())
+                                    {
+                                        <div class="panel-partial-note">Elija al menos un tubo o desmarque el panel.</div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="panel-tubes">
+                                    @foreach (var tube in item.Tubes)
+                                    {
+                                        var incluido = pedidos == null || pedidos.Contains(tube.TubeNumber);
+                                        <span class="tube-tag @(incluido ? "" : "tube-tag-off")"
+                                              title="@(incluido ? null : "No solicitado en este estudio")">
+                                            T@(tube.TubeNumber.ToString("D2")): @tube.MarkerList
+                                        </span>
+                                    }
+                                </div>
+                            }
                             @if (pedidos != null && pedidos.Count < item.Tubes.Count)
                             {
                                 <div class="panel-partial-note">
@@ -270,13 +308,38 @@
                         }
                     </div>
                 }
-                <!-- Custom panel input -->
-                <div class="panel-item" style="border: 1px dashed #cbd5e1; background: #fafbfc;">
-                    <div class="d-flex align-items-center gap-2 w-100">
+                @* Compositor del panel manual: nombre y tubos de una vez, igual que en el
+                   gestor de paneles y en el registro. *@
+                <div class="panel-item flex-column align-items-stretch" style="border: 1px dashed #cbd5e1; background: #fafbfc;">
+                    <div class="d-flex align-items-center gap-2 w-100 mb-2">
                         <i class="bi bi-pencil-square text-muted"></i>
-                        <input type="text" style="border:none; background:transparent; font-size:13px; color:#334155; outline:none; flex:1;" placeholder="Añadir panel personalizado..." @bind="customPanelText" />
-                        <button type="button" style="background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; border:none; width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px;" @onclick="AddCustomPanel" disabled="@string.IsNullOrWhiteSpace(customPanelText)">
-                            <i class="bi bi-plus-lg"></i>
+                        <span class="fw-semibold" style="font-size:13px; color:#334155;">Añadir panel personalizado</span>
+                        <span class="panel-tube-count">sin versión ni acreditación</span>
+                    </div>
+                    <input type="text" class="custom-panel-input mb-2" style="width:100%;"
+                           placeholder="Nombre del panel (p. ej. Estudio dirigido)" @bind="customPanelText" />
+                    @for (var i = 0; i < customPanelTubes.Count; i++)
+                    {
+                        var idx = i;
+                        <div class="tube-row">
+                            <span class="tube-row-n">T@((idx + 1).ToString("D2"))</span>
+                            <input type="text" class="custom-panel-input" style="flex:1 1 0; min-width:0;"
+                                   placeholder="Marcadores del tubo (p. ej. CD3/CD4/CD8)"
+                                   value="@customPanelTubes[idx]"
+                                   @onchange="@((ChangeEventArgs e) => customPanelTubes[idx] = e.Value?.ToString() ?? "")" />
+                            <button type="button" class="btn-tube-all" title="Quitar tubo"
+                                    disabled="@(customPanelTubes.Count <= 1)" @onclick="@(() => customPanelTubes.RemoveAt(idx))">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                    }
+                    <div class="d-flex gap-2 mt-2">
+                        <button type="button" class="btn-tube-all" @onclick="@(() => customPanelTubes.Add(""))">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir tubo
+                        </button>
+                        <button type="button" class="btn-tube-all fw-bold" style="background:#fef3c7; border-color:#fcd34d; color:#92400e;"
+                                disabled="@(!PuedeAnadirPanelManual)" @onclick="AddCustomPanel">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir panel
                         </button>
                     </div>
                 </div>
@@ -285,8 +348,9 @@
                     <div class="panel-item panel-item-active" style="position:relative;">
                         <label class="panel-item-header">
                             <input type="checkbox" checked disabled />
-                            <span class="panel-item-name">@cp</span>
+                            <span class="panel-item-name">@cp.Name</span>
                             <span class="tube-tag" style="background:#fef3c7; color:#92400e;">Personalizado</span>
+                            <span class="panel-tube-count">@cp.Tubes.Count tubo(s)</span>
                         </label>
                         <button type="button" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:#ef4444; cursor:pointer; font-size:16px;" @onclick="@(() => customPanels.Remove(cp))">
                             <i class="bi bi-x"></i>
@@ -481,7 +545,24 @@
     private List<PanelWithVigenteVersion> allPanels = new();
     private HashSet<int> selectedPanelIds = new();
     private string customPanelText = "";
-    private List<string> customPanels = new();
+    private List<CustomPanelInput> customPanels = new();
+    private List<string> customPanelTubes = new() { "" };
+
+    private bool PuedeAnadirPanelManual =>
+        !string.IsNullOrWhiteSpace(customPanelText) && customPanelTubes.Any(t => !string.IsNullOrWhiteSpace(t));
+
+    /// <summary>Tubos elegidos de los paneles que se acaban de marcar y todavía no están en el
+    /// estudio. Los que ya están no se tocan desde aquí.</summary>
+    private readonly Dictionary<int, HashSet<int>> tubosNuevosPorPanel = new();
+
+    private HashSet<int> TubosNuevos(int panelId) =>
+        tubosNuevosPorPanel.TryGetValue(panelId, out var set) ? set : new HashSet<int>();
+
+    private void ToggleTuboNuevo(int panelId, int tubeNumber, bool marcado)
+    {
+        if (!tubosNuevosPorPanel.TryGetValue(panelId, out var set)) tubosNuevosPorPanel[panelId] = set = new HashSet<int>();
+        if (marcado) set.Add(tubeNumber); else set.Remove(tubeNumber);
+    }
     // SamplePanel ya persistidos, para reenviar su Id y así conservar sus tubos/lectura (M-4).
     private List<SamplePanel> existingPanels = new();
 
@@ -618,7 +699,14 @@
         allPanels = await MasterService.GetPanelsForSelectionAsync(); // N-3: ya viene ordenado
         existingPanels = await SampleService.GetSamplePanelsAsync(SampleId);
         selectedPanelIds = existingPanels.Where(sp => sp.PanelId.HasValue).Select(sp => sp.PanelId!.Value).ToHashSet();
-        customPanels = existingPanels.Where(sp => !sp.PanelId.HasValue && !string.IsNullOrWhiteSpace(sp.CustomText)).Select(sp => sp.CustomText!).ToList();
+        customPanels = existingPanels
+            .Where(sp => !sp.PanelId.HasValue && !string.IsNullOrWhiteSpace(sp.CustomText))
+            .Select(sp => new CustomPanelInput
+            {
+                Name = sp.CustomText!,
+                Tubes = sp.Tubes.OrderBy(t => t.TubeNumber).Select(t => t.MarkerList).ToList()
+            })
+            .ToList();
 
         if (originalPatient != null)
         {
@@ -634,15 +722,34 @@
     {
         if (!string.IsNullOrWhiteSpace(customPanelText))
         {
-            customPanels.Add(customPanelText.Trim());
+            customPanels.Add(new CustomPanelInput
+            {
+                Name = customPanelText.Trim(),
+                Tubes = customPanelTubes.Select(t => (t ?? "").Trim()).Where(t => t.Length > 0).ToList()
+            });
+            customPanelTubes = new List<string> { "" };
             customPanelText = "";
         }
     }
 
     private void TogglePanel(int panelId, bool isChecked)
     {
-        if (isChecked) selectedPanelIds.Add(panelId);
-        else selectedPanelIds.Remove(panelId);
+        if (isChecked)
+        {
+            selectedPanelIds.Add(panelId);
+            // Un panel que ya estaba en el estudio conserva sus tubos; uno nuevo entra entero y
+            // desde ahí se quitan los que no se vayan a hacer.
+            if (TubosSolicitados(panelId) == null)
+            {
+                var definicion = allPanels.FirstOrDefault(p => p.Panel.Id == panelId);
+                tubosNuevosPorPanel[panelId] = definicion?.Tubes.Select(t => t.TubeNumber).ToHashSet() ?? new HashSet<int>();
+            }
+        }
+        else
+        {
+            selectedPanelIds.Remove(panelId);
+            tubosNuevosPorPanel.Remove(panelId);
+        }
     }
 
     private async Task HandleUpdate()
@@ -716,7 +823,7 @@
             originalSample.ReceptionDate = LocalTimeService.ToUtc(model.ReceptionDate.Date);
             // Build panel summary text
             var panelNames = allPanels.Where(p => selectedPanelIds.Contains(p.Panel.Id)).Select(p => p.Panel.Name).ToList();
-            panelNames.AddRange(customPanels);
+            panelNames.AddRange(customPanels.Select(c => c.Name));
             originalSample.StudyPanel = string.Join(", ", panelNames);
             originalSample.HasIncident = model.HasIncident;
             originalSample.IncidentsNotes = model.IncidentNotes ?? string.Empty;
@@ -768,26 +875,41 @@
             var panelEntities = selectedPanelIds.Select(pid =>
             {
                 var existing = existingPanels.FirstOrDefault(sp => sp.PanelId == pid);
-                return new SamplePanel
+                var sp = new SamplePanel
                 {
                     Id = existing?.Id ?? 0,
                     PanelId = pid,
                     IsRequested = true,
                     DisplayOrder = order++
                 };
+                // Panel nuevo: viajan los tubos elegidos. Uno que ya estaba conserva los suyos,
+                // que SetSamplePanelsAsync no toca.
+                if (existing == null)
+                    foreach (var numero in TubosNuevos(pid).OrderBy(n => n))
+                        sp.Tubes.Add(new SampleTube { TubeNumber = numero });
+                return sp;
             }).ToList();
             // Add custom panels
             foreach (var cp in customPanels)
             {
-                var existing = existingPanels.FirstOrDefault(sp => !sp.PanelId.HasValue && sp.CustomText == cp);
-                panelEntities.Add(new SamplePanel
+                var existing = existingPanels.FirstOrDefault(sp => !sp.PanelId.HasValue && sp.CustomText == cp.Name);
+                var sp = new SamplePanel
                 {
                     Id = existing?.Id ?? 0,
                     PanelId = null,
-                    CustomText = cp,
+                    CustomText = cp.Name,
                     IsRequested = true,
                     DisplayOrder = order++
-                });
+                };
+                // Los tubos solo cuentan para un panel nuevo: los de uno que ya existe no se
+                // tocan desde aquí, para no borrar su progreso de lectura.
+                if (existing == null)
+                {
+                    var n = 1;
+                    foreach (var marcadores in cp.Tubes.Where(t => !string.IsNullOrWhiteSpace(t)))
+                        sp.Tubes.Add(new SampleTube { TubeNumber = n++, MarkerList = marcadores.Trim() });
+                }
+                panelEntities.Add(sp);
             }
             await SampleService.SetSamplePanelsAsync(originalSample.Id, panelEntities);
 

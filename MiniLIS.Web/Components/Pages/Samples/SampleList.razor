@@ -648,17 +648,60 @@
                         <i class="bi bi-plus-circle-fill text-info me-1"></i>Añadir nuevo panel de análisis
                     </label>
                     <div class="d-flex gap-2">
-                        <select class="form-select form-select-sm stats-input flex-grow-1 cursor-pointer bg-white" @bind="modalAddPanelId">
+                        <select class="form-select form-select-sm stats-input flex-grow-1 cursor-pointer bg-white"
+                                value="@modalAddPanelId" @onchange="OnNuevoPanelElegido">
                             <option value="0">— Selecciona un panel para añadir —</option>
                             @foreach (var p in allPanelsForModal.Where(ap => !modalPanels.Any(mp => mp.PanelId == ap.Id)))
                             {
                                 <option value="@p.Id">@p.Name</option>
                             }
                         </select>
-                        <button type="button" class="btn btn-sm btn-info text-white px-3 fw-bold d-flex align-items-center shadow-xs border-0" @onclick="AddPanelToModal" disabled="@(modalAddPanelId == 0)">
+                        <button type="button" class="btn btn-sm btn-info text-white px-3 fw-bold d-flex align-items-center shadow-xs border-0" @onclick="AddPanelToModal" disabled="@(modalAddPanelId == 0 || !TubosNuevoPanelElegidos.Any())">
                             <i class="bi bi-plus-lg me-1"></i>Añadir
                         </button>
                     </div>
+
+                    @* Tubos del panel elegido, todos marcados de entrada: así añadirlo entero no
+                       cuesta un clic más, y pedir solo una parte es quitar los que no toquen. *@
+                    @if (tubosNuevoPanel.Any())
+                    {
+                        <div class="addable-box mt-2">
+                            <div class="addable-head">
+                                @if (TubosNuevoPanelElegidos.Count == tubosNuevoPanel.Count)
+                                {
+                                    <span>Panel completo — @tubosNuevoPanel.Count tubos</span>
+                                }
+                                else
+                                {
+                                    <span class="text-warning-emphasis">Panel parcial — @TubosNuevoPanelElegidos.Count de @tubosNuevoPanel.Count tubos</span>
+                                }
+                            </div>
+                            @foreach (var t in tubosNuevoPanel)
+                            {
+                                var numero = t.TubeNumber;
+                                <label class="addable-tube">
+                                    <input type="checkbox" checked="@TubosNuevoPanelElegidos.Contains(numero)"
+                                           @onchange="@((ChangeEventArgs e) => ToggleTuboNuevoPanel(numero, (bool)(e.Value ?? false)))" />
+                                    <span class="fw-semibold">T@(numero)</span>
+                                    <span class="text-secondary">@t.MarkerList</span>
+                                    @if (t.IsOptional)
+                                    {
+                                        <span class="optional-chip">opcional</span>
+                                    }
+                                </label>
+                            }
+                            @if (!TubosNuevoPanelElegidos.Any())
+                            {
+                                <div class="text-danger small mt-1">Elija al menos un tubo.</div>
+                            }
+                            else if (TubosNuevoPanelElegidos.Count < tubosNuevoPanel.Count)
+                            {
+                                <div class="text-warning-emphasis small mt-1">
+                                    El informe declarará este panel como <strong>parcial</strong>.
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
 
                 @* Panel escrito a mano para esta muestra: sin versión ni acreditación, con los
@@ -1344,6 +1387,32 @@
     private List<Panel> allPanelsForModal = new();
     private int modalAddPanelId = 0;
 
+    /// <summary>Tubos de la versión vigente del panel que se va a añadir, y cuáles se piden.</summary>
+    private List<PanelTube> tubosNuevoPanel = new();
+    private HashSet<int> tubosNuevoPanelElegidos = new();
+    private HashSet<int> TubosNuevoPanelElegidos => tubosNuevoPanelElegidos;
+
+    private async Task OnNuevoPanelElegido(ChangeEventArgs e)
+    {
+        modalAddPanelId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        tubosNuevoPanel = new List<PanelTube>();
+        tubosNuevoPanelElegidos = new HashSet<int>();
+        if (modalAddPanelId == 0) return;
+
+        var version = await PanelCatalogService.GetVigenteVersionAsync(modalAddPanelId);
+        if (version == null) return;
+
+        tubosNuevoPanel = version.Tubes.OrderBy(t => t.TubeNumber).ToList();
+        // Todos marcados de entrada: añadir el panel entero no debe costar clics de más.
+        tubosNuevoPanelElegidos = tubosNuevoPanel.Select(t => t.TubeNumber).ToHashSet();
+    }
+
+    private void ToggleTuboNuevoPanel(int tubeNumber, bool marcado)
+    {
+        if (marcado) tubosNuevoPanelElegidos.Add(tubeNumber);
+        else tubosNuevoPanelElegidos.Remove(tubeNumber);
+    }
+
     // Panel escrito a mano que se está componiendo en la ventana.
     private string customPanelName = "";
     private List<string> customPanelTubes = new() { "" };
@@ -1749,6 +1818,8 @@
         // El compositor del panel manual empieza en blanco cada vez que se abre la ventana.
         customPanelName = "";
         customPanelTubes = new List<string> { "" };
+        tubosNuevoPanel = new List<PanelTube>();
+        tubosNuevoPanelElegidos = new HashSet<int>();
         if (!incidentReasons.Any())
         {
             incidentReasons = await MasterService.GetAllTubeReadIncidentReasonsAsync();
@@ -1898,17 +1969,30 @@
             DisplayOrder = modalPanels.Count + 1
         };
 
-        // Vista previa de los tubos que traerá la versión vigente (M-4). No persiste nada
-        // todavía — SetSamplePanelsAsync vuelve a resolverlo al guardar, esto es solo para
-        // que el técnico vea de antemano qué tubos va a añadir.
+        // Vista previa de los tubos elegidos. No persiste nada todavía: SetSamplePanelsAsync
+        // vuelve a resolverlo al guardar a partir de estos números, de modo que lo que se ve
+        // aquí es exactamente lo que se creará.
         var version = await PanelCatalogService.GetVigenteVersionAsync(panel.Id);
         if (version != null)
         {
             newPanel.PanelVersion = version;
-            int tubeNumber = 1;
-            foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber))
+            // Se conserva el número de tubo de la versión: elegir el T1 y el T3 crea el T1 y el
+            // T3, no el T1 y el T2. Ese número enlaza con su fórmula y su nota de alcance.
+            foreach (var tube in version.Tubes.OrderBy(t => t.TubeNumber)
+                                              .Where(t => tubosNuevoPanelElegidos.Contains(t.TubeNumber)))
             {
-                newPanel.Tubes.Add(new SampleTube { TubeNumber = tubeNumber++, MarkerList = tube.MarkerList, IsOptional = tube.IsOptional });
+                newPanel.Tubes.Add(new SampleTube
+                {
+                    TubeNumber = tube.TubeNumber,
+                    MarkerList = tube.MarkerList,
+                    IsOptional = tube.IsOptional
+                });
+            }
+
+            if (!newPanel.Tubes.Any())
+            {
+                modalErrorMessage = $"Del panel '{panel.Name}' no ha elegido ningún tubo.";
+                return;
             }
         }
         else
@@ -1918,6 +2002,8 @@
 
         modalPanels.Add(newPanel);
         modalAddPanelId = 0;
+        tubosNuevoPanel = new List<PanelTube>();
+        tubosNuevoPanelElegidos = new HashSet<int>();
     }
 
     private async Task SavePanelModal()
@@ -1946,6 +2032,8 @@
         modalErrorMessage = null;
         customPanelName = "";
         customPanelTubes = new List<string> { "" };
+        tubosNuevoPanel = new List<PanelTube>();
+        tubosNuevoPanelElegidos = new HashSet<int>();
     }
 
     private string GetStatusClass(SampleStatus status) => status switch

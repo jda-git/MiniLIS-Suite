@@ -256,5 +256,93 @@ namespace MiniLIS.Tests
             m.Success.Should().BeTrue("la etiqueta debe llevar un código de barras");
             return double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
         }
+
+        // ── El código de barras cabe dentro de la etiqueta ──────────────────────────
+        // El contenedor recorta lo que sobra (overflow:hidden), así que un código más ancho de
+        // la cuenta no se ve "desbordado": se imprime cortado, y un Code 128 cortado no lo lee
+        // ningún lector. Es el fallo que tenía la etiqueta de tubo con banda.
+
+        [Theory]
+        [InlineData(50, 0)]    // banda desactivada
+        [InlineData(50, 6)]    // por omisión
+        [InlineData(50, 7)]
+        [InlineData(50, 10)]
+        [InlineData(60, 6)]
+        [InlineData(40, 4)]
+        public void El_codigo_del_tubo_nunca_se_sale_de_la_etiqueta(double anchoEtiqueta, double banda)
+        {
+            var ajustes = new LabelSettings
+            {
+                WidthMm = anchoEtiqueta, HeightMm = 25, MarginMm = 2,
+                BarcodeHeightMm = 8, TubeStripWidthMm = banda
+            };
+
+            var html = LabelRenderer.Render(Tubo(), ajustes);
+            var disponible = LabelRenderer.AnchoUtilTuboMm(ajustes);
+
+            var m = System.Text.RegularExpressions.Regex.Match(html, @"class=""label-barcode"" width=""([0-9.]+)mm""");
+            if (!m.Success)
+            {
+                // Si no cabe de forma legible, se avisa en vez de imprimir algo ilegible.
+                html.Should().Contain("CÓDIGO NO CABE");
+                return;
+            }
+
+            var ancho = double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            ancho.Should().BeLessThanOrEqualTo(disponible + 0.001,
+                $"el código de barras debe caber en los {disponible:0.0} mm que le quedan");
+        }
+
+        [Fact]
+        public void Un_codigo_que_no_cabe_de_forma_legible_se_avisa_en_vez_de_imprimirse()
+        {
+            // Etiqueta estrecha con banda ancha: no hay sitio para un Code 128 decodificable.
+            var ajustes = new LabelSettings
+            {
+                WidthMm = 38, HeightMm = 25, MarginMm = 2, BarcodeHeightMm = 8, TubeStripWidthMm = 7
+            };
+
+            var html = System.Net.WebUtility.HtmlDecode(LabelRenderer.Render(Tubo(), ajustes));
+
+            html.Should().Contain("CÓDIGO NO CABE");
+            html.Should().NotContain("label-barcode", "mejor sin código que con uno que no se va a poder leer");
+        }
+
+        [Fact]
+        public void Con_los_ajustes_de_fabrica_el_modulo_del_tubo_queda_en_el_ancho_comodo()
+        {
+            // 50 mm de etiqueta y 6 mm de banda dejan justo 0,25 mm por módulo, que es el ancho
+            // con el que un lector de mano trabaja sin forzar. Esta prueba es la que avisaría si
+            // alguien ensanchara la banda por omisión y adelgazara las barras sin darse cuenta.
+            var ajustes = new LabelSettings { WidthMm = 50, HeightMm = 25, MarginMm = 2, BarcodeHeightMm = 8 };
+            ajustes.TubeStripWidthMm.Should().Be(6);
+
+            var ancho = LabelRenderer.AnchoCodigoMm("26-00017-01", LabelRenderer.AnchoUtilTuboMm(ajustes));
+
+            ancho.Should().NotBeNull();
+            var modulos = MiniLIS.Infrastructure.Services.Code128Encoder.EncodeToModuleWidths("26-00017-01").Sum();
+            (ancho!.Value / modulos).Should().BeGreaterThanOrEqualTo(0.25);
+        }
+
+        [Fact]
+        public void Los_codigos_de_muestra_y_alicuota_tambien_caben()
+        {
+            var ajustes = new LabelSettings { WidthMm = 50, HeightMm = 25, MarginMm = 2, BarcodeHeightMm = 8 };
+            var util = ajustes.WidthMm - 2 * ajustes.MarginMm;
+
+            // Tolerancia de una milésima: el ancho sale de multiplicar un módulo calculado en
+            // coma flotante por el número de módulos, y el que llena la etiqueta entera cae a
+            // una diezbillonésima de milímetro por encima del borde.
+            const double epsilon = 0.001;
+
+            var muestra = LabelRenderer.AnchoCodigoMm("26-00017", util);
+            muestra.Should().NotBeNull();
+            muestra!.Value.Should().BeLessThanOrEqualTo(util + epsilon);
+
+            // La alícuota codifica "26-00017(T20)", el dato más largo de las tres etiquetas.
+            var alicuota = LabelRenderer.AnchoCodigoMm("26-00017(T20)", util);
+            alicuota.Should().NotBeNull();
+            alicuota!.Value.Should().BeLessThanOrEqualTo(util + epsilon);
+        }
     }
 }

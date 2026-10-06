@@ -382,5 +382,109 @@ namespace MiniLIS.Tests
                 sp.Tubes.Should().ContainSingle().Which.MarkerList.Should().Be("Solo el nombre");
             }
         }
+
+        // ── Añadir un panel del catálogo eligiendo sus tubos ───────────────────────────
+        // El gestor de paneles y la edición del registro mandan los tubos elegidos dentro del
+        // SamplePanel; sin ellos, el panel entra entero (lo de siempre).
+
+        private static async Task<int> SeedSampleSinPanelesAsync(TestDb db, string nhc)
+        {
+            var (request, patientId) = await SeedPatientAsync(db, nhc);
+            using var ctx = db.CreateContext();
+            return (await Service(ctx).RegisterSampleAsync(patientId, request, "", SampleType.MedulaOsea)).Id;
+        }
+
+        [Fact]
+        public async Task Un_panel_anadido_con_tubos_elegidos_entra_solo_con_esos()
+        {
+            using var db = new TestDb();
+            var panel = await SeedPanelAsync(db, "A", "B", "C", "D");
+            var sampleId = await SeedSampleSinPanelesAsync(db, "NHC-ADDSEL");
+
+            using (var ctx = db.CreateContext())
+            {
+                var nuevo = new SamplePanel { PanelId = panel.Id, IsRequested = true, DisplayOrder = 1 };
+                nuevo.Tubes.Add(new SampleTube { TubeNumber = 2 });
+                nuevo.Tubes.Add(new SampleTube { TubeNumber = 4 });
+
+                await Service(ctx).SetSamplePanelsAsync(sampleId, new List<SamplePanel> { nuevo });
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                var sp = await ctx.SamplePanels.Include(p => p.Tubes).SingleAsync(p => p.SampleId == sampleId);
+
+                sp.PanelVersionId.Should().NotBeNull("se congela la versión vigente");
+                sp.Tubes.OrderBy(t => t.TubeNumber).Select(t => t.TubeNumber).Should().Equal(2, 4);
+                // Y con los marcadores de ESOS tubos de la versión, no renumerados.
+                sp.Tubes.OrderBy(t => t.TubeNumber).Select(t => t.MarkerList).Should().Equal("B", "D");
+            }
+        }
+
+        [Fact]
+        public async Task Un_panel_anadido_sin_elegir_tubos_entra_entero()
+        {
+            using var db = new TestDb();
+            var panel = await SeedPanelAsync(db, "A", "B", "C");
+            var sampleId = await SeedSampleSinPanelesAsync(db, "NHC-ADDALL");
+
+            using (var ctx = db.CreateContext())
+                await Service(ctx).SetSamplePanelsAsync(sampleId, new List<SamplePanel>
+                {
+                    new() { PanelId = panel.Id, IsRequested = true, DisplayOrder = 1 }
+                });
+
+            using (var ctx = db.CreateContext())
+            {
+                var sp = await ctx.SamplePanels.Include(p => p.Tubes).SingleAsync(p => p.SampleId == sampleId);
+                sp.Tubes.Select(t => t.TubeNumber).OrderBy(n => n).Should().Equal(1, 2, 3);
+            }
+        }
+
+        [Fact]
+        public async Task Elegir_un_tubo_que_la_version_no_tiene_se_rechaza_al_anadir()
+        {
+            using var db = new TestDb();
+            var panel = await SeedPanelAsync(db, "A", "B");
+            var sampleId = await SeedSampleSinPanelesAsync(db, "NHC-ADDBAD");
+
+            using var ctx = db.CreateContext();
+            var nuevo = new SamplePanel { PanelId = panel.Id, IsRequested = true, DisplayOrder = 1 };
+            nuevo.Tubes.Add(new SampleTube { TubeNumber = 7 });
+
+            await FluentActions.Awaiting(() => Service(ctx).SetSamplePanelsAsync(sampleId, new List<SamplePanel> { nuevo }))
+                .Should().ThrowAsync<InvalidOperationException>().WithMessage("*tubo 7*");
+        }
+
+        [Fact]
+        public async Task Un_panel_que_ya_estaba_conserva_sus_tubos_al_guardar_la_edicion()
+        {
+            // La edición reenvía los paneles existentes con su Id; sus tubos (y el progreso de
+            // lectura que llevan) no deben tocarse.
+            using var db = new TestDb();
+            var panel = await SeedPanelAsync(db, "A", "B", "C");
+            var (request, patientId) = await SeedPatientAsync(db, "NHC-EDIT");
+
+            int sampleId, spId;
+            using (var ctx = db.CreateContext())
+            {
+                var sample = await Service(ctx).RegisterSampleAsync(patientId, request, "", SampleType.MedulaOsea,
+                    panelTubeSelection: new Dictionary<int, List<int>> { [panel.Id] = new() { 1, 3 } });
+                sampleId = sample.Id;
+                spId = (await ctx.SamplePanels.FirstAsync(p => p.SampleId == sampleId)).Id;
+            }
+
+            using (var ctx = db.CreateContext())
+                await Service(ctx).SetSamplePanelsAsync(sampleId, new List<SamplePanel>
+                {
+                    new() { Id = spId, PanelId = panel.Id, IsRequested = true, DisplayOrder = 1 }
+                });
+
+            using (var ctx = db.CreateContext())
+            {
+                var sp = await ctx.SamplePanels.Include(p => p.Tubes).SingleAsync(p => p.SampleId == sampleId);
+                sp.Tubes.Select(t => t.TubeNumber).OrderBy(n => n).Should().Equal(1, 3);
+            }
+        }
     }
 }

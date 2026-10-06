@@ -117,8 +117,13 @@ namespace MiniLIS.Application.Interfaces
         /// <summary>Ancho de la banda vertical de la etiqueta de TUBO, en milímetros. Es la
         /// franja de la izquierda que queda legible con el tubo de pie en la gradilla; el
         /// código de barras y sus textos se encogen y se desplazan para dejarle sitio.
-        /// A 0 se desactiva y la etiqueta de tubo vuelve a ser como antes.</summary>
-        public double TubeStripWidthMm { get; set; } = 7;
+        /// A 0 se desactiva y la etiqueta de tubo vuelve a ser como antes.
+        ///
+        /// 6 mm por omisión y no 7: en la etiqueta de 50 mm, el identificador de un tubo
+        /// (26-00017-01) ocupa 156 módulos, y 6 mm de banda dejan justo 0,25 mm por módulo,
+        /// que es el ancho cómodo para un lector de mano. Ensancharla más adelgaza las barras;
+        /// la pantalla de Configuración avisa cuando eso ocurre.</summary>
+        public double TubeStripWidthMm { get; set; } = 6;
 
         // --- Formato de la etiqueta de MUESTRA (las de tubo y alícuota no cambian) ---------
         // Los ajustes se guardan como JSON en SystemSettings: una configuración guardada antes
