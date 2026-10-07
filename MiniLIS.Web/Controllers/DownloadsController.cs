@@ -24,6 +24,7 @@ namespace MiniLIS.Web.Controllers
         private readonly IContingencyService _contingencyService;
         private readonly IAuditPackageService _auditPackageService;
         private readonly IExcedenteService _excedenteService;
+        private readonly ILocalTimeService _localTimeService;
         private readonly INotificationService _notificationService;
         private readonly IReportSearchService _searchService;
         private readonly IPatientDataExportPolicy _exportPolicy;
@@ -32,7 +33,7 @@ namespace MiniLIS.Web.Controllers
         private readonly ILogger<DownloadsController> _logger;
         private readonly IConfiguration _configuration;
 
-        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, IExcedenteService excedenteService, INotificationService notificationService, IReportSearchService searchService, IPatientDataExportPolicy exportPolicy, IPermissionService permissions, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
+        public DownloadsController(ApplicationDbContext db, IDocumentService documentService, ISampleService sampleService, IQualityIndicatorService qualityIndicatorService, IWorklistExportService worklistExportService, IWorklistService worklistService, IContingencyService contingencyService, IAuditPackageService auditPackageService, IExcedenteService excedenteService, ILocalTimeService localTimeService, INotificationService notificationService, IReportSearchService searchService, IPatientDataExportPolicy exportPolicy, IPermissionService permissions, Microsoft.AspNetCore.Identity.UserManager<MiniLIS.Domain.Identity.ApplicationUser> userManager, ILogger<DownloadsController> logger, IConfiguration configuration)
         {
             _db = db;
             _documentService = documentService;
@@ -43,6 +44,7 @@ namespace MiniLIS.Web.Controllers
             _contingencyService = contingencyService;
             _auditPackageService = auditPackageService;
             _excedenteService = excedenteService;
+            _localTimeService = localTimeService;
             _notificationService = notificationService;
             _searchService = searchService;
             _exportPolicy = exportPolicy;
@@ -336,8 +338,11 @@ namespace MiniLIS.Web.Controllers
             var samples = await _db.Samples
                 .Include(s => s.ClinicalRequest).ThenInclude(cr => cr.Patient)
                 .Where(s => s.ReceptionDate >= start && s.ReceptionDate <= end)
-                .OrderByDescending(s => s.ReceptionDate)
                 .ToListAsync();
+
+            // El CSV sale en el mismo orden que la pantalla de la que se descarga: una
+            // exportación que reordena las filas no se puede cotejar con lo que se vio.
+            samples = samples.PorRecepcionDescendente(_localTimeService).ToList();
 
             var bytes = await _sampleService.ExportSamplesToCsvAsync(samples, decision.Level);
             var fileName = $"Muestras_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv";

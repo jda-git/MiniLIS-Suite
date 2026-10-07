@@ -30,6 +30,32 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.8.1
+
+Versión de **PARCHE**: el listado de muestras se ordena por el día que se ve en pantalla.
+
+### Las muestras del mismo día salían desordenadas
+
+La v4.7.1 añadió el desempate por número de muestra, pero solo saltaba cuando la fecha **y la
+hora** coincidían al instante. Tres muestras del mismo día recibidas a horas distintas seguían
+saliendo por la hora: `26-00022` (20:58), `26-00020` (10:35), `26-00021` (00:00) — en ese
+orden.
+
+La hora de recepción dentro de la jornada no ordena nada útil: muchas se teclean sin hora y
+quedan a las 00:00, y una recepción retrasada puede llevar hora anterior a la de una muestra
+registrada después. Ahora manda el **día**, y dentro del día el **número de muestra
+descendente**.
+
+**Por el día local, no el UTC.** La fecha se guarda en UTC y la pantalla la muestra en hora de
+Madrid, así que una muestra recibida el día 6 a las 00:00 está guardada como el día 5 a las
+22:00. Agrupar por el día UTC habría partido la jornada a las 22:00 —y el caso de arriba
+habría seguido saliendo igual de desordenado—, justo donde caen las muestras con la fecha
+tecleada sin hora, que son muchas.
+
+El criterio es ahora **uno solo**, compartido por la bandeja técnica, el buscador y los CSV que
+se descargan de ambos: una exportación que reordena las filas no se puede cotejar con lo que se
+vio en pantalla. El CSV de la bandeja, además, no tenía desempate ninguno.
+
 ## v4.8.0
 
 Versión **MENOR**: tres permisos de la pantalla de Configuración → Permisos no los comprobaba

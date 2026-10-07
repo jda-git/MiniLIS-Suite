@@ -224,8 +224,10 @@ namespace MiniLIS.Infrastructure.Services
             int total = await q.CountAsync();
 
             var rows = await q
-                // Mismo desempate que la bandeja técnica (ver SampleService): sin él, las
-                // muestras que comparten fecha salen en orden de inserción.
+                // Este orden es el que decide QUÉ filas entran en el recorte (Take): las más
+                // recientes. El orden final —por día local— se aplica después, ya traídas; ver
+                // SampleOrdering. Solo pueden diferir en la fila del corte, y en ambos casos lo
+                // que se recorta es «lo más antiguo».
                 .OrderByDescending(s => s.ReceptionDate)
                 .ThenByDescending(s => s.SampleNumber)
                 .Take(maxResults)
@@ -264,7 +266,11 @@ namespace MiniLIS.Infrastructure.Services
                 Validado = r.ValidatedAtUtc != null,
                 ValidatedAtUtc = r.ValidatedAtUtc,
                 Conclusion = Resumir(r.Conclusion, 220)
-            }).ToList();
+            })
+            // Mismo orden que la bandeja técnica. Aquí la fecha ya viene convertida a hora
+            // local, que es justo lo que necesita el criterio.
+            .PorDiaYNumeroDescendente(i => i.ReceptionDate, i => i.SampleNumber)
+            .ToList();
 
             await AuditarBusquedaAsync(filtro, total);
 

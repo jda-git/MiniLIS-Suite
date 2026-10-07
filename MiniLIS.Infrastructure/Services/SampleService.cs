@@ -339,19 +339,12 @@ namespace MiniLIS.Infrastructure.Services
                 query = query.Where(s => s.ReceptionDate <= end);
             }
 
-            // Desempate por número de muestra descendente: varias muestras pueden compartir
-            // fecha y hora (un alta en lote, o una fecha tecleada sin hora), y sin criterio
-            // explícito el motor las devuelve en el orden en que se insertaron, de modo que
-            // dentro del mismo instante salían de la más antigua a la más reciente, al revés
-            // que el resto del listado.
-            //
-            // Ordenar el número como texto es correcto con el formato AA-NNNNN: el año va
-            // delante y la secuencia lleva ceros a la izquierda, así que el orden alfabético
-            // coincide con el cronológico (26-00019 > 26-00018 > 25-99999).
-            var results = await query
-                .OrderByDescending(s => s.ReceptionDate)
-                .ThenByDescending(s => s.SampleNumber)
-                .ToListAsync();
+            // Día de recepción local descendente y, dentro del día, número de muestra
+            // descendente (ver SampleOrdering, que explica por qué se ordena aquí y no en SQL).
+            // El listado no se pagina, así que ordenarlo ya traído da el mismo resultado.
+            var results = (await query.ToListAsync())
+                .PorRecepcionDescendente(_localTimeService)
+                .ToList();
 
             // M-2: toda búsqueda por texto devuelve identificadores de paciente (nombre,
             // NHC, NASI pueden coincidir). Se audita el término y el nº de resultados, nunca

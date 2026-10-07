@@ -313,5 +313,85 @@ namespace MiniLIS.Tests
                     .Should().Equal("26-00019", "26-00018", "26-00017", "26-00099");
             }
         }
+
+        [Fact]
+        public async Task La_bandeja_ordena_por_numero_descendente_dentro_del_mismo_dia()
+        {
+            // El caso real: tres muestras del mismo día recibidas a horas distintas salían
+            // 22 (20:58), 20 (10:35), 21 (00:00) — ordenadas por el instante, que para quien
+            // mira la lista es desorden. La hora dentro de la jornada no ordena nada útil:
+            // muchas se teclean sin hora y quedan a las 00:00.
+            //
+            // Las horas son LOCALES, como en la pantalla, y se guardan convertidas a UTC: la
+            // del 6 a las 00:00 queda guardada como el día 5 a las 22:00. Por eso la prueba
+            // también falla si se agrupa por el día UTC en vez de por el día que se ve.
+            using var db = new TestDb();
+            var hora = new LocalTimeService();
+            var dia = new DateTime(2026, 10, 6);
+
+            using (var ctx = db.CreateContext())
+            {
+                var patient = EntityBuilders.NewPatient(nhc: "NHC-DIA");
+                var request = EntityBuilders.NewRequest(patient, "REQ-DIA");
+                foreach (var (numero, local) in new[]
+                         {
+                             ("26-00022", dia.AddHours(20).AddMinutes(58)),
+                             ("26-00020", dia.AddHours(10).AddMinutes(35)),
+                             ("26-00021", dia)
+                         })
+                {
+                    var sample = EntityBuilders.NewSample(request, sampleNumber: numero);
+                    sample.ReceptionDate = hora.ToUtc(local);
+                    sample.ReceivedAtUtc = sample.ReceptionDate;
+                    ctx.Samples.Add(sample);
+                }
+
+                // De la víspera, a una hora más tardía que ninguna del día 6: el día manda
+                // sobre la hora, así que va después igualmente.
+                var vispera = EntityBuilders.NewSample(request, sampleNumber: "26-00019");
+                vispera.ReceptionDate = hora.ToUtc(dia.AddDays(-1).AddHours(23));
+                vispera.ReceivedAtUtc = vispera.ReceptionDate;
+                ctx.Samples.Add(vispera);
+                await ctx.SaveChangesAsync();
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                var numbering = new NumberingService(ctx, Microsoft.Extensions.Logging.Abstractions.NullLogger<NumberingService>.Instance);
+                var resultado = await CreateService(ctx, numbering).GetFilteredSamplesAsync(null, null, null, null);
+
+                resultado.Select(s => s.SampleNumber)
+                    .Should().Equal("26-00022", "26-00021", "26-00020", "26-00019");
+            }
+        }
+
+        [Fact]
+        public void El_orden_agrupa_por_el_dia_local_y_no_por_el_dia_UTC()
+        {
+            // La diferencia solo se ve en las dos horas de cada noche (tres en invierno) en que
+            // el día local y el UTC no coinciden. Es justo donde caen las muestras con la fecha
+            // tecleada sin hora, que son muchas.
+            var hora = new LocalTimeService();
+            var paciente = EntityBuilders.NewPatient(nhc: "NHC-UTC");
+            Sample Recibida(string numero, DateTime local)
+            {
+                var m = EntityBuilders.NewSample(EntityBuilders.NewRequest(paciente), sampleNumber: numero);
+                m.ReceptionDate = hora.ToUtc(local);
+                return m;
+            }
+
+            var muestras = new[]
+            {
+                Recibida("26-00022", new DateTime(2026, 10, 6, 20, 58, 0)),
+                Recibida("26-00020", new DateTime(2026, 10, 6, 10, 35, 0)),
+                Recibida("26-00021", new DateTime(2026, 10, 6, 0, 0, 0))
+            };
+
+            // Guardadas, el 21 cae en el día 5 UTC y las otras dos en el 6.
+            muestras.Select(m => m.ReceptionDate.Day).Should().Equal(6, 6, 5);
+
+            muestras.PorRecepcionDescendente(hora).Select(m => m.SampleNumber)
+                .Should().Equal("26-00022", "26-00021", "26-00020");
+        }
     }
 }
