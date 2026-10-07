@@ -423,8 +423,6 @@ namespace MiniLIS.Infrastructure.Persistence
                     }
                 };
 
-                auditEntries.Add(auditEntry);
-
                 foreach (var property in entry.Properties)
                 {
                     string propertyName = property.Metadata.Name;
@@ -445,7 +443,11 @@ namespace MiniLIS.Infrastructure.Persistence
                             break;
 
                         case EntityState.Modified:
-                            if (property.IsModified)
+                            // IsModified no basta: DbSet.Update() marca TODAS las propiedades
+                            // como modificadas aunque su valor no haya cambiado, y el registro
+                            // acababa listando treinta campos "X -> X" entre los dos que de
+                            // verdad cambiaron. Se compara el valor.
+                            if (property.IsModified && !ValoresIguales(property.OriginalValue, property.CurrentValue))
                             {
                                 if (propertyName == "RowVersion" || propertyName == "UpdatedAtUtc" || propertyName == "UpdatedBy")
                                     continue;
@@ -456,9 +458,25 @@ namespace MiniLIS.Infrastructure.Persistence
                             break;
                     }
                 }
+
+                // Una modificación que no cambió nada no se registra: sería una línea de
+                // auditoría vacía, y en un registro que hay que poder leer el ruido estorba.
+                if (auditEntry.Action == "Update" && auditEntry.NewValues.Count == 0) continue;
+
+                auditEntries.Add(auditEntry);
             }
 
             return auditEntries;
+        }
+
+        /// <summary>Compara el valor anterior y el nuevo de una propiedad. Los arrays (RowVersion)
+        /// se comparan por contenido: por referencia nunca serían iguales.</summary>
+        private static bool ValoresIguales(object? antes, object? ahora)
+        {
+            if (antes is null && ahora is null) return true;
+            if (antes is null || ahora is null) return false;
+            if (antes is byte[] a && ahora is byte[] b) return a.AsSpan().SequenceEqual(b);
+            return antes.Equals(ahora);
         }
 
         private async Task AfterSaveChanges(List<AuditLogTemp> auditEntries)
@@ -534,7 +552,10 @@ namespace MiniLIS.Infrastructure.Persistence
             }
             else
             {
-                log.Changes = string.Join(", ", changesList);
+                // Un cambio por línea: en un solo renglón separado por comas, con varios
+                // campos y valores que llevan comas dentro, no hay quien lo lea ni quien lo
+                // parta de forma fiable al mostrarlo.
+                log.Changes = string.Join("\n", changesList);
             }
 
             return log;

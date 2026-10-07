@@ -484,7 +484,13 @@ namespace MiniLIS.Infrastructure.Services
         public async Task<bool> UpdateSampleAsync(Sample sample)
         {
             _currentUserService.ActionContext = "Modificación de Muestra";
-            _db.Samples.Update(sample);
+
+            // Update() marca TODAS las propiedades como modificadas. Si la muestra ya la está
+            // siguiendo este contexto —que es el caso: la pantalla de edición la cargó por este
+            // mismo servicio—, EF ya sabe qué ha cambiado, y llamar a Update() solo servía para
+            // llenar la auditoría de campos que no se tocaron.
+            if (_db.Entry(sample).State == EntityState.Detached)
+                _db.Samples.Update(sample);
             
             // Ensure sequence is updated if the sample number was changed to something higher
             await _numberingService.UpdateSequenceIfHigherAsync(sample.SampleNumber);

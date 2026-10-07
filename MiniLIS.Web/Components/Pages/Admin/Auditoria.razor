@@ -216,7 +216,25 @@
                                                 }
                                             </div>
                                             <div class="log-changes mt-1">
-                                                @FormatChanges(log.Changes, log.Action)
+                                                @{ var cambios = DescribirCambios(log.Changes, log.Action); }
+                                                @if (cambios.Resumen != null)
+                                                {
+                                                    <span>@cambios.Resumen</span>
+                                                }
+                                                else
+                                                {
+                                                    <div class="cambios-tabla">
+                                                        @foreach (var c in cambios.Campos)
+                                                        {
+                                                            <div class="cambio-fila">
+                                                                <span class="cambio-campo">@c.Campo</span>
+                                                                <span class="cambio-antes">@c.Antes</span>
+                                                                <i class="bi bi-arrow-right cambio-flecha"></i>
+                                                                <span class="cambio-despues">@c.Despues</span>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
                                             </div>
                                         </div>
                                     }
@@ -544,6 +562,12 @@
     .log-context {
         font-size: 11px;
     }
+    .cambios-tabla { display: flex; flex-direction: column; gap: 2px; }
+    .cambio-fila { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .cambio-campo { min-width: 190px; font-weight: 600; color: #475569; }
+    .cambio-antes { color: #94a3b8; text-decoration: line-through; }
+    .cambio-flecha { color: #cbd5e1; font-size: 11px; }
+    .cambio-despues { color: #0f172a; font-weight: 600; }
     .log-changes {
         font-size: 12.5px;
         color: #475569;
@@ -708,34 +732,94 @@
         _ => "bg-secondary text-white"
     };
 
-    private string FormatChanges(string? changes, string action)
+    private sealed record CambioCampo(string Campo, string Antes, string Despues);
+    private sealed record CambiosLog(string? Resumen, List<CambioCampo> Campos);
+
+    /// <summary>
+    /// Nombres legibles de los campos auditados. Diccionario y no una cadena de Replace: con
+    /// Replace, "Status: " se aplicaba antes que "ReceptionStatus: " y dejaba el campo como
+    /// "ReceptionEstado", que es lo que se veía en pantalla.
+    /// </summary>
+    private static readonly Dictionary<string, string> NombresDeCampo = new()
     {
-        if (string.IsNullOrEmpty(changes)) return "Sin detalles de cambios.";
+        ["SampleNumber"] = "Nº Muestra",
+        ["ReceptionDate"] = "Fecha de recepción",
+        ["ReceivedAtUtc"] = "Recibida el",
+        ["RegisteredAtUtc"] = "Registrada el",
+        ["AcquiredAtUtc"] = "Adquirida el",
+        ["AnalyzedAtUtc"] = "Analizada el",
+        ["CollectedAtUtc"] = "Extraída el",
+        ["ReportedAtUtc"] = "Informada el",
+        ["Status"] = "Estado",
+        ["Diagnosis"] = "Diagnóstico / sospecha",
+        ["StudyPanel"] = "Panel de estudio",
+        ["SampleType"] = "Tipo de muestra",
+        ["SampleTypeOther"] = "Tipo de muestra (otros)",
+        ["ReceptionStatus"] = "Estado de recepción",
+        ["ReceptionCaveatForReport"] = "Salvedad para el informe",
+        ["RequesterNotified"] = "Peticionario notificado",
+        ["RequesterNotifiedAtUtc"] = "Notificado el",
+        ["RequesterNotifiedByUserId"] = "Notificado por (usuario)",
+        ["NotificationNotes"] = "Notas de la notificación",
+        ["QmsNonConformityRef"] = "No conformidad del QMS",
+        ["FinalizedAt"] = "Fecha de validación",
+        ["FinalizedByUserId"] = "Validado por (usuario)",
+        ["RegisteredByUserId"] = "Registrada por (usuario)",
+        ["ClinicalRequestId"] = "Petición clínica",
+        ["LastTubeSequence"] = "Último nº de tubo repartido",
+        ["LastWorklistExportedAtUtc"] = "Última hoja de trabajo",
+        ["IsDeferredEntry"] = "Registro diferido",
+        ["DeferredEntryReason"] = "Motivo del registro diferido",
+        ["DeferredEntryAtUtc"] = "Registro diferido el",
+        ["HasIncident"] = "Tiene incidencia [obsoleto]",
+        ["IncidentsNotes"] = "Notas de incidencia [obsoleto]",
+        ["IsDeleted"] = "Eliminado",
+        ["CreatedAtUtc"] = "Creado el",
+        ["CreatedBy"] = "Creado por (usuario)"
+    };
 
-        if (action.ToLower() == "create")
+    /// <summary>
+    /// Convierte el texto guardado del cambio en filas legibles. Desde la v4.7.2 cada cambio va
+    /// en su propia línea; los registros anteriores venían todos en un renglón separados por
+    /// comas y se muestran tal cual, porque partirlos por la coma rompería cualquier valor que
+    /// la lleve dentro.
+    /// </summary>
+    private CambiosLog DescribirCambios(string? changes, string action)
+    {
+        if (string.IsNullOrWhiteSpace(changes)) return new CambiosLog("Sin detalles de cambios.", new());
+        if (action.Equals("create", StringComparison.OrdinalIgnoreCase)) return new CambiosLog("Registro inicial de la muestra.", new());
+        if (action.Equals("delete", StringComparison.OrdinalIgnoreCase)) return new CambiosLog("Registro eliminado.", new());
+
+        var lineas = changes.Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lineas.Length == 1 && !changes.Contains('\n'))
         {
-            return "Registro inicial de la muestra.";
-        }
-        if (action.ToLower() == "delete")
-        {
-            return "Registro eliminado.";
+            // Registro anterior a la v4.7.2, o un texto libre escrito por un servicio
+            // (justificaciones, motivos de reapertura…). Se muestra como viene.
+            var unaLinea = ComoCampo(lineas[0]);
+            return unaLinea == null ? new CambiosLog(lineas[0], new()) : new CambiosLog(null, new() { unaLinea });
         }
 
-        var result = changes;
-        result = result.Replace("SampleNumber: ", "Nº Muestra: ")
-                       .Replace("ReceptionDate: ", "Fecha Recepción: ")
-                       .Replace("Status: ", "Estado: ")
-                       .Replace("Diagnosis: ", "Diagnóstico/Sospecha: ")
-                       .Replace("StudyPanel: ", "Panel de Estudio: ")
-                       .Replace("HasIncident: ", "Tiene Incidencia [obsoleto]: ")
-                       .Replace("IncidentsNotes: ", "Notas de Incidencia [obsoleto]: ")
-                       .Replace("ReceptionStatus: ", "Estado de Recepción: ")
-                       .Replace("ReceptionCaveatForReport: ", "Salvedad para el Informe: ")
-                       .Replace("FinalizedAt: ", "Fecha de Validación: ")
-                       .Replace("FinalizedByUserId: ", "ID Usuario de Validación: ")
-                       .Replace("IsDeleted: ", "Eliminado: ");
-        
-        return result;
+        var campos = lineas.Select(ComoCampo).Where(c => c != null).Select(c => c!).ToList();
+        return campos.Count == 0 ? new CambiosLog(changes, new()) : new CambiosLog(null, campos);
     }
+
+    private static CambioCampo? ComoCampo(string linea)
+    {
+        var sep = linea.IndexOf(": ", StringComparison.Ordinal);
+        var flecha = linea.IndexOf(" -> ", StringComparison.Ordinal);
+        if (sep < 0 || flecha < sep) return null;
+
+        var campo = linea[..sep];
+        var antes = linea[(sep + 2)..flecha];
+        var despues = linea[(flecha + 4)..];
+
+        return new CambioCampo(
+            NombresDeCampo.TryGetValue(campo, out var nombre) ? nombre : campo,
+            ComoValor(antes), ComoValor(despues));
+    }
+
+    /// <summary>"null" es cómo lo guarda el registro; en pantalla se lee mejor "(vacío)".</summary>
+    private static string ComoValor(string valor) =>
+        string.IsNullOrWhiteSpace(valor) || valor == "null" ? "(vacío)" : valor;
 }
 

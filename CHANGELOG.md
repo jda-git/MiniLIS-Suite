@@ -30,6 +30,37 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.7.2
+
+Versión de **PARCHE**: el registro de auditoría de la muestra solo anota lo que cambió de
+verdad, y la pantalla que lo muestra deja de traducir mal los nombres de campo.
+
+### La auditoría anotaba treinta campos para un cambio de dos
+
+Modificar una muestra dejaba una línea de auditoría con **todas** sus propiedades, la mayoría
+en la forma `Campo: X -> X` o `Campo: null -> null`, con los dos cambios reales perdidos
+dentro. La causa: la pantalla de edición llamaba a `DbSet.Update()`, que marca como
+modificadas *todas* las propiedades de la entidad, y la auditoría se fiaba de esa marca
+(`IsModified`) sin comparar el valor.
+
+Ahora se compara el valor anterior con el nuevo, y un guardado que no cambia nada **no deja
+registro**: una línea de auditoría vacía solo añade ruido a un registro que hay que poder
+revisar (ISO 15189, cl. 8.4).
+
+Esto **no altera los registros ya guardados**, que se conservan como están.
+
+### La pantalla de auditoría
+
+- Cada cambio va en **su propia fila**, con el valor anterior tachado y el nuevo destacado, en
+  lugar de un renglón único separado por comas —que además no se podía partir de forma fiable,
+  porque los valores libres (diagnósticos, salvedades) llevan comas dentro.
+- Un valor vacío se lee **(vacío)** en vez de `null` o de un hueco.
+- **Corregido**: el campo *Estado de recepción* salía en pantalla como `ReceptionEstado`. Los
+  nombres se traducían con una cadena de `Replace` en la que `Status` se aplicaba antes que
+  `ReceptionStatus` y se lo comía por dentro. Ahora es un diccionario de nombres, que además
+  cubre los campos que no estaban traducidos (fechas de recepción, adquisición y extracción,
+  tipo de muestra, notificación al peticionario, registro diferido, contador de tubos).
+
 ## v4.7.1
 
 Versión de **PARCHE**: unifica cómo se añaden paneles y tubos en las tres pantallas que lo
