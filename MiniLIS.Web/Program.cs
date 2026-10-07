@@ -86,7 +86,9 @@ builder.Services.ConfigureApplicationCookie(options => {
     options.LoginPath = "/login";
     options.LogoutPath = "/account/logout";
     options.AccessDeniedPath = "/acceso-denegado";   // no /login: son cosas distintas
-    options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+    // Un único sitio decide la caducidad: la comparten la cookie, la revalidación del
+    // circuito y el aviso de inactividad de la pantalla (MiniLIS.Web.Services.SessionPolicy).
+    options.ExpireTimeSpan = MiniLIS.Web.Services.SessionPolicy.IdleTimeout;
     options.SlidingExpiration = true;
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Strict;
@@ -95,6 +97,12 @@ builder.Services.ConfigureApplicationCookie(options => {
 });
 
 // Application Services
+// En Blazor Server, una pestaña abierta no hace peticiones HTTP, así que ni la caducidad de
+// la cookie ni el validador de Identity llegan a aplicarse mientras siga abierta. Este
+// proveedor revalida el circuito contra la base de datos cada pocos minutos.
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider,
+    MiniLIS.Web.Services.RevalidatingAuthenticationStateProvider>();
+
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, MiniLIS.Web.Services.CurrentUserService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();

@@ -5,6 +5,7 @@ using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Common;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Persistence;
+using MiniLIS.Infrastructure.Services;
 using MiniLIS.Infrastructure.Services.ConfigTransfer;
 using MiniLIS.Tests.TestSupport;
 using System;
@@ -531,6 +532,95 @@ namespace MiniLIS.Tests
             using var ctx = db.CreateContext();
             var acciones = await ctx.AuditLogs.Where(a => a.EntityName == "Configuracion").Select(a => a.Action).ToListAsync();
             acciones.Should().Contain(new[] { "Export", "Backup", "Import" });
+        }
+
+        // ── v4.8: apartados nuevos y selección por defecto ────────────────────────────
+
+        [Fact]
+        public void Los_permisos_por_rol_son_un_apartado_que_hay_que_marcar_a_proposito()
+        {
+            using var db = new TestDb();
+            var s = Service(db);
+
+            var permisos = s.Sections.Single(x => x.Key == "permisos");
+            permisos.OffByDefault.Should().BeTrue(
+                "traerse los permisos de otro equipo sin querer redefine quién puede firmar lecturas o validar informes");
+
+            s.Sections.Where(x => x.Key != "permisos").Should().OnlyContain(x => !x.OffByDefault,
+                "el resto son catálogos y ajustes: se copian de serie");
+        }
+
+        [Fact]
+        public async Task Los_permisos_por_rol_viajan_cuando_se_marcan()
+        {
+            using var origen = new TestDb();
+            await Seed(origen);
+            using (var ctx = origen.CreateContext())
+            {
+                ctx.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "Security:RolePermissions",
+                    Value = """{"Roles":{"Técnico":["muestras.ver"]},"KnownCodes":["muestras.ver"]}"""
+                });
+                await ctx.SaveChangesAsync();
+            }
+
+            var fichero = await Service(origen).ExportAsync(new HashSet<string> { "permisos" });
+
+            using var destino = new TestDb();
+            var s = Service(destino);
+            await ImportWithBackup(s, fichero.Content, keys: new[] { "permisos" });
+
+            using var check = destino.CreateContext();
+            var guardado = await check.SystemSettings.SingleOrDefaultAsync(x => x.Key == "Security:RolePermissions");
+            guardado.Should().NotBeNull("marcado a propósito, el apartado sí se aplica");
+            guardado!.Value.Should().Contain("muestras.ver");
+        }
+
+        [Fact]
+        public async Task Un_fichero_con_los_permisos_danados_no_se_aplica()
+        {
+            using var db = new TestDb();
+            await Seed(db);
+            using (var ctx = db.CreateContext())
+            {
+                ctx.SystemSettings.Add(new SystemSetting { Key = "Security:RolePermissions", Value = "{\"Roles\":{}}" });
+                await ctx.SaveChangesAsync();
+            }
+
+            var s = Service(db);
+            var fichero = Rewrite((await s.ExportAsync(new HashSet<string> { "permisos" })).Content, root =>
+                root["sections"]!["permisos"]!["data"]!["Security:RolePermissions"] = "esto no es json");
+
+            var resultado = await ImportWithBackup(s, fichero, keys: new[] { "permisos" });
+
+            resultado.Success.Should().BeFalse(
+                "PermissionService se cae a los valores de fábrica ante un JSON ilegible: aplicarlo dejaría " +
+                "un reparto distinto del que dice el fichero sin avisar a nadie");
+        }
+
+        [Fact]
+        public async Task La_nota_de_alcance_del_informe_viaja_en_la_copia()
+        {
+            const string nota = "Ensayo fuera del alcance acreditado por ENAC.";
+
+            using var origen = new TestDb();
+            await Seed(origen);
+            using (var ctx = origen.CreateContext())
+            {
+                ctx.SystemSettings.Add(new SystemSetting { Key = DocumentService.CustomPanelScopeNoteKey, Value = nota });
+                await ctx.SaveChangesAsync();
+            }
+
+            var fichero = await Service(origen).ExportAsync();
+
+            using var destino = new TestDb();
+            var s = Service(destino);
+            await ImportWithBackup(s, fichero.Content);
+
+            using var check = destino.CreateContext();
+            (await check.SystemSettings.SingleAsync(x => x.Key == DocumentService.CustomPanelScopeNoteKey))
+                .Value.Should().Be(nota, "es un texto que sale impreso en el informe: montar un segundo equipo no debe perderlo");
         }
     }
 }

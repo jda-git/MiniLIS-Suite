@@ -61,7 +61,11 @@ namespace MiniLIS.Web.Controllers
                     return Redirect("/login?error=Invalid login attempt");
                 }
 
-                var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password, model.RememberMe, lockoutOnFailure: true);
+                // isPersistent: false siempre. La sesión no sobrevive al cierre del navegador:
+                // es un puesto compartido de laboratorio, y la casilla «Mantener sesión» que
+                // había aquí ni siquiera alargaba la caducidad (seguían siendo 30 minutos).
+                var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password,
+                    isPersistent: false, lockoutOnFailure: true);
                 if (result.Succeeded)
                 {
                     await LogLoginAttemptAsync(model.Username, "Login");
@@ -89,12 +93,14 @@ namespace MiniLIS.Web.Controllers
             return Redirect($"/login?error=Please provide username and password");
         }
 
+        /// <param name="motivo">"inactividad" cuando lo pide el reloj de la pantalla: el login
+        /// lo traduce a un aviso, para que no parezca que la sesión se cayó sin más.</param>
         [HttpGet("logout")]
         [AllowAnonymous]
-        public async Task<IActionResult> Logout()
+        public async Task<IActionResult> Logout([FromQuery] string? motivo = null)
         {
             await _signInManager.SignOutAsync();
-            return LocalRedirect("/");
+            return motivo == "inactividad" ? LocalRedirect("/login?error=inactividad") : LocalRedirect("/");
         }
 
         [HttpPost("change-password")]
@@ -142,7 +148,6 @@ namespace MiniLIS.Web.Controllers
         [DataType(DataType.Password)]
         public string Password { get; set; } = string.Empty;
 
-        public bool RememberMe { get; set; }
         public string? ReturnUrl { get; set; }
     }
 

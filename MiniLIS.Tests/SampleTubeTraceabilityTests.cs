@@ -193,6 +193,74 @@ namespace MiniLIS.Tests
             await svc.RecordTubeReadIncidentAsync(t1.Id, motivo.Id, TubeReadIncidentResolution.ConSalvedad, "Se usa igualmente", lector);
         }
 
+        // ── Permisos de lectura (v4.8: antes figuraban en la pantalla sin comprobarse) ──
+
+        /// <summary>Servicio con una matriz de permisos a medida, para quitar uno concreto.</summary>
+        private static SampleService SamplesCon(ApplicationDbContext ctx, FakeCurrentUserService user, FakePermissionService permisos)
+            => new(ctx, new FakeNumbering(), user, new PanelCatalogService(ctx, user), new LocalTimeService(), permisos);
+
+        [Fact]
+        public async Task Sin_el_permiso_de_marcar_leido_no_se_puede_marcar_un_tubo()
+        {
+            using var db = new TestDb();
+            var (panelId, _) = await SeedPanelAsync(db);
+            var sample = await NewSampleWithPanelAsync(db, panelId);
+            var t1 = (await TubesAsync(db, sample.Id))[0];
+            var lector = await UserAsync(db, "lector");
+
+            var tecnico = new FakeCurrentUserService { Roles = new() { "Técnico" } };
+            var permisos = new FakePermissionService(tecnico).Quitar("Técnico", Permissions.TubosMarcarLeido);
+            using var ctx = db.CreateContext();
+
+            await FluentActions.Awaiting(() => SamplesCon(ctx, tecnico, permisos).ToggleSampleTubeReadAsync(t1.Id, true, lector))
+                .Should().ThrowAsync<UnauthorizedAccessException>();
+            (await TubesAsync(db, sample.Id))[0].IsRead.Should().BeFalse("la lectura es la firma de quién adquirió el tubo");
+        }
+
+        [Fact]
+        public async Task Con_el_permiso_de_marcar_leido_se_marca_con_normalidad()
+        {
+            using var db = new TestDb();
+            var (panelId, _) = await SeedPanelAsync(db);
+            var sample = await NewSampleWithPanelAsync(db, panelId);
+            var t1 = (await TubesAsync(db, sample.Id))[0];
+            var lector = await UserAsync(db, "lector");
+
+            var tecnico = new FakeCurrentUserService { Roles = new() { "Técnico" } };
+            using var ctx = db.CreateContext();
+            await SamplesCon(ctx, tecnico, new FakePermissionService(tecnico)).ToggleSampleTubeReadAsync(t1.Id, true, lector);
+
+            (await TubesAsync(db, sample.Id))[0].IsRead.Should().BeTrue("de fábrica el técnico sí puede leer tubos");
+        }
+
+        [Fact]
+        public async Task Sin_el_permiso_de_salvedad_no_se_puede_dar_por_leido_un_tubo_con_incidencia()
+        {
+            // "Con salvedad" marca el tubo como leído: es una vía de lectura por sí misma, y
+            // quitarle el permiso a un rol tiene que cerrarla de verdad.
+            using var db = new TestDb();
+            var (panelId, _) = await SeedPanelAsync(db);
+            var sample = await NewSampleWithPanelAsync(db, panelId);
+            var t1 = (await TubesAsync(db, sample.Id))[0];
+            var lector = await UserAsync(db, "lector");
+
+            using var ctx = db.CreateContext();
+            ctx.TubeReadIncidentReasons.Add(new TubeReadIncidentReason { Code = "ATASCO", Description = "Atasco del equipo" });
+            await ctx.SaveChangesAsync();
+            var motivo = await ctx.TubeReadIncidentReasons.SingleAsync();
+
+            var tecnico = new FakeCurrentUserService { Roles = new() { "Técnico" } };
+            var permisos = new FakePermissionService(tecnico).Quitar("Técnico", Permissions.TubosIncidenciaSalvedad);
+
+            await FluentActions.Awaiting(() => SamplesCon(ctx, tecnico, permisos)
+                    .RecordTubeReadIncidentAsync(t1.Id, motivo.Id, TubeReadIncidentResolution.ConSalvedad, "Se usa igualmente", lector))
+                .Should().ThrowAsync<UnauthorizedAccessException>();
+
+            var tubo = (await TubesAsync(db, sample.Id))[0];
+            tubo.IsRead.Should().BeFalse();
+            tubo.HasReadIncident.Should().BeFalse("la incidencia no llegó a registrarse");
+        }
+
         // ── Justificación de tubos no realizados ────────────────────────────────────────
 
         [Fact]

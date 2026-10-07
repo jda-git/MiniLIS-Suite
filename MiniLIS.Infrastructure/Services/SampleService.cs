@@ -649,6 +649,14 @@ namespace MiniLIS.Infrastructure.Services
         public async Task ToggleSampleTubeReadAsync(int sampleTubeId, bool isRead, int? userId = null)
         {
             _currentUserService.ActionContext = isRead ? "Lectura de Tubo" : "Cancelación de Lectura de Tubo";
+
+            // El permiso existía en el catálogo y en la pantalla de Permisos, pero no lo
+            // comprobaba nadie: quitárselo a un rol no le impedía marcar tubos. La lectura es
+            // la firma de quién adquirió el tubo, así que la comprobación va en el servicio y
+            // no solo en el interruptor.
+            if (isRead && !await _permissions.HasAsync(Permissions.TubosMarcarLeido))
+                throw new UnauthorizedAccessException("No tiene permiso para marcar tubos como leídos.");
+
             var tube = await _db.SampleTubes.FindAsync(sampleTubeId);
             if (tube != null)
             {
@@ -708,6 +716,14 @@ namespace MiniLIS.Infrastructure.Services
             var reason = await _db.TubeReadIncidentReasons.FindAsync(reasonId);
             if (reason == null) throw new InvalidOperationException("El motivo de incidencia seleccionado no existe.");
             if (tube.IsVoided) throw new InvalidOperationException("El tubo está anulado: no se pueden registrar incidencias.");
+
+            // "Con salvedad" da el tubo por leído pese al fallo, así que es una vía de marcar
+            // lectura por sí misma y tiene su propio permiso. No se comprobaba: quitarlo no
+            // impedía nada.
+            if (resolution == TubeReadIncidentResolution.ConSalvedad
+                && !await _permissions.HasAsync(Permissions.TubosIncidenciaSalvedad))
+                throw new UnauthorizedAccessException(
+                    "No tiene permiso para resolver una incidencia de lectura «con salvedad».");
 
             // v4: "Repetir" o "Anula" sobre un tubo YA leído deshace esa lectura: queda reservado
             // a facultativos y administradores (el técnico, no).

@@ -12,6 +12,7 @@
 @inject IJSRuntime JS
 @using MiniLIS.Web.Components.Shared
 @using MiniLIS.Web.Services
+@using MiniLIS.Infrastructure.Services
 
 <PageTitle>Configuración - MiniLIS Suite</PageTitle>
 
@@ -71,9 +72,13 @@
         <button class="config-tab @(activeTab == "signatures" ? "active" : "")" @onclick='() => SetTab("signatures")'>
             <i class="bi bi-pen"></i> Firmas
         </button>
-        <button class="config-tab @(activeTab == "transfer" ? "active" : "")" @onclick='() => SetTab("transfer")'>
-            <i class="bi bi-file-earmark-arrow-down"></i> Copia config.
-        </button>
+        <AuthorizeView Policy="@Permissions.Policies.ConfiguracionCopia">
+            <Authorized>
+                <button class="config-tab @(activeTab == "transfer" ? "active" : "")" @onclick='() => SetTab("transfer")'>
+                    <i class="bi bi-file-earmark-arrow-down"></i> Copia config.
+                </button>
+            </Authorized>
+        </AuthorizeView>
         <AuthorizeView Policy="@Permissions.Policies.PermisosGestionar">
             <Authorized>
                 <button class="config-tab @(activeTab == "permisos" ? "active" : "")" @onclick='() => SetTab("permisos")'>
@@ -1151,6 +1156,30 @@
                     <span>Añadir</span>
                 </div>
             </div>
+
+            @* Hasta la v4.8 este texto solo se podía cambiar escribiendo en la base de datos,
+               pese a salir impreso en el informe. *@
+            <div class="section-header mt-4">
+                <div>
+                    <h2 class="section-title">Nota de alcance de los paneles personalizados</h2>
+                    <p class="section-subtitle">
+                        Se imprime en el informe junto a los paneles escritos a mano, que no tienen
+                        versión ni acreditación. En blanco se usa el texto de fábrica.
+                    </p>
+                </div>
+                <button class="btn-config btn-config-success" @onclick="SaveCustomPanelNote">
+                    <i class="bi bi-save"></i> Guardar nota
+                </button>
+            </div>
+
+            <div class="header-settings-panel" style="max-width: 760px;">
+                <div class="form-field">
+                    <label class="field-label">Texto</label>
+                    <input type="text" class="field-input" maxlength="300"
+                           placeholder="@DocumentService.DefaultCustomPanelScopeNote"
+                           @bind="customPanelScopeNote" />
+                </div>
+            </div>
         }
 
         @* ════════ TAB: CABECERA ════════ *@
@@ -1261,7 +1290,14 @@
         }
         else if (activeTab == "transfer")
         {
-            <ConfigTransferPanel />
+            <AuthorizeView Policy="@Permissions.Policies.ConfiguracionCopia">
+                <Authorized>
+                    <ConfigTransferPanel />
+                </Authorized>
+                <NotAuthorized>
+                    <p class="text-muted">Su rol no puede exportar ni importar la configuración.</p>
+                </NotAuthorized>
+            </AuthorizeView>
         }
         else if (activeTab == "permisos")
         {
@@ -1829,6 +1865,9 @@
     // Signatures
     private string facultativosText = "";
 
+    /// <summary>Texto de alcance de los paneles personalizados, tal y como sale en el informe.</summary>
+    private string? customPanelScopeNote;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
@@ -1850,6 +1889,7 @@
         worklistProfiles = await WorklistExportService.GetProfilesAsync();
         fcsRootPath = await MasterService.GetSettingAsync("Fcs:RootPath");
         intensitySettings = await MasterService.GetIntensitySettingsAsync();
+        customPanelScopeNote = await MasterService.GetSettingAsync(DocumentService.CustomPanelScopeNoteKey);
 
         templateMarkerCounts.Clear();
         foreach (var t in templates)
@@ -2199,6 +2239,24 @@
     }
 
     // ── INTENSITIES ──
+    /// <summary>Guardar en blanco borra el texto propio: el informe vuelve al de fábrica.</summary>
+    private async Task SaveCustomPanelNote()
+    {
+        try
+        {
+            await MasterService.SaveSettingAsync(DocumentService.CustomPanelScopeNoteKey,
+                (customPanelScopeNote ?? "").Trim(),
+                "Nota de alcance de los paneles personalizados (sale en el informe)");
+            Avisar(string.IsNullOrWhiteSpace(customPanelScopeNote)
+                ? "Nota guardada en blanco: el informe usará el texto de fábrica."
+                : "Nota de alcance guardada.");
+        }
+        catch (Exception ex)
+        {
+            AvisarError("No se pudo guardar la nota de alcance: " + ex.Message);
+        }
+    }
+
     private async Task SaveIntensities()
     {
         try

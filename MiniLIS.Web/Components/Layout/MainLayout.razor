@@ -2,6 +2,13 @@
 @inject NavigationManager Navigation
 @using Microsoft.AspNetCore.Components.Authorization
 
+@* Cierre por inactividad: solo con sesión abierta. *@
+<AuthorizeView>
+    <Authorized>
+        <MiniLIS.Web.Components.Shared.SessionTimeout />
+    </Authorized>
+</AuthorizeView>
+
 <div class="iso-layout">
     <aside class="iso-sidebar">
         <NavMenu />

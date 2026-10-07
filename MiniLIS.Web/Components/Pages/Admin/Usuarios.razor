@@ -384,6 +384,10 @@
         ClearMessages();
         u.IsActive = !u.IsActive;
         await UserManager.UpdateAsync(u);
+
+        // Cambiar el sello invalida la cookie de quien estuviera dentro: sin esto, dar de baja
+        // a alguien no le echaba de su sesión abierta, solo le impedía volver a entrar.
+        await UserManager.UpdateSecurityStampAsync(u);
         SuccessMsg = u.IsActive ? $"Usuario '{u.FullName ?? u.UserName}' activado." : $"Usuario '{u.FullName ?? u.UserName}' desactivado.";
         await LoadUsers();
     }

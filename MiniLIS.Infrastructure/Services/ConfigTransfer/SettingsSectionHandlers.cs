@@ -573,6 +573,7 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         private readonly string _key;
         private readonly string _title;
         private readonly bool _isLocal;
+        private readonly bool _offByDefault;
         private readonly Func<string, bool> _allowed;
         private readonly Func<string, string> _describe;
         private readonly Action<string, string>? _validate;
@@ -581,15 +582,17 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         private readonly Func<string, bool>? _replaceable;
 
         public KeyValueSectionHandler(string key, string title, Func<string, bool> allowed, Func<string, string> describe,
-            bool isLocal = false, Action<string, string>? validate = null, Func<string, bool>? replaceable = null)
+            bool isLocal = false, Action<string, string>? validate = null, Func<string, bool>? replaceable = null,
+            bool offByDefault = false)
         {
             _key = key; _title = title; _allowed = allowed; _describe = describe;
-            _isLocal = isLocal; _validate = validate; _replaceable = replaceable;
+            _isLocal = isLocal; _validate = validate; _replaceable = replaceable; _offByDefault = offByDefault;
         }
 
         public override string Key => _key;
         public override string Title => _title;
         public override bool IsLocal => _isLocal;
+        public override bool OffByDefault => _offByDefault;
 
         protected override async Task<Dictionary<string, string>> ExportDataAsync(ApplicationDbContext db)
         {
@@ -647,6 +650,49 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
                 : ItemDiff.Fmt(value);
     }
 
+    /// <summary>
+    /// Permisos por rol. Apartado aparte y <b>fuera de la selección por defecto</b>: traerse los
+    /// permisos de otro equipo sin querer redefine quién puede firmar lecturas o validar
+    /// informes, que no es algo que deba ocurrir de paso al copiar catálogos.
+    /// </summary>
+    public class RolePermissionsSectionHandler : KeyValueSectionHandler
+    {
+        public RolePermissionsSectionHandler()
+            : base("permisos", "Permisos por rol",
+                   k => k == PermissionService.SettingKey,
+                   _ => "Permisos por rol",
+                   validate: Validar, offByDefault: true)
+        { }
+
+        /// <summary>Un JSON de permisos dañado no se detectaría al aplicarlo: PermissionService
+        /// es tolerante y se cae a los valores de fábrica, así que el sistema quedaría con un
+        /// reparto distinto del que dice el fichero sin avisar a nadie.</summary>
+        private static void Validar(string key, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(value);
+                if (!doc.RootElement.TryGetProperty("Roles", out _) && !doc.RootElement.TryGetProperty("roles", out _))
+                    throw new InvalidOperationException("El apartado de permisos no tiene el reparto por rol.");
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                throw new InvalidOperationException("El apartado de permisos del fichero está dañado.");
+            }
+        }
+
+        protected override async Task ApplyDataAsync(ApplicationDbContext db, Dictionary<string, string> data,
+            ConfigImportMode mode, SectionAnalysis report)
+        {
+            await base.ApplyDataAsync(db, data, mode, report);
+
+            // PermissionService cachea la matriz mientras dura el circuito de Blazor. Sin esto,
+            // las sesiones ya abiertas seguirían con el reparto anterior hasta recargar.
+            PermissionService.InvalidateCache();
+        }
+    }
+
     public static class SettingsSections
     {
         public static bool IsIntensity(string k) => k.StartsWith("Config:Intensity:", StringComparison.Ordinal);
@@ -654,6 +700,10 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         public static readonly string[] General = { "Audit:RetentionYears", "Storage:RetentionDays", "BackupFrequencyDays" };
         public static readonly string[] Header = { "Header:Line1", "Header:Line2", "Header:LogoBase64", "Header:LogoAlignment", "Header:LogoWidth" };
         public static readonly string[] Signatures = { "Signatures:Facultativos" };
+
+        /// <summary>Textos fijos que salen impresos en el informe. Van en su propio apartado:
+        /// son redacción acordada por el laboratorio, no un ajuste de funcionamiento.</summary>
+        public static readonly string[] ReportTexts = { DocumentService.CustomPanelScopeNoteKey };
         public static readonly string[] Local = { "Fcs:RootPath", "BackupPath" };
 
         public static string Describe(string k) => k switch
@@ -668,6 +718,7 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
             "Header:LogoAlignment" => "Cabecera — alineación del logo",
             "Header:LogoWidth" => "Cabecera — ancho del logo",
             "Signatures:Facultativos" => "Facultativos firmantes",
+            DocumentService.CustomPanelScopeNoteKey => "Nota de alcance de los paneles personalizados",
             "Fcs:RootPath" => "Carpeta raíz de ficheros FCS",
             "BackupPath" => "Carpeta de copias de seguridad",
             _ => k

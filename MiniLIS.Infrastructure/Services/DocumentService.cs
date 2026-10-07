@@ -168,7 +168,7 @@ namespace MiniLIS.Infrastructure.Services
             // leídos (M-4).
             var panelVersionsText = PanelVersionsTextFor(fullReport);
             await ResolveAnalyticalLimitationsAsync(fullReport);
-            var notaPanelManual = await _masterService.GetSettingAsync(CustomPanelScopeNoteKey) ?? DefaultCustomPanelScopeNote;
+            var notaPanelManual = await CustomPanelScopeNoteAsync();
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
 
@@ -615,7 +615,7 @@ namespace MiniLIS.Infrastructure.Services
                 .FirstOrDefaultAsync(r => r.Id == report.Id) ?? report;
 
             await ResolveAnalyticalLimitationsAsync(fullReport);
-            var notaPanelManualOdt = await _masterService.GetSettingAsync(CustomPanelScopeNoteKey) ?? DefaultCustomPanelScopeNote;
+            var notaPanelManualOdt = await CustomPanelScopeNoteAsync();
 
             var logoBase64 = await _masterService.GetSettingAsync("Header:LogoBase64");
             var logoAlignment = await _masterService.GetSettingAsync("Header:LogoAlignment") ?? "Left";
@@ -1460,6 +1460,15 @@ namespace MiniLIS.Infrastructure.Services
         public const string CustomPanelScopeNoteKey = "Report:CustomPanelScopeNote";
 
         public const string DefaultCustomPanelScopeNote = "Ensayo no incluido en el alcance de acreditación.";
+
+        /// <summary>Nota configurada o, si está sin poner o en blanco, la de fábrica. Borrar el
+        /// texto en Configuración no debe dejar la columna vacía en el informe, que no
+        /// distinguiría «no aplica» de «nadie la escribió».</summary>
+        private async Task<string> CustomPanelScopeNoteAsync()
+        {
+            var nota = await _masterService.GetSettingAsync(CustomPanelScopeNoteKey);
+            return string.IsNullOrWhiteSpace(nota) ? DefaultCustomPanelScopeNote : nota;
+        }
 
         private static List<(string Descripcion, string Nota)> BuildTubosEmpleados(Sample? sample, string? notaPanelManual = null)
         {

@@ -30,6 +30,89 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.8.0
+
+Versión **MENOR**: tres permisos de la pantalla de Configuración → Permisos no los comprobaba
+nadie. Quitar esas casillas no cerraba nada.
+
+### Casillas que no hacían nada
+
+La pantalla de Permisos dice que «quitar una marca cierra también la vía directa, no solo el
+botón». Para tres permisos eso no era cierto — figuraban en el catálogo desde la v4.1 pero
+ningún sitio los consultaba:
+
+| Permiso | Qué no se comprobaba |
+|---|---|
+| **Marcar tubo como leído** | Cualquiera que llegara a la ficha de la muestra podía firmar la lectura de un tubo. |
+| **Incidencia de lectura «con salvedad»** | Esa resolución da el tubo por leído, así que era una segunda vía de firmar una lectura, también sin comprobar. |
+| **Copia de configuración** | Bastaba con poder abrir Configuración para exportar toda la configuración del sistema o reemplazarla con un fichero. |
+
+Ahora se comprueban **en el servidor y en la pantalla**: el interruptor de lectura y el botón
+de «Marcar todos» se deshabilitan sin el permiso, la resolución «con salvedad» no se ofrece, y
+la pestaña de copia de configuración no aparece.
+
+**En una instalación con los permisos de fábrica no cambia nada**, porque los tres los tienen
+ya los roles previstos. Solo cambia para quien los hubiera desmarcado creyendo que surtían
+efecto: a partir de ahora lo surten.
+
+### Para que no vuelva a ocurrir
+
+`PermissionCoverageTests` recorre el código fuente y falla si un permiso del catálogo no se
+comprueba en ningún sitio, si un código no tiene ficha en la pantalla (o al revés), o si algún
+permiso se queda de fábrica sin ningún rol.
+
+### La sesión caduca también con la pestaña abierta
+
+MiniLIS es Blazor Server: tras cargar la página, todo va por el websocket y **no hay más
+peticiones HTTP**, así que los 30 minutos de la cookie no llegaban a aplicarse mientras la
+pestaña siguiera abierta. En la práctica:
+
+- Un puesto con la sesión abierta seguía operativo horas después, y se podían firmar lecturas
+  y validar informes con la identidad de quien ya se había ido.
+- **Dar de baja a un usuario no le echaba**: `IsActive` solo se miraba al iniciar sesión.
+
+Ahora:
+
+- **Aviso y cierre por inactividad** a los 30 minutos, con un aviso un minuto antes y un botón
+  de «Seguir trabajando». El plazo sale de un único sitio (`SessionPolicy`), compartido por la
+  cookie, la revalidación y la pantalla, para que los tres no puedan discrepar.
+- **El circuito se revalida cada 5 minutos** contra la base de datos: un usuario dado de baja,
+  con el rol cambiado o con la contraseña cambiada queda fuera de su sesión abierta.
+- Desactivar un usuario cambia además su sello de seguridad, con lo que su cookie deja de
+  valer en la siguiente petición.
+- Salir por inactividad se distingue de salir a mano: el login lo dice, para que no parezca una
+  caída del sistema.
+
+### Fuera la casilla «Mantener sesión»
+
+Prometía algo que no cumplía: la sesión caducaba igual a los 30 minutos, así que lo único que
+hacía era guardar la cookie en disco para que sobreviviera al cierre del navegador —justo lo
+que no interesa en un puesto compartido. El servidor ya **no acepta** sesión persistente
+aunque alguien envíe el campo a mano.
+
+### La nota de alcance del informe, por fin configurable
+
+El texto que acompaña a los paneles escritos a mano —«Ensayo no incluido en el alcance de
+acreditación»— se imprime en el informe, pero solo se podía cambiar escribiendo en la base de
+datos. Ahora se edita en **Configuración → Ajustes** y viaja en la copia de configuración.
+Dejarlo en blanco vuelve al texto de fábrica, en vez de imprimir un hueco.
+
+### Los permisos pueden trasladarse a otro equipo
+
+La copia de configuración no se llevaba el reparto de permisos, de modo que montar un segundo
+equipo obligaba a repartirlos a mano. Ahora es un apartado propio, **desmarcado por defecto**
+tanto al exportar como al importar: llevárselo sin querer redefiniría quién puede hacer qué.
+Un fichero con los permisos dañados no se aplica, en vez de dejar el sistema en los valores de
+fábrica sin avisar.
+
+### Guardado de la configuración
+
+`ConfigPersistenceTests` comprueba por reflexión que el perfil de hoja de trabajo y los ajustes
+de etiquetas guardan **todas** sus propiedades. El perfil se guarda copiando campo a campo, de
+modo que un campo nuevo que se olvide ahí se perdería en silencio tras decir «guardado»; la
+prueba recorre las propiedades en vez de una lista escrita a mano, así que cubre también las
+que se añadan después.
+
 ## v4.7.2
 
 Versión de **PARCHE**: el registro de auditoría de la muestra solo anota lo que cambió de

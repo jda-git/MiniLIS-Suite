@@ -89,12 +89,15 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
                 k => SettingsSections.Header.Contains(k), SettingsSections.Describe, validate: SettingsSections.ValidateHeader),
             new KeyValueSectionHandler("firmas", "Firmas",
                 k => SettingsSections.Signatures.Contains(k), SettingsSections.Describe),
+            new KeyValueSectionHandler("informe", "Textos del informe",
+                k => SettingsSections.ReportTexts.Contains(k), SettingsSections.Describe),
+            new RolePermissionsSectionHandler(),
             new KeyValueSectionHandler("equipo", "Rutas de este equipo",
                 k => SettingsSections.Local.Contains(k), SettingsSections.Describe, isLocal: true),
         };
 
         public IReadOnlyList<ConfigSectionInfo> Sections => _handlers
-            .Select(h => new ConfigSectionInfo { Key = h.Key, Title = h.Title, IsLocal = h.IsLocal, SchemaVersion = h.CurrentVersion })
+            .Select(h => new ConfigSectionInfo { Key = h.Key, Title = h.Title, IsLocal = h.IsLocal, OffByDefault = h.OffByDefault, SchemaVersion = h.CurrentVersion })
             .ToList();
 
         private ApplicationDbContext NewContext() => new(_dbOptions, _currentUser);
@@ -259,7 +262,7 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
 
             foreach (var h in _handlers)
             {
-                var report = new SectionAnalysis { Key = h.Key, Title = h.Title, IsLocal = h.IsLocal, AppVersion = h.CurrentVersion };
+                var report = new SectionAnalysis { Key = h.Key, Title = h.Title, IsLocal = h.IsLocal, OffByDefault = h.OffByDefault, AppVersion = h.CurrentVersion };
                 var prepared = new PreparedSection { Handler = h, Report = report };
                 result.Add(prepared);
 

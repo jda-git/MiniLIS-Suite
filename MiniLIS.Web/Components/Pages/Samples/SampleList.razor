@@ -377,7 +377,7 @@
                                                 </span>
                                                 @* Solo suma lecturas; desmarcar sigue siendo tubo a tubo y deliberado,
                                                    porque borra la firma de quién lo leyó. *@
-                                                @if (sp.Id != 0 && leidos < totalTubos)
+                                                @if (sp.Id != 0 && leidos < totalTubos && puedeMarcarLeido)
                                                 {
                                                     var pendientes = totalTubos - leidos;
                                                     <button type="button" class="btn-mark-all"
@@ -450,8 +450,8 @@
                                                 <div class="read-cell">
                                                     <div class="form-check form-switch m-0">
                                                         <input class="form-check-input switch-read cursor-pointer" type="checkbox" role="switch"
-                                                               checked="@tube.IsRead" disabled="@(sp.Id == 0 || tube.IsRead || tube.IsVoided)"
-                                                               title="@(sp.Id == 0 ? "Guarde el panel primero para poder marcar sus tubos" : tube.IsRead ? "Lectura registrada: bloqueada. Si fue un error, un facultativo puede anularla." : null)"
+                                                               checked="@tube.IsRead" disabled="@(sp.Id == 0 || tube.IsRead || tube.IsVoided || !puedeMarcarLeido)"
+                                                               title="@(sp.Id == 0 ? "Guarde el panel primero para poder marcar sus tubos" : tube.IsRead ? "Lectura registrada: bloqueada. Si fue un error, un facultativo puede anularla." : !puedeMarcarLeido ? "Su rol no puede marcar tubos como leídos." : null)"
                                                                @onchange="@((ChangeEventArgs e) => ToggleTubeReadInModal(sp, tube, (bool)(e.Value ?? false)))" />
                                                     </div>
                                                     <div class="read-meta">
@@ -575,10 +575,13 @@
                                                                     <input type="radio" class="form-check-input" name="incidentRes" checked="@(incidentResolution == TubeReadIncidentResolution.Anula)" @onchange="@(() => incidentResolution = TubeReadIncidentResolution.Anula)" />
                                                                     Anula la lectura
                                                                 </label>
-                                                                <label class="form-check-label d-flex align-items-center gap-1">
-                                                                    <input type="radio" class="form-check-input" name="incidentRes" checked="@(incidentResolution == TubeReadIncidentResolution.ConSalvedad)" @onchange="@(() => incidentResolution = TubeReadIncidentResolution.ConSalvedad)" />
-                                                                    Con salvedad (se usa)
-                                                                </label>
+                                                                @if (puedeSalvedad)
+                                                                {
+                                                                    <label class="form-check-label d-flex align-items-center gap-1">
+                                                                        <input type="radio" class="form-check-input" name="incidentRes" checked="@(incidentResolution == TubeReadIncidentResolution.ConSalvedad)" @onchange="@(() => incidentResolution = TubeReadIncidentResolution.ConSalvedad)" />
+                                                                        Con salvedad (se usa)
+                                                                    </label>
+                                                                }
                                                             </div>
                                                         </div>
                                                         <div class="incident-field mb-2">
@@ -1512,6 +1515,7 @@
             tube.ReadAtUtc = isRead ? DateTime.UtcNow : null;
             if (!isRead) tube.ReadByUser = null;
         }
+        catch (UnauthorizedAccessException ex) { modalErrorMessage = ex.Message; }
         catch (Exception ex)
         {
             modalErrorMessage = $"Error al marcar el tubo: {ex.Message}";
@@ -1536,6 +1540,11 @@
 
     private bool puedeDesmarcar;
     private bool puedeJustificar;
+    /// <summary>Marcar un tubo como leído (permiso "tubos.marcar-leido").</summary>
+    private bool puedeMarcarLeido;
+    /// <summary>Resolver una incidencia «con salvedad», que da el tubo por leído
+    /// (permiso "tubos.incidencia-salvedad").</summary>
+    private bool puedeSalvedad;
     private bool puedeInformar;
     /// <summary>Anular tubos o paneles leídos por error (permiso "tubos.anular").</summary>
     private bool canVoid;
@@ -1707,6 +1716,8 @@
     {
         // v4.1: lo que puede hacer cada rol sale de Configuración → Permisos.
         puedeDesmarcar = await Permisos.HasAsync(Permissions.TubosDesmarcarLeido);
+        puedeMarcarLeido = await Permisos.HasAsync(Permissions.TubosMarcarLeido);
+        puedeSalvedad = await Permisos.HasAsync(Permissions.TubosIncidenciaSalvedad);
         canVoid = await Permisos.HasAsync(Permissions.TubosAnular);
         puedeInformar = await Permisos.HasAsync(Permissions.InformesAbrir);
         puedeJustificar = await Permisos.HasAsync(Permissions.TubosJustificarNoRealizado);
@@ -1844,7 +1855,8 @@
         }
         incidentFormTubeId = tube.Id;
         incidentReasonId = tube.ReadIncidentReasonId ?? 0;
-        incidentResolution = tube.ReadIncidentResolution ?? TubeReadIncidentResolution.ConSalvedad;
+        incidentResolution = tube.ReadIncidentResolution
+            ?? (puedeSalvedad ? TubeReadIncidentResolution.ConSalvedad : TubeReadIncidentResolution.Repetir);
         incidentNotes = tube.ReadIncidentNotes;
     }
 
@@ -1929,6 +1941,7 @@
 
             incidentFormTubeId = null;
         }
+        catch (UnauthorizedAccessException ex) { incidentErrorMessage = ex.Message; }
         catch (Exception ex)
         {
             incidentErrorMessage = $"Error al guardar la incidencia: {ex.Message}";

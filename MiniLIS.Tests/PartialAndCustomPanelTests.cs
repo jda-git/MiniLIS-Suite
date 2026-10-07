@@ -319,6 +319,31 @@ namespace MiniLIS.Tests
             }
         }
 
+        [Theory]
+        // v4.8: la nota se configura en Configuración → Ajustes. Dejarla en blanco no debe
+        // imprimir un hueco, que no distinguiría «no aplica» de «nadie la escribió».
+        [InlineData("Ensayo fuera del alcance acreditado por ENAC.", "Ensayo fuera del alcance acreditado por ENAC.")]
+        [InlineData("", "Ensayo no incluido en el alcance de acreditación.")]
+        [InlineData("   ", "Ensayo no incluido en el alcance de acreditación.")]
+        public async Task La_nota_de_alcance_sale_la_configurada_o_la_de_fabrica(string configurada, string esperada)
+        {
+            using var db = new TestDb();
+            var sampleId = await RegistrarConPanelManualAsync(db, "Estudio dirigido", "CD3/CD4");
+
+            SampleReport report;
+            using (var ctx = db.CreateContext())
+            {
+                ctx.SystemSettings.Add(new SystemSetting { Key = DocumentService.CustomPanelScopeNoteKey, Value = configurada });
+                foreach (var t in await ctx.SampleTubes.ToListAsync()) { t.IsRead = true; t.ReadAtUtc = DateTime.UtcNow; }
+                report = new SampleReport { SampleId = sampleId, ReportBody = "Cuerpo", Conclusions = "Conclusión", CreatedBy = 1 };
+                ctx.SampleReports.Add(report);
+                await ctx.SaveChangesAsync();
+            }
+
+            using (var ctx = db.CreateContext())
+                LeerContentXml(await Documents(ctx).GenerateOdtAsync(report)).Should().Contain(esperada);
+        }
+
         // ── Panel manual añadido desde el gestor de paneles ────────────────────────────
         // La ventana compone el panel en memoria y lo manda con sus tubos; el servicio los
         // respeta en vez de crear uno solo con el nombre, que era lo único que sabía hacer.

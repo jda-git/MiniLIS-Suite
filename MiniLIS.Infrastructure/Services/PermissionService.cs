@@ -125,6 +125,11 @@ namespace MiniLIS.Infrastructure.Services
 
         public async Task ResetToDefaultsAsync() => await SaveMatrixAsync(PermissionCatalog.DefaultMatrix());
 
+        /// <summary>Obliga a releer la matriz. La usa la importación de configuración, que
+        /// escribe el ajuste directamente y no por SaveMatrixAsync: sin esto, las sesiones ya
+        /// abiertas seguirían con el reparto anterior.</summary>
+        public static void InvalidateCache() => System.Threading.Interlocked.Increment(ref _version);
+
         /// <summary>Lectura tolerante: un ajuste ilegible no debe dejar el sistema sin permisos,
         /// así que se cae a los valores de fábrica.</summary>
         private static StoredMatrix? Read(string? json)

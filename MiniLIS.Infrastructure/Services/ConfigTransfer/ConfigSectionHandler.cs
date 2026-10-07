@@ -32,6 +32,8 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         /// <summary>Versión más antigua que todavía se sabe convertir.</summary>
         int MinVersion { get; }
         bool IsLocal { get; }
+        /// <summary>Ver ConfigSectionInfo.OffByDefault.</summary>
+        bool OffByDefault { get; }
         /// <summary>Tipo de los datos, para detectar campos que esta versión no conoce.</summary>
         Type DataType { get; }
 
@@ -53,6 +55,7 @@ namespace MiniLIS.Infrastructure.Services.ConfigTransfer
         public virtual int CurrentVersion => 1;
         public virtual int MinVersion => 1;
         public virtual bool IsLocal => false;
+        public virtual bool OffByDefault => false;
         public Type DataType => typeof(TData);
 
         protected abstract Task<TData> ExportDataAsync(ApplicationDbContext db);

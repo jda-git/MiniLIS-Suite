@@ -83,6 +83,10 @@ namespace MiniLIS.Application.Interfaces
         public string Title { get; init; } = "";
         /// <summary>Ajustes propios de cada equipo (rutas): se exportan pero por defecto no se aplican.</summary>
         public bool IsLocal { get; init; }
+        /// <summary>Apartado que hay que marcar a propósito, en la exportación y en la
+        /// importación. Para lo que cambia quién puede hacer qué: llevárselo sin querer de un
+        /// equipo a otro redefine el control de acceso sin que nadie lo haya decidido.</summary>
+        public bool OffByDefault { get; init; }
         public int SchemaVersion { get; init; }
     }
 
@@ -98,6 +102,8 @@ namespace MiniLIS.Application.Interfaces
         public string Key { get; init; } = "";
         public string Title { get; init; } = "";
         public bool IsLocal { get; init; }
+        /// <summary>Ver ConfigSectionInfo.OffByDefault.</summary>
+        public bool OffByDefault { get; init; }
         public int? FileVersion { get; set; }
         public int? AppVersion { get; set; }
         public SectionCompatibility Compatibility { get; set; }

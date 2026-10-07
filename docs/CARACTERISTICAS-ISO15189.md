@@ -279,6 +279,33 @@ y gestionar usuarios.
 - Para validar hacen falta firma y que todos los tubos estén leídos, justificados o anulados
   (excepto en muestra rechazada, v4.3).
 
+### 5.4 Sesión (v4.8)
+
+Autenticación local propia (usuario y contraseña), **transitoria**: la unidad debe migrar al
+directorio corporativo cuando haya integración disponible.
+
+| Control | Valor |
+|---|---|
+| Longitud mínima de contraseña | 12, con mayúscula, minúscula, dígito y símbolo |
+| Bloqueo de cuenta | 5 intentos fallidos → 15 minutos |
+| Caducidad de sesión por inactividad | **30 minutos**, con aviso 1 minuto antes |
+| Sesión persistente | **No existe**: cerrar el navegador cierra la sesión |
+| Revalidación de la sesión abierta | Cada **5 minutos** contra la base de datos |
+| Cookie | `HttpOnly`, `SameSite=Strict`, `Secure` y prefijo `__Host-` en producción |
+
+Los tres plazos salen de un único punto del código (`SessionPolicy`), de modo que no pueden
+discrepar entre la cookie, la revalidación y el aviso de la pantalla.
+
+**Por qué hay revalidación**: MiniLIS es Blazor Server; una pestaña abierta no genera
+peticiones HTTP, así que ni la caducidad de la cookie ni el validador de identidad llegarían a
+aplicarse mientras siga abierta. La revalidación comprueba que el usuario sigue existiendo,
+sigue **activo** y conserva sus roles y contraseña. **Dar de baja a un usuario corta su sesión
+abierta**, no solo le impide volver a entrar.
+
+**Lo que MiniLIS no hace**: no hay segundo factor, ni bloqueo por horario u origen de red, ni
+registro de sesiones concurrentes. El bloqueo de pantalla del puesto sigue siendo una medida
+necesaria del procedimiento, no sustituida por lo anterior.
+
 ---
 
 ## 6. Registros y trazabilidad
@@ -304,7 +331,9 @@ el momento de validar de: **equipo y software empleados**, **versiones de panel 
 congelar en la siguiente validación.
 
 Las notas de alcance de acreditación de los tubos **se leen en vivo**, porque una versión de
-panel publicada es inmutable.
+panel publicada es inmutable. La nota de los paneles escritos a mano (sin versión ni
+acreditación) se configura en *Configuración → Ajustes* y también se lee en vivo; en blanco se
+usa el texto de fábrica.
 
 ### 6.3 Paquete de evidencias para auditoría
 
@@ -341,8 +370,12 @@ La clave de cifrado es obligatoria fuera de desarrollo: sin ella la aplicación 
 | Etiquetas | Dos formatos, dimensiones y contenido |
 | Cabecera y firmas | Logotipo, líneas, facultativos firmantes |
 | Escalas de intensidad | Valores del editor de informes |
-| Permisos por rol | Los 37 permisos |
+| Permisos por rol | Los 37 permisos (apartado aparte, desmarcado por defecto) |
+| **Nota de alcance de paneles manuales** | Texto que sale en el informe (v4.8) |
 | Retenciones | Auditoría (años), excedente (días), frecuencia de copia |
+
+**No es configurable sin tocar el código**: la caducidad de sesión y el plazo de revalidación
+(ver 5.4), las fórmulas de los indicadores y el contenido del paquete de evidencias.
 
 Toda la configuración se puede **exportar a un fichero e importar en otro servidor**, con
 detección de qué secciones son compatibles tras una actualización y copia de seguridad
@@ -354,6 +387,20 @@ obligatoria antes de cargar.
 
 Lista de verificación. Cada punto es una afirmación concreta de MiniLIS que el documento del
 QMS o el PNT correspondiente debe reflejar igual.
+
+### 8.0 Control de acceso
+
+1. **¿El PNT fija un plazo de cierre de sesión por inactividad?** MiniLIS usa **30 minutos**;
+   si el PNT dice otro, hay que cambiar uno de los dos (en MiniLIS es una línea de código, no
+   un ajuste de pantalla).
+2. **¿El PNT contempla que no existe sesión persistente?** Cerrar el navegador cierra la
+   sesión; no hay «recordarme».
+3. **¿El procedimiento de baja de personal dice que la baja en MiniLIS corta la sesión
+   abierta?** Lo hace desde la v4.8, en un plazo máximo de 5 minutos.
+4. **¿El reparto de permisos del PNT coincide con el de la pantalla?** Imprimir la tabla de
+   *Configuración → Permisos* y cruzarla con 5.2; lo que vale es lo de la pantalla, no los
+   valores de fábrica.
+5. **¿El PNT exige bloqueo de pantalla del puesto?** MiniLIS no lo sustituye.
 
 ### 8.1 Indicadores
 

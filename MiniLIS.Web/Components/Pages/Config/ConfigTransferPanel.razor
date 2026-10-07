@@ -1,13 +1,14 @@
 @using MiniLIS.Application.Interfaces
 @using System.Text
 @inject IConfigTransferService ConfigTransfer
+@inject IPermissionService Permisos
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
-@* Copia de configuración a fichero. Se muestra dentro de Configuración (solo Administrador).
-   La lógica y las comprobaciones están en ConfigTransferService: esta pantalla solo guía los
-   pasos. En particular, la copia previa obligatoria se exige también en el servicio, no solo
-   aquí deshabilitando el botón. *@
+@* Copia de configuración a fichero. Dentro de Configuración, para quien tenga el permiso
+   "configuracion.copia". La lógica y las comprobaciones están en ConfigTransferService: esta
+   pantalla solo guía los pasos. En particular, la copia previa obligatoria se exige también en
+   el servicio, no solo aquí deshabilitando el botón. *@
 
 <div class="section-header">
     <div>
@@ -46,6 +47,7 @@
                 <input type="checkbox" checked="@exportKeys.Contains(s.Key)" @onchange="e => Toggle(exportKeys, s.Key, e)" />
                 @s.Title
                 @if (s.IsLocal) { <span class="ct-tag" title="Propio de cada equipo: al importar no se aplica salvo que se marque.">local</span> }
+                @if (s.OffByDefault) { <span class="ct-tag" title="Cambia quién puede hacer qué: hay que marcarlo a propósito.">a propósito</span> }
             </label>
         }
     </div>
@@ -129,6 +131,7 @@
                                         <td>
                                             @s.Title
                                             @if (s.IsLocal) { <span class="ct-tag">local</span> }
+                                            @if (s.OffByDefault) { <span class="ct-tag">a propósito</span> }
                                         </td>
                                         <td><span class="ct-badge ct-@s.Compatibility">@Texto(s.Compatibility)</span></td>
                                         <td class="text-center">@Num(s, ConfigChangeKind.Nuevo)</td>
@@ -332,9 +335,19 @@
     private string? error;
     private string? info;
 
+    /// <summary>Permiso "configuracion.copia". El componente lo comprueba por su cuenta y no
+    /// se fía solo del AuthorizeView de la pestaña: exportar se lleva toda la configuración e
+    /// importar la reemplaza, y en Blazor Server esta comprobación ya es la del servidor.</summary>
+    private bool puedeCopiar;
+
     protected override async Task OnInitializedAsync()
     {
-        foreach (var s in ConfigTransfer.Sections) exportKeys.Add(s.Key);
+        puedeCopiar = await Permisos.HasAsync(Permissions.ConfiguracionCopia);
+        if (!puedeCopiar) return;
+
+        // Los apartados "a propósito" (permisos) tampoco se exportan de serie: el fichero que
+        // sale por omisión no debe llevar el reparto de permisos de este equipo.
+        foreach (var s in ConfigTransfer.Sections.Where(x => !x.OffByDefault)) exportKeys.Add(s.Key);
         await CargarCopias();
     }
 
@@ -387,7 +400,7 @@
         expanded.Clear();
         analysis = await ConfigTransfer.AnalyzeAsync(content, mode);
         // Por defecto: todo lo aplicable, salvo las rutas propias de cada equipo.
-        importKeys = analysis.Sections.Where(s => s.CanApply && !s.IsLocal).Select(s => s.Key).ToHashSet();
+        importKeys = analysis.Sections.Where(s => s.CanApply && !s.IsLocal && !s.OffByDefault).Select(s => s.Key).ToHashSet();
     }
 
     private async Task CambiarModo(ConfigImportMode nuevo)
@@ -482,6 +495,11 @@
     /// <summary>Un error inesperado se muestra y no deja la pantalla bloqueada.</summary>
     private async Task Run(Func<Task> action)
     {
+        if (!puedeCopiar)
+        {
+            error = "No tiene permiso para exportar ni importar la configuración.";
+            return;
+        }
         busy = true;
         error = null;
         info = null;

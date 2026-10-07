@@ -1,0 +1,106 @@
+@using MiniLIS.Web.Services
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@* Aviso y cierre de sesión por inactividad. Va en MainLayout, dentro de AuthorizeView: en la
+   pantalla de login no tiene nada que hacer.
+
+   El reloj vive en el navegador porque es ahí donde se sabe si alguien está usando el equipo;
+   el servidor solo recibe el aviso de que se agotó. No sustituye a la caducidad de la cookie
+   (SessionPolicy.IdleTimeout), que es la que manda: esto es lo que hace que también caduque
+   una pestaña abierta, que en Blazor Server no hace peticiones HTTP y por tanto nunca
+   llegaría a caducar sola. *@
+
+@if (avisando)
+{
+    <div class="modal-backdrop-custom">
+        <div class="modal-card" style="max-width: 420px;">
+            <div class="modal-card-header">
+                <h5 class="m-0"><i class="bi bi-clock-history me-2"></i>Sesión a punto de cerrarse</h5>
+            </div>
+            <div class="modal-card-body">
+                <p class="mb-3">
+                    No se ha detectado actividad. La sesión se cerrará en
+                    <strong>@segundosRestantes segundo@(segundosRestantes == 1 ? "" : "s")</strong>
+                    y se perderá lo que no esté guardado.
+                </p>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CerrarAhora">
+                        Cerrar sesión ahora
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" @onclick="Seguir">
+                        Seguir trabajando
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private DotNetObjectReference<SessionTimeout>? referencia;
+    private bool avisando;
+    private int segundosRestantes;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        referencia = DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("minilisInactividad.iniciar", referencia,
+                SessionPolicy.IdleTimeoutSeconds, SessionPolicy.IdleWarningSeconds);
+        }
+        catch (JSDisconnectedException)
+        {
+            // El circuito se cerró antes de llegar aquí: no hay nada que vigilar.
+        }
+    }
+
+    /// <summary>La llama el navegador cada segundo durante la cuenta atrás.</summary>
+    [JSInvokable]
+    public Task Avisar(int restantes)
+    {
+        avisando = true;
+        segundosRestantes = restantes;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Hubo actividad antes de que se agotara: se retira el aviso.</summary>
+    [JSInvokable]
+    public Task Cancelar()
+    {
+        if (!avisando) return Task.CompletedTask;
+        avisando = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Se agotó el plazo. Se sale por el endpoint de siempre, con recarga completa
+    /// para que el circuito muera y la cookie se borre de verdad.</summary>
+    [JSInvokable]
+    public Task Cerrar()
+    {
+        Nav.NavigateTo("/account/logout?motivo=inactividad", forceLoad: true);
+        return Task.CompletedTask;
+    }
+
+    private async Task Seguir()
+    {
+        avisando = false;
+        try { await JS.InvokeVoidAsync("minilisInactividad.reiniciar"); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private void CerrarAhora() => Nav.NavigateTo("/account/logout", forceLoad: true);
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("minilisInactividad.parar"); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { } // prerenderizado: aún no hay JS
+        referencia?.Dispose();
+    }
+}
