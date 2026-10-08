@@ -229,8 +229,12 @@ namespace MiniLIS.Tests
         }
 
         [Fact]
-        public void La_etiqueta_de_alicuota_no_cambia()
+        public void Una_alicuota_con_el_dato_antiguo_se_sigue_imprimiendo_como_antes()
         {
+            // v4.9: la alícuota pasó a llevar el código en vertical, pero solo cuando su dato
+            // es numérico. Con el formato anterior («26-00017(T1)») se imprime como siempre,
+            // en horizontal — y sobre todo no revienta: Code 128C no sabe codificarlo, y sin
+            // la comprobación el encoder lanzaba y se llevaba la página de impresión entera.
             var alicuota = new LabelItem
             {
                 Kind = LabelKind.Aliquot,

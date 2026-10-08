@@ -182,6 +182,30 @@ namespace MiniLIS.Web.Services
         /// <summary>Separación entre la banda vertical y el código de barras.</summary>
         private const double SeparacionBandaMm = 1.0;
 
+        // ── Código vertical de la alícuota ──────────────────────────────────────────
+        // El ancho de módulo NO se ajusta a lo que quepa, como en los demás códigos: en una
+        // impresora térmica cada barra es un número entero de puntos del cabezal, y 0,25 mm es
+        // el único ancho utilizable tanto a 203 ppp (2 puntos) como a 300 ppp (3 puntos) — por
+        // debajo quedan 0,125 y 0,169 mm, ilegibles. Pedir un ancho intermedio solo conseguiría
+        // que la impresora redondeara y deformara las barras.
+        private const double ModuloAlicuotaMm = 0.25;
+
+        /// <summary>Zona de silencio en módulos a cada extremo del código vertical. La norma
+        /// pide 10; aquí van 8 (2,00 mm) porque con 10 el símbolo ocuparía 24,75 mm de una
+        /// etiqueta de 25 y no quedaría margen para la tolerancia del troquel. Es una decisión
+        /// tomada a sabiendas: con etiquetas más altas procede subirlo a 10.</summary>
+        private const int SilencioAlicuotaModulos = 8;
+
+        /// <summary>Blanco que se deja sin ocupar en cada extremo de la etiqueta. El código
+        /// vertical usa el ALTO COMPLETO y no el alto menos los márgenes: la zona de silencio
+        /// es blanco, y el blanco del margen vale como tal, así que descontar el margen además
+        /// de la zona de silencio sería contarlo dos veces y el código no cabría. Esto es solo
+        /// el colchón para la tolerancia de registro del troquel.</summary>
+        private const double SeguridadTroquelMm = 0.5;
+
+        /// <summary>Largo de etiqueta aprovechable por el código vertical.</summary>
+        public static double LargoDisponibleAlicuotaMm(LabelSettings s) => s.HeightMm - 2 * SeguridadTroquelMm;
+
         private static void RenderTuboSinBanda(StringBuilder sb, LabelItem item, LabelSettings s, double anchoDisponibleMm)
         {
             sb.Append(Barcode(item.BarcodeData ?? item.SampleNumber, s.BarcodeHeightMm, s, anchoDisponibleMm));
@@ -198,7 +222,52 @@ namespace MiniLIS.Web.Services
                 return;
             }
 
-            sb.Append(Barcode(item.BarcodeData ?? item.SampleNumber, s.BarcodeHeightMm, s));
+            // Criotubo o eppendorf: el código va en vertical en la banda izquierda y el texto
+            // a su derecha (ver BarcodeVertical). Con la banda a 0 se vuelve a la etiqueta de
+            // antes, con el código horizontal arriba.
+            var banda = s.AliquotStripWidthMm;
+            var datos = item.BarcodeData;
+
+            // Code 128C solo codifica pares de dígitos. Un dato de otra forma —el formato
+            // anterior «26-00017(T1)», o cualquier otro que llegue de fuera— haría saltar al
+            // encoder y se llevaría por delante la página de impresión entera. Se comprueba
+            // aquí, igual que EsCodificable hace con el Code 128B de la etiqueta Tipo 2.
+            if (banda <= 0 || !EsNumericoPar(datos))
+            {
+                // El código horizontal solo vuelve si se ha desactivado la banda a propósito.
+                // Con la banda puesta y un dato que no se puede codificar, la etiqueta sale
+                // SIN código: en un criotubo el código horizontal no se lee —es el motivo de
+                // todo este cambio—, y poner el de la muestra sería peor que no poner ninguno,
+                // porque parecería identificar este tubo y en realidad identifica otra cosa.
+                RenderAlicuotaSinBanda(sb, item, s, horizontal: banda <= 0);
+                return;
+            }
+
+            sb.Append(@"<div class=""label-split"">");
+            // Márgenes negativos: la banda se sale del relleno de la etiqueta para ocupar su
+            // alto completo, que es lo que necesita el código (ver SeguridadTroquelMm).
+            sb.Append($@"<div class=""label-vbarcode"" style=""width:{Mm(banda)}; height:{Mm(s.HeightMm)}; margin:{Mm(-s.MarginMm)} 0;"">");
+            sb.Append(BarcodeVertical(datos, banda, LargoDisponibleAlicuotaMm(s), s));
+            sb.Append("</div>");
+
+            sb.Append(@"<div class=""label-vmain"">");
+            RenderAlicuotaSinBanda(sb, item, s, horizontal: false);
+            sb.Append("</div>");
+            sb.Append("</div>");
+        }
+
+        /// <summary>¿Puede ir este dato en Code 128C? (dígitos y longitud par)</summary>
+        private static bool EsNumericoPar(string? datos) =>
+            !string.IsNullOrEmpty(datos) && datos.Length % 2 == 0 && datos.All(char.IsDigit);
+
+        private static void RenderAlicuotaSinBanda(StringBuilder sb, LabelItem item, LabelSettings s, bool horizontal)
+        {
+            // Sin banda, el código sigue donde estaba: arriba y en horizontal. Nunca se cae
+            // al nº de muestra: en una alícuota, un código que identifique la muestra y no el
+            // tubo concreto induce a error más que ayuda.
+            if (horizontal && EsCodificable(item.BarcodeData))
+                sb.Append(Barcode(item.BarcodeData!, s.BarcodeHeightMm, s));
+
             FilaPrincipal(sb, item, s.MainFontPt, mostrarTipo: false);
 
             sb.Append($@"<div class=""label-tube"" style=""font-size:{s.SecondaryFontPt}pt;"">{Enc(item.AliquotTypeLine ?? "")}</div>");
@@ -303,6 +372,53 @@ namespace MiniLIS.Web.Services
         }
 
         public static double AltoDisponibleMm(LabelSettings s) => s.HeightMm - 2 * s.MarginMm;
+
+        /// <summary>Largo total que ocupa el código vertical de una alícuota, silencios
+        /// incluidos. Público para que las pruebas comprueben que cabe en la etiqueta.</summary>
+        public static double LargoCodigoAlicuotaMm(string datos) =>
+            (Code128Encoder.TotalNumericModules(datos) + 2 * SilencioAlicuotaModulos) * ModuloAlicuotaMm;
+
+        /// <summary>
+        /// Code 128C girado 90°: las barras salen como filas y el código se lee <b>a lo largo</b>
+        /// de la etiqueta, no a lo ancho.
+        ///
+        /// Es lo que hace legible un criotubo: puesto en vertical, la dirección de lectura
+        /// recorre el eje del tubo, que es recto, mientras que cada barra da la vuelta al tubo
+        /// convertida en un anillo. Así el lector cruza todas las barras mire desde donde mire
+        /// y <b>deja de importar cómo esté girado el tubo en la gradilla</b>, que es justo lo
+        /// que fallaba con el código horizontal: ese se leía alrededor del tubo y se escondía
+        /// en la curva.
+        ///
+        /// Las barras se dibujan como filas del SVG en vez de rotar el elemento con CSS: al
+        /// imprimir, una transformación rotate puede redondearse de otro modo y descuadrar los
+        /// bordes de las barras, que es precisamente lo que no puede pasar aquí.
+        /// </summary>
+        private static string BarcodeVertical(string datos, double anchoBarrasMm, double largoDisponibleMm, LabelSettings s)
+        {
+            var widths = Code128Encoder.EncodeNumericToModuleWidths(datos);
+            var totalModules = widths.Sum() + 2 * SilencioAlicuotaModulos;
+            var largoMm = totalModules * ModuloAlicuotaMm;
+
+            if (largoMm > largoDisponibleMm)
+                return $@"<div class=""label-noid"" style=""font-size:{s.SecondaryFontPt}pt;"">CÓDIGO NO CABE</div>";
+
+            var sb = new StringBuilder();
+            sb.Append($@"<svg class=""label-barcode-v"" width=""{Mm(anchoBarrasMm)}"" height=""{Mm(largoMm)}"" viewBox=""0 0 1 {totalModules}"" preserveAspectRatio=""none"" xmlns=""http://www.w3.org/2000/svg"">");
+            sb.Append(@"<rect x=""0"" y=""0"" width=""100%"" height=""100%"" fill=""white""/>");
+
+            // Se empieza pasada la zona de silencio; la de abajo la deja el alto del SVG.
+            double y = SilencioAlicuotaModulos;
+            var esBarra = true;
+            foreach (var w in widths)
+            {
+                if (esBarra)
+                    sb.Append($@"<rect x=""0"" y=""{y.ToString(CultureInfo.InvariantCulture)}"" width=""1"" height=""{w}"" fill=""black""/>");
+                y += w;
+                esBarra = !esBarra;
+            }
+            sb.Append("</svg>");
+            return sb.ToString();
+        }
 
         // Code 128B dibujado directamente en SVG, sin dependencias de imagen (F-5).
         private static string Barcode(string data, double altoMm, LabelSettings s, double? anchoDisponibleMm = null)

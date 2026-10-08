@@ -876,6 +876,32 @@
                     </div>
                 </div>
 
+                <h3 class="lbl-subtitle">Etiqueta de alícuota almacenada</h3>
+                <p class="section-subtitle">
+                    El criotubo se etiqueta dando la vuelta al tubo, así que el código va <strong>en vertical</strong>:
+                    se lee a lo largo del tubo y no alrededor, y por eso da igual cómo esté girado en la gradilla.
+                    Lleva el nº de muestra y el de alícuota en 8 dígitos. A 0 vuelve al código horizontal de antes.
+                </p>
+                <div class="inline-form-grid">
+                    <div class="form-field">
+                        <label class="field-label">Ancho de la banda del código (mm)</label>
+                        <input type="number" step="0.5" min="0" max="20" class="field-input" @bind="labelSettings.AliquotStripWidthMm" />
+                    </div>
+                </div>
+                <div class="lbl-preview mt-2">
+                    @((MarkupString)LabelRenderer.Render(EtiquetaAlicuotaEjemplo, labelSettings))
+                </div>
+                @{ var largoCodigo = LabelRenderer.LargoCodigoAlicuotaMm("26000223"); }
+                @if (largoCodigo > labelSettings.HeightMm - 2 * labelSettings.MarginMm)
+                {
+                    <div class="lbl-aviso">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        El código necesita @largoCodigo.ToString("0.0") mm de largo y la etiqueta solo tiene
+                        @((labelSettings.HeightMm - 2 * labelSettings.MarginMm).ToString("0.0")) mm útiles:
+                        no se imprimirá. Hacen falta etiquetas más altas.
+                    </div>
+                }
+
                 <p class="section-subtitle mt-2">
                     Renderizador: HTML + CSS de impresión (funciona con cualquier impresora, sin controlador especial).
                     ZPL (Zebra) queda fuera de alcance hasta confirmar un modelo concreto en la unidad.
@@ -1991,6 +2017,18 @@
 
     /// <summary>Datos de ejemplo para la vista previa: los de un caso real, con todos los
     /// campos rellenos para que se vea el formato completo.</summary>
+    /// <summary>Alícuota 3 de un lote de 5, con el dato de 8 dígitos que lleva el código.</summary>
+    private static readonly LabelItem EtiquetaAlicuotaEjemplo = new()
+    {
+        Kind = LabelKind.Aliquot,
+        SampleNumber = "26-00010",
+        TypeCode = "CEL",
+        AliquotTypeLine = "CEL 3/5",
+        BarcodeData = AliquotBarcode.Build("26-00010", 3),
+        DateLine = "21/08/2026",
+        TypeName = "Células"
+    };
+
     private static readonly LabelItem EtiquetaEjemplo = new()
     {
         Kind = LabelKind.Sample,

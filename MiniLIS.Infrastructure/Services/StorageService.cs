@@ -53,7 +53,15 @@ namespace MiniLIS.Infrastructure.Services
                 .Include(s => s.Events)
                 .AsQueryable();
 
-            if (!string.IsNullOrWhiteSpace(searchTerm))
+            // Lo que acaba de entrar por el lector: se lleva a la alícuota concreta en vez de
+            // buscarlo como texto, que no encontraría nada —ni el dato nuevo de 8 dígitos ni el
+            // de las etiquetas antiguas casan con ningún campo—. Escanear un criotubo deja en
+            // pantalla esa única fila, que es para lo que se escanea.
+            if (AliquotBarcode.TryParse(searchTerm, out var muestraEscaneada, out var indiceEscaneado))
+            {
+                query = query.Where(s => s.Sample.SampleNumber == muestraEscaneada && s.AliquotIndex == indiceEscaneado);
+            }
+            else if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 var term = searchTerm.Trim().ToLower();
                 query = query.Where(s =>

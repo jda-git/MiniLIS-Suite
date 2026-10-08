@@ -245,12 +245,11 @@ else
                 SampleNumber = sampleNumber,
                 TypeCode = typeCode,
                 AliquotTypeLine = $"{typeCode} {sp.AliquotIndex}/{sp.BatchSize}",
-                // "{muestra}(T{índice})" -- legible y único: identifica la alícuota sin
-                // depender del Id interno de base de datos. BuildBarcodeSvg ya no estira el
-                // código para llenar el ancho de la etiqueta (ese era el bug de las barras
-                // ilegibles), así que un dato algo más largo que un simple Id ya no supone
-                // ningún riesgo de desbordar ni de engordar las barras.
-                BarcodeData = $"{sampleNumber}(T{sp.AliquotIndex})",
+                // Solo dígitos y en longitud par, para que quepa en Code 128C a lo largo de
+                // la etiqueta (ver AliquotBarcode). Null cuando no se puede componer —número
+                // de muestra tecleado a mano, o más de nueve alícuotas—: la etiqueta lo dice
+                // en vez de imprimir un código que no se va a poder leer.
+                BarcodeData = AliquotBarcode.Build(sampleNumber, sp.AliquotIndex),
                 // Fecha de almacenamiento, no de recepción -- mismo formato que la columna
                 // "Almacenada" del CSV de excedentes (StorageService.ExportToCsvAsync).
                 DateLine = LocalTimeService.ToLocal(sp.StoredAtUtc).ToString("dd/MM/yyyy"),

@@ -391,5 +391,60 @@ namespace MiniLIS.Tests
                     "No hay nada que corregir aquí", null, false, 1))
                 .Should().ThrowAsync<InvalidOperationException>().WithMessage("*sigue disponible*");
         }
+
+        // ── Escanear el criotubo (v4.9) ────────────────────────────────────────────
+        // Antes el código de la alícuota no lo reconocía nadie: escanearlo en el buscador de
+        // excedentes no encontraba nada, porque ni «26-00022(T3)» ni el dato nuevo casan con
+        // ningún campo. Ahora lleva a la alícuota concreta, que es para lo que se escanea.
+
+        [Fact]
+        public async Task Escanear_una_alicuota_lleva_a_esa_alicuota_y_no_a_todo_el_lote()
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db, "26-00022");
+            using (var ctx = db.CreateContext())
+                await CreateService(ctx).AddAsync(sampleId, StoredSpecimenType.CelulasViables, null,
+                    "F1", "R1", "B1", "A1", aliquotCount: 5, expiryOverrideUtc: null, notes: null, userId: 1);
+
+            using var check = db.CreateContext();
+            var escaneado = AliquotBarcode.Build("26-00022", 3);
+
+            var resultado = await CreateService(check).SearchAsync(escaneado, null, null, null);
+
+            resultado.Should().ContainSingle("se escanea un tubo concreto, no el lote entero");
+            resultado[0].AliquotIndex.Should().Be(3);
+        }
+
+        [Fact]
+        public async Task Las_etiquetas_con_el_formato_antiguo_siguen_encontrando_su_alicuota()
+        {
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db, "26-00022");
+            using (var ctx = db.CreateContext())
+                await CreateService(ctx).AddAsync(sampleId, StoredSpecimenType.CelulasViables, null,
+                    "F1", "R1", "B1", "A1", aliquotCount: 5, expiryOverrideUtc: null, notes: null, userId: 1);
+
+            using var check = db.CreateContext();
+            var resultado = await CreateService(check).SearchAsync("26-00022(T4)", null, null, null);
+
+            resultado.Should().ContainSingle("un criotubo etiquetado antes del cambio sigue en el congelador");
+            resultado[0].AliquotIndex.Should().Be(4);
+        }
+
+        [Fact]
+        public async Task Buscar_por_numero_de_muestra_sigue_devolviendo_todo_el_lote()
+        {
+            // El reconocimiento del escaneo no debe comerse la búsqueda normal por texto.
+            using var db = new TestDb();
+            var sampleId = await SeedSampleAsync(db, "26-00022");
+            using (var ctx = db.CreateContext())
+                await CreateService(ctx).AddAsync(sampleId, StoredSpecimenType.CelulasViables, null,
+                    "F1", "R1", "B1", "A1", aliquotCount: 5, expiryOverrideUtc: null, notes: null, userId: 1);
+
+            using var check = db.CreateContext();
+            var resultado = await CreateService(check).SearchAsync("26-00022", null, null, null);
+
+            resultado.Should().HaveCount(5);
+        }
     }
 }

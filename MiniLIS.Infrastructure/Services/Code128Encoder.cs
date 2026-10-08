@@ -15,6 +15,7 @@ namespace MiniLIS.Infrastructure.Services
     public static class Code128Encoder
     {
         private const int StartB = 104;
+        private const int StartC = 105;
         private const int StopCode = 106;
 
         // Anchuras de barra/espacio (6 dígitos, alternando barra/espacio empezando en barra) para
@@ -73,8 +74,44 @@ namespace MiniLIS.Infrastructure.Services
             return widths;
         }
 
+        /// <summary>
+        /// Codifica dígitos en Code 128<b>C</b>, que mete <b>dos dígitos en cada símbolo</b>. Un
+        /// dato numérico ocupa así casi la mitad que en 128B, y esa mitad es justo lo que hace
+        /// que el código de la alícuota quepa a lo largo de una etiqueta de 25 mm.
+        ///
+        /// Exige un número par de dígitos: 128C no sabe codificar uno suelto sin cambiar de
+        /// subconjunto, y ese cambio cuesta dos símbolos —tanto que un dato de 7 dígitos sale
+        /// más largo que uno de 8—. Quien llama compone el dato con longitud par (ver
+        /// AliquotBarcode).
+        /// </summary>
+        public static List<int> EncodeNumericToModuleWidths(string digits)
+        {
+            if (string.IsNullOrEmpty(digits))
+                throw new ArgumentException("El texto a codificar no puede estar vacío.", nameof(digits));
+            if (digits.Length % 2 != 0)
+                throw new ArgumentException($"Code 128C codifica pares de dígitos: «{digits}» tiene {digits.Length}.", nameof(digits));
+            if (digits.Any(c => c < '0' || c > '9'))
+                throw new ArgumentException($"Code 128C solo admite dígitos: «{digits}».", nameof(digits));
+
+            var values = new List<int> { StartC };
+            for (var i = 0; i < digits.Length; i += 2)
+                values.Add((digits[i] - '0') * 10 + (digits[i + 1] - '0'));
+
+            // Mismo cálculo que en 128B: arranque + suma de cada valor por su posición.
+            var checksum = StartC;
+            for (var i = 1; i < values.Count; i++)
+                checksum += values[i] * i;
+            values.Add(checksum % 103);
+            values.Add(StopCode);
+
+            return values.SelectMany(v => Patterns[v].Select(ch => ch - '0')).ToList();
+        }
+
         /// <summary>Total de módulos (unidades de anchura mínima de barra) del símbolo completo,
         /// incluyendo arranque/control/parada — útil para dimensionar el SVG.</summary>
         public static int TotalModules(string data) => EncodeToModuleWidths(data).Sum();
+
+        /// <summary>Igual, para el modo numérico.</summary>
+        public static int TotalNumericModules(string digits) => EncodeNumericToModuleWidths(digits).Sum();
     }
 }

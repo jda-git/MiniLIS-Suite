@@ -30,6 +30,66 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.9.0
+
+Versión **MENOR**: la etiqueta de la alícuota almacenada lleva el código de barras en vertical,
+para que se pueda leer en un criotubo.
+
+### El código de un criotubo no se podía leer
+
+La etiqueta da la vuelta al tubo, así que el código horizontal se leía **alrededor** del tubo:
+se curvaba, se escondía y ningún lector lo sacaba. Ahora va en vertical, en una banda a la
+izquierda, y el texto queda a su derecha.
+
+Girado, la dirección de lectura recorre **el eje del tubo, que es recto**, y cada barra se
+convierte en un anillo que da la vuelta al criotubo. El lector cruza todas las barras mire
+desde donde mire: **deja de importar cómo esté girado el tubo en la gradilla**.
+
+### El identificador pasa a ser numérico
+
+En la dirección vertical hay 25 mm en vez de 50, y ahí no cabía `26-00022(T3)`: necesitaba 167
+módulos y solo entran unos 95. El dato pasa a ser **`26000223`** — año, nº de muestra y nº de
+alícuota, ocho dígitos— codificado en **Code 128C**, que mete dos dígitos en cada símbolo y lo
+deja en 79 módulos.
+
+El ancho de módulo es fijo, **0,25 mm**, y no el que quepa: en una impresora térmica cada barra
+es un número entero de puntos del cabezal, y 0,25 mm es el único ancho utilizable tanto a
+203 ppp (2 puntos) como a 300 ppp (3 puntos).
+
+Son ocho dígitos y no más porque en Code 128C **los dígitos van por pares**: uno suelto obliga
+a cambiar de subconjunto y cuesta dos símbolos, de modo que un dato de 7 dígitos saldría más
+largo (90 módulos) que uno de 8 (79). El índice de alícuota queda en una cifra; **por encima de
+nueve alícuotas la etiqueta sale sin código**, con el texto, en vez de imprimir algo que no se
+podría leer.
+
+### Escanear la alícuota ahora sirve de algo
+
+Antes no lo reconocía nadie: escanear el código de un criotubo en el buscador de excedentes no
+encontraba nada, porque el dato no casaba con ningún campo. Ahora lleva **a esa alícuota
+concreta**, y se aceptan también las etiquetas ya impresas con el formato anterior, que siguen
+en el congelador.
+
+### Además
+
+- **Vista previa de la etiqueta de alícuota** en *Configuración → Etiquetas*, con aviso si el
+  código no cabe en el alto configurado. Antes solo se previsualizaba la de muestra.
+- Ancho de la banda configurable (8 mm por omisión); a 0 vuelve la etiqueta anterior.
+- **Corregido al probarlo**: una alícuota sin código propio imprimía el código **de la muestra**,
+  que parece identificar ese tubo y en realidad identifica otra cosa. Ahora sale sin código.
+- **Corregido al probarlo**: un dato no numérico en una alícuota hacía saltar al codificador y
+  se llevaba por delante la página de impresión entera.
+
+### Queda pendiente de comprobar en el laboratorio
+
+La zona de silencio va a **8 módulos (2,00 mm) en vez de los 10 que pide la norma**: con 10, el
+símbolo ocuparía 24,75 mm de una etiqueta de 25 y no quedaría margen para la tolerancia del
+troquel. Es una decisión tomada a sabiendas, anotada en el código; con etiquetas más altas
+procede subirlo a 10.
+
+Hay que **imprimir una etiqueta y escanearla** antes de darlo por bueno: al girar el código
+también se gira respecto al cabezal de impresión, y en esa orientación el borde de las barras
+lo define el avance del rodillo en vez del paso de puntos del cabezal.
+
 ## v4.8.1
 
 Versión de **PARCHE**: el listado de muestras se ordena por el día que se ve en pantalla.

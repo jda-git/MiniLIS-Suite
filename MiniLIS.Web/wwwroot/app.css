@@ -236,6 +236,11 @@ body {
 /* El contenido de la derecha ocupa lo que queda y no empuja a la banda. */
 .label-vmain { display: flex; flex-direction: column; justify-content: center; flex: 1 1 0; min-width: 0; overflow: hidden; }
 
+/* Banda del código vertical de la alícuota: el SVG ocupa el alto completo de la
+   etiqueta, que es la dirección en la que se lee el código. */
+.label-vbarcode { display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0; overflow: hidden; }
+.label-barcode-v { display: block; }
+
 /* ═══ Ventanas modales propias (.modal-backdrop-custom) ═══
    Aquí y no en la página: las usan la bandeja de muestras y las alícuotas almacenadas.
    Mientras vivieron en el <style> de SampleList, en Excedente el mismo marcado se pintaba

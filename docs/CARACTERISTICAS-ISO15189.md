@@ -367,7 +367,7 @@ La clave de cifrado es obligatoria fuera de desarrollo: sin ella la aplicación 
 | **Limitaciones analíticas** | Frases de calidad de la muestra (v4.2) |
 | Citómetros | Equipo, software, código del QMS |
 | Hojas de trabajo | Perfiles CSV o XML por instrumento |
-| Etiquetas | Dos formatos, dimensiones y contenido |
+| Etiquetas | Dos formatos de muestra, dimensiones, contenido y ancho de las bandas verticales |
 | Cabecera y firmas | Logotipo, líneas, facultativos firmantes |
 | Escalas de intensidad | Valores del editor de informes |
 | Permisos por rol | Los 37 permisos (apartado aparte, desmarcado por defecto) |

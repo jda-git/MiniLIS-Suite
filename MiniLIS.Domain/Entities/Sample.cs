@@ -228,6 +228,71 @@ namespace MiniLIS.Domain.Entities
     /// detrás. Vive aquí y no repartido entre la etiqueta y la lista de carga porque es el
     /// mismo dato el que se imprime y el que se escanea; si divergieran, el tubo escaneado no
     /// se correspondería con el de la lista.</summary>
+    /// <summary>
+    /// Identificador que lleva el código de barras de una alícuota almacenada: el año, el
+    /// número de muestra y el número de alícuota, <b>solo dígitos y en longitud par</b>
+    /// (26-00022 alícuota 3 → «26000223»).
+    ///
+    /// Por qué numérico: la etiqueta del criotubo lleva el código en vertical, a lo largo del
+    /// tubo, porque alrededor no se puede leer. Esa dirección mide 25 mm en vez de 50, y el
+    /// dato anterior —«26-00022(T3)», en Code 128B— necesitaba casi el doble. En Code 128C los
+    /// dígitos van de dos en dos y caben: 79 módulos en vez de 167.
+    ///
+    /// Por qué par: un dígito suelto obliga a cambiar de subconjunto y cuesta dos símbolos, de
+    /// modo que 7 dígitos ocuparían más (90 módulos) que 8. De ahí el índice de alícuota de un
+    /// solo dígito, que además es lo que da el trabajo real: cuando sobra material para más de
+    /// nueve alícuotas no cabe el código y la etiqueta lo dice, en vez de imprimir algo ilegible.
+    /// </summary>
+    public static class AliquotBarcode
+    {
+        /// <summary>Índice máximo que cabe en el dato de 8 dígitos.</summary>
+        public const int MaxAliquotIndex = 9;
+
+        private static readonly System.Text.RegularExpressions.Regex FormatoMuestra = new(@"^(\d{2})-(\d{5})$");
+        /// <summary>Formato anterior, el de las etiquetas ya impresas: «26-00022(T3)».</summary>
+        private static readonly System.Text.RegularExpressions.Regex FormatoAntiguo =
+            new(@"^(\d{2}-\d{5})\(T(\d+)\)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        /// <summary>El dato a codificar, o null si no se puede componer: número de muestra con
+        /// un formato distinto del AA-NNNNN (uno tecleado a mano, por ejemplo) o más de nueve
+        /// alícuotas. Quien llama decide qué hacer; la etiqueta avisa en vez de callarse.</summary>
+        public static string? Build(string? sampleNumber, int aliquotIndex)
+        {
+            if (aliquotIndex < 1 || aliquotIndex > MaxAliquotIndex) return null;
+            var m = FormatoMuestra.Match((sampleNumber ?? "").Trim());
+            return m.Success ? $"{m.Groups[1].Value}{m.Groups[2].Value}{aliquotIndex}" : null;
+        }
+
+        /// <summary>
+        /// Lee lo que acaba de entrar por el lector y dice a qué alícuota corresponde. Acepta
+        /// el dato nuevo (8 dígitos) y el de las etiquetas <b>ya impresas</b> («26-00022(T3)»),
+        /// que de otro modo dejarían de servir el día que se cambie el formato.
+        /// </summary>
+        public static bool TryParse(string? texto, out string sampleNumber, out int aliquotIndex)
+        {
+            sampleNumber = "";
+            aliquotIndex = 0;
+            var t = (texto ?? "").Trim();
+
+            var antiguo = FormatoAntiguo.Match(t);
+            if (antiguo.Success && int.TryParse(antiguo.Groups[2].Value, out aliquotIndex) && aliquotIndex >= 1)
+            {
+                sampleNumber = antiguo.Groups[1].Value;
+                return true;
+            }
+
+            if (t.Length == 8 && t.All(char.IsDigit))
+            {
+                sampleNumber = $"{t[..2]}-{t[2..7]}";
+                aliquotIndex = t[7] - '0';
+                return aliquotIndex >= 1;
+            }
+
+            aliquotIndex = 0;
+            return false;
+        }
+    }
+
     public static class SampleTubeLabel
     {
         public static string Build(string? sampleNumber, int sampleSequence) =>
