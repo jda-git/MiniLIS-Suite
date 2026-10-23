@@ -134,6 +134,10 @@ administrador ni *SYSTEM*. Solo puede leer el programa y escribir en la carpeta 
    Se le pedirá **cambiar la contraseña**.
 2. **Usuarios**: cree los usuarios del laboratorio con su rol (Técnico, Facultativo o
    Administrador).
+3. **Permisos** (*Configuración → Permisos*): revise qué puede hacer cada rol. Vienen unos
+   valores de fábrica razonables, pero lo que vale es lo que marque aquí el laboratorio, y es
+   la tabla que hay que cruzar con el PNT de control de acceso. Lo que se desmarca se cierra
+   también por la vía directa, no solo el botón.
 3. **Copias de seguridad** (`/backup`): indique la carpeta de las copias, a ser posible en
    otra unidad o en red, y la frecuencia. **La cuenta del servicio tiene que poder escribir
    en ella**: dé permiso de *Modificar* a `NT SERVICE\MiniLIS` (carpeta local) o a la cuenta
@@ -142,11 +146,21 @@ administrador ni *SYSTEM*. Solo puede leer el programa y escribir en la carpeta 
 4. **Configuración**, si ya existe una configuración funcional en otro equipo: en el equipo
    de origen, *Configuración → Copia config. → Guardar configuración en un fichero*; aquí,
    *Importar* ese fichero. Así se cargan de una vez marcadores, plantillas, paneles, etiquetas,
-   motivos, citómetros, cabecera y firmas. Si no, configúrelo pestaña a pestaña.
+   motivos, limitaciones analíticas, citómetros, hojas de trabajo, cabecera y firmas. Si no,
+   configúrelo pestaña a pestaña.
+
+   El **reparto de permisos** viaja en su propio apartado y **viene desmarcado**: márquelo a
+   propósito si quiere traerlo del otro equipo. Las **rutas propias del equipo** (carpeta FCS,
+   carpeta de copias) tampoco se aplican por omisión, porque no suelen coincidir.
 5. **Carpeta FCS** (Configuración → FCS), si se enlazan los ficheros del citómetro. La cuenta
    del servicio debe poder leerla (ver *Solución de problemas*).
 6. Imprima una etiqueta y genere un informe de prueba para comprobar la impresora y la
    cabecera.
+7. **Escanee las etiquetas impresas con el lector que se vaya a usar**, incluida la de una
+   alícuota almacenada. Es la comprobación que no se puede dar por hecha: el ancho de las
+   barras está ajustado para una impresora térmica concreta, y un lector puede leer un código
+   que otro no lee. Se corrige sin tocar el programa, en *Configuración → Etiquetas*
+   (ver *Solución de problemas*).
 
 ---
 
@@ -257,6 +271,8 @@ el fichero de secretos.
 | Todos los usuarios **pierden la sesión** tras reiniciar | La carpeta `<datos>\keys` no es accesible para el servicio. Vuelva a ejecutar el instalador (repara los permisos). |
 | La **copia de seguridad falla** con acceso denegado | La cuenta del servicio no puede escribir en la carpeta de copias (ver apartado 6, paso 3). |
 | No encuentra los **ficheros FCS** | La cuenta `NT SERVICE\MiniLIS` no tiene permiso de lectura en esa carpeta. Si es una carpeta de red, la cuenta virtual accede como la cuenta del equipo (`DOMINIO\SERVIDOR$`): el permiso hay que darlo a esa cuenta. |
+| El lector **no lee el código de una alícuota** (o lo lee un lector y otro no) | Las barras son demasiado estrechas para ese lector. En *Configuración → Etiquetas* suba el **ancho de las barras** de la etiqueta de alícuota: la pantalla muestra el ancho de módulo resultante y a cuántos puntos del cabezal equivale. Elija un ancho cuyo módulo salga en **número entero de puntos** (con etiqueta de 55 mm: 30 mm es entero a 203 ppp, 34 mm a 300 ppp y 40 mm en las dos); si cae entre dos puntos, la impresora redondea cada barra y la descuadra. |
+| El lector escribe **símbolos cambiados** (`26/00022` en vez de `26-00022`) | La distribución de teclado configurada en el lector no coincide con la del equipo. El lector no envía caracteres, envía teclas, y el ordenador las traduce con **su** distribución. Haga coincidir las dos, o configure el lector en modo ALT/Unicode. El idioma de la interfaz de Windows no influye: lo que cuenta es la distribución de teclado activa. |
 | La instalación termina con errores | El resultado indica qué ha fallado. El detalle está en `<datos>\logs\instalacion.log` y en el registro del asistente (`%TEMP%\Setup Log *.txt`). Corregido el problema, vuelva a ejecutar el instalador. |
 
 ---
@@ -274,3 +290,12 @@ el fichero de secretos.
   dominio y privadas, nunca para redes públicas.
 - **Identidad.** Los usuarios son locales de MiniLIS. La integración con el directorio
   corporativo (LDAP/AD) está pendiente (ver README, *Estado del despliegue*).
+- **Sesión.** Se cierra a los **30 minutos sin actividad**, con un aviso un minuto antes, y
+  **no sobrevive al cierre del navegador**: no hay opción de «mantener sesión». La sesión
+  abierta se revalida contra la base de datos cada 5 minutos, de modo que **dar de baja a un
+  usuario le echa de la sesión que tenga abierta**, no solo le impide volver a entrar. El
+  bloqueo de pantalla del puesto sigue siendo necesario: esto no lo sustituye.
+- **Contraseñas.** Mínimo 12 caracteres con mayúscula, minúscula, dígito y símbolo. Cinco
+  intentos fallidos bloquean la cuenta 15 minutos.
+- **Registro.** Se audita quién hace qué, incluidas las consultas que devuelven identidad de
+  paciente y las exportaciones. La retención es configurable, con un mínimo de dos años.
