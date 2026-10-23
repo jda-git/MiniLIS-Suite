@@ -30,6 +30,56 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.9.1
+
+Versión de **PARCHE**: el código de la alícuota vuelve a horizontal, con las barras mucho más
+anchas. Corrige la v4.9.0 antes de que llegue a desplegarse.
+
+### El código vertical quedaba en el límite de la legibilidad
+
+Probado con lectores reales: **unos lo leían y otros no**. El código vertical resuelve la
+curvatura del criotubo —se lee a lo largo del tubo y no alrededor— pero a cambio solo dispone
+de los 25 mm de alto de la etiqueta, y ahí el símbolo de 79 módulos sale a **0,25 mm por
+módulo**. Esa anchura está en el límite de lo que decodifica un lector láser de mano.
+
+En horizontal hay 51 mm útiles en vuestra etiqueta de 55, así que el módulo se puede casi
+doblar. El código pasa arriba a la izquierda, con las barras de **30 mm** por omisión:
+
+| | antes (vertical) | ahora (30 mm) |
+|---|---|---|
+| Ancho de módulo | 0,250 mm | **0,380 mm** (+52 %) |
+| Puntos del cabezal a 203 ppp | 2,00 | **3,03** |
+
+### El ancho es configurable, porque de él depende todo
+
+En *Configuración → Etiquetas* se fija el **ancho de las barras**, y la pantalla muestra el
+ancho de módulo que resulta y a cuántos puntos del cabezal equivale a 203 y a 300 ppp. Conviene
+elegirlo para que caiga en un número **entero de puntos**: si no, la impresora redondea cada
+barra y las descuadra.
+
+| Barras | Módulo | Ocupa | 203 ppp | 300 ppp |
+|---|---|---|---|---|
+| 30 mm | 0,380 mm | 37,6 mm | **3,03 limpio** | 4,49 |
+| 34 mm | 0,430 mm | 42,6 mm | 3,44 | **5,08 limpio** |
+| 40 mm | 0,506 mm | 50,1 mm | **4,05 limpio** | **5,98 limpio** |
+
+**40 mm es el único que sale entero en las dos resoluciones** y dobla el módulo actual; cabe en
+la etiqueta de 55 mm con 0,9 mm de sobra.
+
+Aquí sí caben las **zonas de silencio de 10 módulos** que pide la norma, al contrario que en
+vertical, donde hubo que dejarlas en 8. Van dentro del propio código: el margen de 2 mm de la
+etiqueta no da para 10 módulos de 0,38 mm.
+
+### Lo que se cambia a cambio
+
+El código horizontal **vuelve a recorrer la circunferencia del tubo**, que es justo lo que
+motivó el cambio a vertical. Se gana anchura de barra y se pierde el poder leer el tubo en
+cualquier posición: hay que presentarlo plano al lector. Con un módulo un 52 % más ancho la
+lectura es mucho más tolerante, pero es un intercambio, no una mejora en todo.
+
+El código vertical **sigue disponible**: basta poner un ancho de banda mayor que 0 en
+*Configuración → Etiquetas*. Queda documentado y con sus pruebas por si se cambia de lectores.
+
 ## v4.9.0
 
 Versión **MENOR**: la etiqueta de la alícuota almacenada lleva el código de barras en vertical,

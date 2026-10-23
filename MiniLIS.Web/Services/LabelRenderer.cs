@@ -206,6 +206,62 @@ namespace MiniLIS.Web.Services
         /// <summary>Largo de etiqueta aprovechable por el código vertical.</summary>
         public static double LargoDisponibleAlicuotaMm(LabelSettings s) => s.HeightMm - 2 * SeguridadTroquelMm;
 
+        /// <summary>Módulos del símbolo de una alícuota, sin zonas de silencio.</summary>
+        public const int ModulosSimboloAlicuota = 79;
+
+        /// <summary>Zona de silencio del código horizontal, en módulos a cada lado. Aquí sí
+        /// caben los 10 que pide la norma: a lo ancho sobra sitio, al revés que en vertical.</summary>
+        public const int SilencioHorizontalModulos = 10;
+
+        /// <summary>Ancho de módulo que resulta del ancho de barras configurado. Es el número
+        /// que decide si un lector lee o no, así que la pantalla de Configuración lo enseña.</summary>
+        public static double ModuloAlicuotaHorizontalMm(LabelSettings s) =>
+            s.AliquotBarcodeWidthMm / ModulosSimboloAlicuota;
+
+        /// <summary>Ancho total que ocupa el código horizontal, zonas de silencio incluidas.</summary>
+        public static double AnchoTotalAlicuotaHorizontalMm(LabelSettings s) =>
+            s.AliquotBarcodeWidthMm + 2 * SilencioHorizontalModulos * ModuloAlicuotaHorizontalMm(s);
+
+        /// <summary>
+        /// Code 128C horizontal de la alícuota, arriba y a la izquierda, con las barras del
+        /// ancho configurado.
+        ///
+        /// A diferencia del código de la etiqueta de muestra, aquí el módulo NO es fijo: se
+        /// reparte el ancho pedido entre los 79 módulos del símbolo. El motivo es que la
+        /// legibilidad de este código concreto depende de ese número —a 0,25 mm unos lectores
+        /// leían y otros no—, así que se deja gobernar desde Configuración en vez de quedar
+        /// escondido en una constante.
+        ///
+        /// Las zonas de silencio van DENTRO del SVG: el margen de 2 mm de la etiqueta no da
+        /// para los 10 módulos que pide la norma en cuanto el módulo pasa de 0,2 mm.
+        /// </summary>
+        private static string BarcodeAlicuotaHorizontal(string datos, LabelSettings s)
+        {
+            var widths = Code128Encoder.EncodeNumericToModuleWidths(datos);
+            var modulo = ModuloAlicuotaHorizontalMm(s);
+            var totalModules = widths.Sum() + 2 * SilencioHorizontalModulos;
+            var anchoMm = totalModules * modulo;
+
+            if (anchoMm > s.WidthMm - 2 * s.MarginMm)
+                return $@"<div class=""label-noid"" style=""font-size:{s.SecondaryFontPt}pt;"">CÓDIGO NO CABE</div>";
+
+            var sb = new StringBuilder();
+            sb.Append($@"<svg class=""label-barcode"" width=""{Mm(anchoMm)}"" height=""{Mm(s.BarcodeHeightMm)}"" viewBox=""0 0 {totalModules} 1"" preserveAspectRatio=""none"" xmlns=""http://www.w3.org/2000/svg"">");
+            sb.Append(@"<rect x=""0"" y=""0"" width=""100%"" height=""100%"" fill=""white""/>");
+
+            double x = SilencioHorizontalModulos;
+            var esBarra = true;
+            foreach (var w in widths)
+            {
+                if (esBarra)
+                    sb.Append($@"<rect x=""{x.ToString(CultureInfo.InvariantCulture)}"" y=""0"" width=""{w}"" height=""1"" fill=""black""/>");
+                x += w;
+                esBarra = !esBarra;
+            }
+            sb.Append("</svg>");
+            return sb.ToString();
+        }
+
         private static void RenderTuboSinBanda(StringBuilder sb, LabelItem item, LabelSettings s, double anchoDisponibleMm)
         {
             sb.Append(Barcode(item.BarcodeData ?? item.SampleNumber, s.BarcodeHeightMm, s, anchoDisponibleMm));
@@ -262,11 +318,11 @@ namespace MiniLIS.Web.Services
 
         private static void RenderAlicuotaSinBanda(StringBuilder sb, LabelItem item, LabelSettings s, bool horizontal)
         {
-            // Sin banda, el código sigue donde estaba: arriba y en horizontal. Nunca se cae
-            // al nº de muestra: en una alícuota, un código que identifique la muestra y no el
+            // Arriba y a la izquierda, con el ancho de barras configurado. Nunca se cae al
+            // nº de muestra: en una alícuota, un código que identifique la muestra y no el
             // tubo concreto induce a error más que ayuda.
-            if (horizontal && EsCodificable(item.BarcodeData))
-                sb.Append(Barcode(item.BarcodeData!, s.BarcodeHeightMm, s));
+            if (horizontal && EsNumericoPar(item.BarcodeData))
+                sb.Append(BarcodeAlicuotaHorizontal(item.BarcodeData!, s));
 
             FilaPrincipal(sb, item, s.MainFontPt, mostrarTipo: false);
 

@@ -127,13 +127,24 @@ namespace MiniLIS.Application.Interfaces
 
         /// <summary>Ancho de la banda del código de barras VERTICAL en la etiqueta de alícuota,
         /// en milímetros. Es el largo de las barras, no el del código: el código se lee a lo
-        /// largo de la etiqueta (ver LabelRenderer.BarcodeVertical). A 0 se desactiva y la
-        /// etiqueta vuelve a llevar el código horizontal arriba.
+        /// largo de la etiqueta (ver LabelRenderer.BarcodeVertical). A 0 —el valor por
+        /// omisión— la etiqueta lleva el código horizontal arriba.
         ///
-        /// 8 mm por omisión: suficiente para que el lector cruce las barras con el criotubo en
-        /// cualquier posición, y deja unos 34 mm de los 50 para el texto —más de los que tenía
-        /// antes, porque el código ya no ocupa una franja entera arriba.</summary>
-        public double AliquotStripWidthMm { get; set; } = 8;
+        /// Desactivado de serie desde la v4.9.1: el código vertical resuelve la curvatura del
+        /// criotubo, pero en 25 mm de alto obliga a un módulo de 0,25 mm, y a esa anchura unos
+        /// lectores leen y otros no. En horizontal el módulo se puede casi doblar, a cambio de
+        /// tener que presentar el tubo plano al lector.</summary>
+        public double AliquotStripWidthMm { get; set; } = 0;
+
+        /// <summary>Anchura de las BARRAS del código horizontal de la etiqueta de alícuota, en
+        /// milímetros (las zonas de silencio van aparte y se suman). Es lo que fija el ancho de
+        /// módulo, que es de lo que depende que un lector lea o no: 30 mm de barras reparten el
+        /// símbolo de 79 módulos a 0,380 mm cada uno.
+        ///
+        /// Conviene elegirlo para que el módulo caiga en un número entero de puntos del cabezal
+        /// de la impresora; la pantalla de Configuración lo muestra. A 203 ppp salen limpios
+        /// 30 mm (3,03 puntos) y 40 mm (4,05); a 300 ppp, 34 mm (5,08) y 40 mm (5,98).</summary>
+        public double AliquotBarcodeWidthMm { get; set; } = 30;
 
         // --- Formato de la etiqueta de MUESTRA (las de tubo y alícuota no cambian) ---------
         // Los ajustes se guardan como JSON en SystemSettings: una configuración guardada antes

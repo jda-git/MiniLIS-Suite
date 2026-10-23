@@ -878,26 +878,62 @@
 
                 <h3 class="lbl-subtitle">Etiqueta de alícuota almacenada</h3>
                 <p class="section-subtitle">
-                    El criotubo se etiqueta dando la vuelta al tubo, así que el código va <strong>en vertical</strong>:
-                    se lee a lo largo del tubo y no alrededor, y por eso da igual cómo esté girado en la gradilla.
-                    Lleva el nº de muestra y el de alícuota en 8 dígitos. A 0 vuelve al código horizontal de antes.
+                    Lleva el nº de muestra y el de alícuota en 8 dígitos. Lo que decide que un lector lea o no
+                    es el <strong>ancho de módulo</strong>: cuanto más anchas las barras, más fácil de leer.
+                    Conviene elegir el ancho para que el módulo caiga en un número <strong>entero de puntos</strong>
+                    del cabezal de la impresora; de lo contrario redondea y descuadra las barras.
                 </p>
                 <div class="inline-form-grid">
                     <div class="form-field">
-                        <label class="field-label">Ancho de la banda del código (mm)</label>
+                        <label class="field-label">Ancho de las barras (mm)</label>
+                        <input type="number" step="1" min="10" class="field-input" @bind="labelSettings.AliquotBarcodeWidthMm" />
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label">Banda vertical, si se prefiere (mm)</label>
                         <input type="number" step="0.5" min="0" max="20" class="field-input" @bind="labelSettings.AliquotStripWidthMm" />
+                        <span class="field-hint">A 0, el código va horizontal arriba. Por encima de 0 va en
+                            vertical a la izquierda: resuelve la curvatura del criotubo, pero en 25 mm de alto
+                            obliga a un módulo de 0,25 mm.</span>
                     </div>
                 </div>
+
+                @{
+                    var modulo = LabelRenderer.ModuloAlicuotaHorizontalMm(labelSettings);
+                    var anchoTotal = LabelRenderer.AnchoTotalAlicuotaHorizontalMm(labelSettings);
+                    var utilAncho = labelSettings.WidthMm - 2 * labelSettings.MarginMm;
+                    var p203 = modulo / (25.4 / 203);
+                    var p300 = modulo / (25.4 / 300);
+                    string Limpio(double p) => Math.Abs(p - Math.Round(p)) < 0.1 ? "limpio" : "redondea";
+                }
+                @if (labelSettings.AliquotStripWidthMm <= 0)
+                {
+                    <div class="lbl-datos">
+                        Módulo <strong>@modulo.ToString("0.000") mm</strong> ·
+                        con las zonas de silencio ocupa @anchoTotal.ToString("0.0") mm de los @utilAncho.ToString("0.0") útiles ·
+                        @p203.ToString("0.00") puntos a 203 ppp (@Limpio(p203)) ·
+                        @p300.ToString("0.00") a 300 ppp (@Limpio(p300))
+                    </div>
+                }
+
                 <div class="lbl-preview mt-2">
                     @((MarkupString)LabelRenderer.Render(EtiquetaAlicuotaEjemplo, labelSettings))
                 </div>
-                @{ var largoCodigo = LabelRenderer.LargoCodigoAlicuotaMm("26000223"); }
-                @if (largoCodigo > labelSettings.HeightMm - 2 * labelSettings.MarginMm)
+
+                @if (labelSettings.AliquotStripWidthMm <= 0 && anchoTotal > utilAncho)
                 {
                     <div class="lbl-aviso">
                         <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                        El código necesita @largoCodigo.ToString("0.0") mm de largo y la etiqueta solo tiene
-                        @((labelSettings.HeightMm - 2 * labelSettings.MarginMm).ToString("0.0")) mm útiles:
+                        El código ocupa @anchoTotal.ToString("0.0") mm y solo hay @utilAncho.ToString("0.0") mm
+                        útiles: no se imprimirá. Reduzca el ancho de las barras.
+                    </div>
+                }
+                @{ var largoCodigo = LabelRenderer.LargoCodigoAlicuotaMm("26000223"); }
+                @if (labelSettings.AliquotStripWidthMm > 0 && largoCodigo > LabelRenderer.LargoDisponibleAlicuotaMm(labelSettings))
+                {
+                    <div class="lbl-aviso">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        El código vertical necesita @largoCodigo.ToString("0.0") mm de largo y la etiqueta solo
+                        tiene @LabelRenderer.LargoDisponibleAlicuotaMm(labelSettings).ToString("0.0") mm:
                         no se imprimirá. Hacen falta etiquetas más altas.
                     </div>
                 }
@@ -1825,6 +1861,10 @@
     /* La etiqueta se dibuja a tamaño real en mm, que en pantalla es muy pequeño; se amplía
        solo la vista previa, sin tocar las medidas que se imprimen. */
     .lbl-preview { zoom: 1.6; display: inline-block; }
+    /* Los números que deciden si un lector lee o no: módulo y puntos del cabezal. */
+    .lbl-datos { font-size: 12px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0;
+                 border-radius: 6px; padding: 6px 10px; margin-top: 10px; display: inline-block; }
+    .field-hint { display: block; font-size: 11.5px; color: #94a3b8; margin-top: 3px; line-height: 1.35; }
     .lbl-aviso {
         margin-top: 10px; font-size: 12px; color: #92400e;
         background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 6px 9px;
