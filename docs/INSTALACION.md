@@ -133,7 +133,12 @@ administrador ni *SYSTEM*. Solo puede leer el programa y escribir en la carpeta 
 1. Abra la dirección (acceso directo *MiniLIS Suite*) y entre con el administrador inicial.
    Se le pedirá **cambiar la contraseña**.
 2. **Usuarios**: cree los usuarios del laboratorio con su rol (Técnico, Facultativo o
-   Administrador).
+   Administrador). El nombre de usuario **no tiene que ser un correo**: conviene usar ya el
+   del directorio corporativo (`jpergon`), porque la autenticación local es transitoria y el
+   día que se migre a LDAP la identidad será esa. Con el mismo identificador desde el
+   principio, la auditoría no queda partida en dos nombres para la misma persona. El correo es
+   un campo aparte y opcional. Un nombre **no se reutiliza nunca**: aunque se renombre a
+   alguien, el que deja queda reservado.
 3. **Permisos** (*Configuración → Permisos*): revise qué puede hacer cada rol. Vienen unos
    valores de fábrica razonables, pero lo que vale es lo que marque aquí el laboratorio, y es
    la tabla que hay que cruzar con el PNT de control de acceso. Lo que se desmarca se cierra
