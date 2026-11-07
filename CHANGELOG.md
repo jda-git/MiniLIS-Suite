@@ -30,6 +30,79 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.10.0
+
+Versión **MENOR**: el nombre de usuario ya no tiene que ser un correo, se puede cambiar
+después, y **toda la gestión de usuarios queda auditada** —que hasta ahora no lo estaba.
+
+### El usuario ya no tiene que ser un correo
+
+Se puede dar de alta a alguien como `jpergon`. No lo impedía Identity, que admite letras,
+dígitos y `- . _ @ +`: lo imponía la pantalla de alta, que usaba un campo de tipo correo y
+copiaba su valor al nombre de usuario.
+
+No cambia nada de la seguridad —el formato del identificador no interviene en la
+autenticación, que sigue apoyada en la contraseña de 12+, el bloqueo a los 5 intentos y el
+cierre por inactividad— pero sí prepara la migración pendiente al directorio corporativo: ese
+día la identidad de cada persona será su usuario de dominio, y usar ya ese formato evita que
+la auditoría quede partida en dos nombres para la misma persona.
+
+El **correo pasa a ser opcional** y a su propio campo. Es solo informativo: MiniLIS no envía
+correo. Los usuarios existentes no se tocan y siguen entrando con su correo como siempre.
+
+### Se puede cambiar el nombre de usuario, sin romper la trazabilidad
+
+Antes el campo estaba bloqueado al editar. Ahora se puede cambiar, con tres garantías:
+
+- **El nombre anterior queda reservado para siempre.** Si otra persona pudiera cogerlo, los
+  registros de auditoría antiguos pasarían a parecer suyos. Una tabla nueva
+  (`UserNameHistory`) guarda todos los nombres que ha tenido cada persona, con índice único:
+  lo impide la base de datos, no solo la comprobación del servicio. Se puede recuperar un
+  nombre propio —deshacer un renombrado equivocado—, pero no el de otro.
+- **Se cierra la sesión** que tuviera abierta: Identity renueva el sello de seguridad y la
+  revalidación del circuito (v4.8.0) lo detecta. La pantalla avisa antes de guardar.
+- **El cambio queda en la auditoría** con los dos nombres, y la ficha del usuario muestra sus
+  nombres anteriores para poder leer los registros antiguos.
+
+La auditoría guardaba ya el `UserId` junto al nombre, así que un cambio de nombre no deja
+ningún registro huérfano: el identificador interno ata las dos épocas a la misma persona.
+
+### Nada de la gestión de usuarios se auditaba
+
+Encontrado al hacer lo anterior: **ni las altas, ni las bajas, ni los cambios de rol, ni los
+reseteos de contraseña dejaban rastro alguno**. El registro automático no los veía porque
+`ApplicationUser` no es una entidad auditable, y la pantalla llamaba directamente a
+`UserManager`. En un sistema sujeto a ISO 15189 y al ENS, quién dio de alta a quién y quién le
+cambió el rol tiene que poder consultarse.
+
+Todas esas operaciones pasan ahora por `UserAdminService`, que las registra con la entidad
+`Usuario` y las acciones `Create`, `Update`, `Rename`, `Enable`, `Disable` y `ResetPassword`.
+**La contraseña no se escribe nunca**, ni siquiera su longitud: consta el hecho, quién lo hizo
+y a quién.
+
+La pantalla de auditoría muestra ahora también el detalle de cada entrada, no solo el
+contexto: antes el renombrado habría dicho «Cambio de nombre de usuario» sin decir de cuál a
+cuál.
+
+### Corregido al probarlo
+
+- El mensaje que explica qué caracteres admite un nombre de usuario **lanzaba una excepción**
+  en lugar de mostrarse (`Replace("")`), justo en el caso en que hacía falta.
+- Recuperar un nombre propio chocaba con el índice único, porque se insertaba una segunda
+  fila en lugar de reactivar la existente.
+- **Contraste en las ventanas de usuario.** Los textos de ayuda usaban el `text-muted` de
+  Bootstrap, gris oscuro, sobre el panel oscuro del modal: eran ilegibles, y con ellos la
+  casilla «Obligar al usuario a cambiarla en el próximo acceso». Afectaba ya a la ventana de
+  contraseña, no solo a los textos nuevos. Medido sobre la página: todo queda ahora por
+  encima del mínimo AA de 4,5:1 (ayudas 5,7:1, casilla 11,9:1, aviso 8,3:1). Incluido el
+  `<code>` con los caracteres permitidos, que Bootstrap pinta en rosa y se quedaba en 3,25:1.
+
+### Al actualizar
+
+La migración crea la tabla y **da de alta en ella los nombres de los usuarios actuales**. Sin
+ese relleno la tabla nacería vacía y el nombre de alguien a quien se renombrase mañana
+quedaría libre para otra persona. Comprobado sobre una copia de la base de datos real.
+
 ## v4.9.1
 
 Versión de **PARCHE**: el código de la alícuota vuelve a horizontal, con las barras mucho más

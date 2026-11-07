@@ -58,6 +58,10 @@ namespace MiniLIS.Infrastructure.Persistence
         public DbSet<SampleDataFile> SampleDataFiles => Set<SampleDataFile>();
         public DbSet<ReservedNumberBlock> ReservedNumberBlocks => Set<ReservedNumberBlock>();
 
+        /// <summary>Nombres de usuario usados alguna vez, para que ninguno se reutilice y para
+        /// poder leer la auditoría antigua (ver UserNameHistory).</summary>
+        public DbSet<MiniLIS.Domain.Identity.UserNameHistory> UserNameHistory => Set<MiniLIS.Domain.Identity.UserNameHistory>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -117,6 +121,13 @@ namespace MiniLIS.Infrastructure.Persistence
 
             // QmsReference (F-0) como propiedad de propietario: sin tabla propia.
             modelBuilder.Entity<PanelVersion>().OwnsOne(v => v.QmsDocumentRef);
+
+            // Un nombre de usuario pertenece a una sola persona para siempre: el índice único
+            // lo impide a nivel de base de datos, no solo en la comprobación del servicio.
+            modelBuilder.Entity<MiniLIS.Domain.Identity.UserNameHistory>()
+                .HasIndex(h => h.NormalizedUserName).IsUnique();
+            modelBuilder.Entity<MiniLIS.Domain.Identity.UserNameHistory>()
+                .HasIndex(h => h.UserId);
 
             modelBuilder.Entity<Panel>().HasIndex(p => p.Code).IsUnique();
             modelBuilder.Entity<PanelVersion>().HasIndex(v => new { v.PanelId, v.Ordinal }).IsUnique();

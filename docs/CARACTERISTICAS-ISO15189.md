@@ -306,6 +306,26 @@ abierta**, no solo le impide volver a entrar.
 registro de sesiones concurrentes. El bloqueo de pantalla del puesto sigue siendo una medida
 necesaria del procedimiento, no sustituida por lo anterior.
 
+### 5.5 Identificador de usuario (v4.10)
+
+El nombre de usuario es **texto libre** (letras, dígitos y `- . _ @ +`): puede ser un correo o
+el usuario del directorio corporativo (`jpergon`). El correo es un campo aparte y **opcional**,
+solo informativo —MiniLIS no envía correo—.
+
+Conviene usar ya el formato del directorio: la autenticación local es transitoria, y cuando se
+migre a LDAP/AD la identidad será el usuario de dominio. Con el mismo identificador desde el
+principio, la auditoría no queda partida en dos nombres para la misma persona.
+
+**Un nombre pertenece a una sola persona para siempre.** Se puede renombrar a alguien, pero el
+nombre que deja queda reservado: no se le puede asignar a otro, porque figura en registros de
+auditoría anteriores. Lo garantiza un índice único en base de datos, no solo una comprobación.
+Renombrar cierra la sesión abierta de esa persona.
+
+**Toda la gestión de usuarios queda auditada** (entidad `Usuario`): alta, modificación, cambio
+de nombre, activación, desactivación y reseteo de contraseña, con quién lo hizo y sobre quién.
+La contraseña no se registra nunca. Hasta la v4.10 **ninguna** de estas operaciones dejaba
+rastro.
+
 ---
 
 ## 6. Registros y trazabilidad
@@ -400,6 +420,8 @@ QMS o el PNT correspondiente debe reflejar igual.
 4. **¿El reparto de permisos del PNT coincide con el de la pantalla?** Imprimir la tabla de
    *Configuración → Permisos* y cruzarla con 5.2; lo que vale es lo de la pantalla, no los
    valores de fábrica.
+4bis. **¿El PNT fija el formato del nombre de usuario?** Conviene que sea el del directorio
+   corporativo (ver 5.4/5.5), y que recoja que un nombre no se reutiliza nunca.
 5. **¿El PNT exige bloqueo de pantalla del puesto?** MiniLIS no lo sustituye.
 
 ### 8.1 Indicadores

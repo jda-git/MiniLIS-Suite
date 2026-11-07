@@ -69,7 +69,11 @@ builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options => {
     options.Password.RequireUppercase = true;
     options.Password.RequireLowercase = true;
     options.Password.RequiredUniqueChars = 4;
-    options.User.RequireUniqueEmail = true;
+    // El correo es OPCIONAL desde la v4.10: el identificador es el nombre de usuario, que
+    // ya no tiene que ser un correo. Con RequireUniqueEmail a true, Identity rechaza un
+    // usuario sin correo. La unicidad del correo, cuando se indica, la comprueba
+    // UserAdminService, que es también quien deja la operación en la auditoría.
+    options.User.RequireUniqueEmail = false;
 
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     options.Lockout.MaxFailedAccessAttempts = 5;
@@ -127,6 +131,10 @@ builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
 builder.Services.AddScoped<IExcedenteService, ExcedenteService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPatientDataExportPolicy, PatientDataExportPolicy>(); // N-2
+
+// Alta, renombrado y baja de usuarios. Pasa por un servicio para que quede auditado: hasta
+// la v4.10 la pantalla llamaba a UserManager y esas operaciones no dejaban ningún rastro.
+builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 
 // Permisos por rol configurables (Configuración → Permisos): las políticas "perm:<código>"
 // que usan páginas, controladores y componentes se resuelven contra esa matriz.

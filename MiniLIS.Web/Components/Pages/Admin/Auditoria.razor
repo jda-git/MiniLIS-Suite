@@ -333,6 +333,33 @@
                             {
                                 <div class="log-changes mt-1">@log.ActionContext</div>
                             }
+                            @* El detalle importa sobre todo en la gestión de usuarios: el
+                               contexto dice «Cambio de nombre de usuario», pero los dos
+                               nombres están aquí. *@
+                            @if (!string.IsNullOrWhiteSpace(log.Changes))
+                            {
+                                var detalle = DescribirCambios(log.Changes, log.Action, log.EntityName);
+                                <div class="log-changes log-detalle mt-1">
+                                    @if (detalle.Resumen != null)
+                                    {
+                                        <span>@detalle.Resumen</span>
+                                    }
+                                    else
+                                    {
+                                        <div class="cambios-tabla">
+                                            @foreach (var c in detalle.Campos)
+                                            {
+                                                <div class="cambio-fila">
+                                                    <span class="cambio-campo">@c.Campo</span>
+                                                    <span class="cambio-antes">@c.Antes</span>
+                                                    <i class="bi bi-arrow-right cambio-flecha"></i>
+                                                    <span class="cambio-despues">@c.Despues</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -568,6 +595,7 @@
     .cambio-antes { color: #94a3b8; text-decoration: line-through; }
     .cambio-flecha { color: #cbd5e1; font-size: 11px; }
     .cambio-despues { color: #0f172a; font-weight: 600; }
+    .log-detalle { white-space: pre-line; }
     .log-changes {
         font-size: 12.5px;
         color: #475569;
@@ -775,7 +803,13 @@
         ["IncidentsNotes"] = "Notas de incidencia [obsoleto]",
         ["IsDeleted"] = "Eliminado",
         ["CreatedAtUtc"] = "Creado el",
-        ["CreatedBy"] = "Creado por (usuario)"
+        ["CreatedBy"] = "Creado por (usuario)",
+        // Gestión de usuarios (v4.10)
+        ["Usuario"] = "Usuario",
+        ["Nombre"] = "Nombre",
+        ["Correo"] = "Correo",
+        ["Rol"] = "Rol",
+        ["Activo"] = "Activo"
     };
 
     /// <summary>
@@ -784,11 +818,17 @@
     /// comas y se muestran tal cual, porque partirlos por la coma rompería cualquier valor que
     /// la lleve dentro.
     /// </summary>
-    private CambiosLog DescribirCambios(string? changes, string action)
+    private CambiosLog DescribirCambios(string? changes, string action, string? entidad = null)
     {
         if (string.IsNullOrWhiteSpace(changes)) return new CambiosLog("Sin detalles de cambios.", new());
-        if (action.Equals("create", StringComparison.OrdinalIgnoreCase)) return new CambiosLog("Registro inicial de la muestra.", new());
-        if (action.Equals("delete", StringComparison.OrdinalIgnoreCase)) return new CambiosLog("Registro eliminado.", new());
+
+        // El alta de una muestra guarda un JSON con todos sus campos, que no aporta nada
+        // leído; la de un usuario guarda un texto hecho para leerse. De ahí la distinción.
+        var esVolcado = entidad == null || entidad == "Sample";
+        if (esVolcado && action.Equals("create", StringComparison.OrdinalIgnoreCase))
+            return new CambiosLog("Registro inicial de la muestra.", new());
+        if (esVolcado && action.Equals("delete", StringComparison.OrdinalIgnoreCase))
+            return new CambiosLog("Registro eliminado.", new());
 
         var lineas = changes.Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
         if (lineas.Length == 1 && !changes.Contains('\n'))

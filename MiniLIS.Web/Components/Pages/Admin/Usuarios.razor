@@ -6,6 +6,7 @@
 @attribute [Authorize(Policy = Permissions.Policies.UsuariosGestionar)]
 @inject UserManager<ApplicationUser> UserManager
 @inject RoleManager<ApplicationRole> RoleManager
+@inject IUserAdminService UserAdmin
 
 <PageTitle>Gestión de Usuarios - MiniLIS Suite</PageTitle>
 
@@ -106,10 +107,33 @@
                             <input class="input-dark" type="text" @bind="editFullName" placeholder="Dr. Nombre Apellido" />
                         </div>
                         <div class="mb-3">
-                            <label class="form-label-dark">Usuario (email)</label>
-                            <input class="input-dark" type="email" @bind="editEmail"
-                                   placeholder="usuario@hospital.es"
-                                   disabled="@(modalMode == "edit")" />
+                            <label class="form-label-dark">Usuario</label>
+                            <input class="input-dark" type="text" @bind="editUserName"
+                                   placeholder="p. ej. jpergon" autocomplete="off" />
+                            <small class="text-muted">
+                                Letras, dígitos y <code>- . _ @@ +</code>, sin espacios ni acentos.
+                                Puede ser un correo o el usuario del dominio.
+                            </small>
+                            @if (modalMode == "edit" && !string.Equals(editUserName?.Trim(), selectedUser?.UserName, StringComparison.Ordinal))
+                            {
+                                <div class="usr-aviso">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                    Al cambiar el nombre se <strong>cerrará la sesión</strong> que tenga abierta, y
+                                    <strong>«@selectedUser?.UserName» quedará reservado para siempre</strong>: no se
+                                    podrá asignar a otra persona, porque aparece en la auditoría.
+                                </div>
+                            }
+                            @if (modalMode == "edit" && nombresAnteriores.Count > 0)
+                            {
+                                <small class="text-muted d-block mt-1">
+                                    Nombres anteriores: @string.Join(", ", nombresAnteriores)
+                                </small>
+                            }
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label-dark">Correo electrónico <span class="text-muted">(opcional)</span></label>
+                            <input class="input-dark" type="email" @bind="editEmail" placeholder="usuario@hospital.es" />
+                            <small class="text-muted">Solo informativo: MiniLIS no envía correo.</small>
                         </div>
                         @if (modalMode == "create")
                         {
@@ -238,6 +262,20 @@
     }
     .btn-modal-close:hover { color: #f1f5f9; }
     .modal-body { padding: 28px; }
+
+    /* El modal es oscuro (#1e293b) y el .text-muted de Bootstrap es gris oscuro: los textos
+       de ayuda quedaban invisibles. Se aclaran SOLO dentro del modal — fuera, en la tabla de
+       usuarios, el fondo es claro y el gris de Bootstrap es el correcto. */
+    .modal-panel .text-muted { color: #94a3b8 !important; }          /* 5,5:1 sobre el panel */
+    .modal-panel small.text-muted { display: block; line-height: 1.4; margin-top: 5px; }
+    /* La casilla no es una ayuda, es una opción que se marca: va más clara. */
+    .modal-panel .form-check-label { color: #e2e8f0 !important; cursor: pointer; }
+    .modal-panel .form-check-input { cursor: pointer; }
+    .input-dark::placeholder { color: #94a3b8; opacity: 1; }
+    /* Bootstrap pinta los elementos code en rosa (#d63384): sobre el panel oscuro se quedan
+       en 3,25:1, por debajo del mínimo legible, y justo ahí van los caracteres admitidos. */
+    .modal-panel code { color: #cbd5e1; background: rgba(148,163,184,0.16);
+                        padding: 1px 5px; border-radius: 3px; }
     .form-label-dark { display: block; color: #94a3b8; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
     .input-dark {
         width: 100%; background: rgba(15,23,42,0.6); border: 1px solid #334155;
@@ -254,6 +292,10 @@
     .btn-usr-save:hover { background: #0284c7; box-shadow: 0 0 20px rgba(14,165,233,0.3); }
 
     .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+    .usr-aviso { margin-top: 8px; font-size: 12px; line-height: 1.45; color: #fcd34d;
+                 background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35);
+                 border-radius: 6px; padding: 8px 10px; }
+    .usr-aviso strong { color: #fde68a; }
     @@keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 
@@ -268,7 +310,9 @@
 
     // Form fields
     private string editFullName = "";
+    private string editUserName = "";
     private string editEmail = "";
+    private List<string> nombresAnteriores = new();
     private string editPassword = "";
     private string editPassword2 = "";
     private string editRole = "";
@@ -290,7 +334,8 @@
     private void ShowCreateForm()
     {
         selectedUser = null;
-        editFullName = editEmail = editPassword = editPassword2 = editRole = "";
+        editFullName = editUserName = editEmail = editPassword = editPassword2 = editRole = "";
+        nombresAnteriores = new();
         modalMode = "create";
         showModal = true;
         ClearMessages();
@@ -300,7 +345,9 @@
     {
         selectedUser = u;
         editFullName = u.FullName ?? "";
+        editUserName = u.UserName ?? "";
         editEmail = u.Email ?? "";
+        nombresAnteriores = (await UserAdmin.FormerUserNamesAsync(u.Id)).ToList();
         editRole = (await UserManager.GetRolesAsync(u)).FirstOrDefault() ?? "";
         modalMode = "edit";
         showModal = true;
@@ -326,34 +373,30 @@
         ClearMessages();
         if (modalMode == "create")
         {
-            if (string.IsNullOrWhiteSpace(editEmail) || string.IsNullOrWhiteSpace(editPassword))
-            { ErrorMsg = "El email y la contraseña son obligatorios."; return; }
-
-            var newUser = new ApplicationUser
-            {
-                UserName = editEmail,
-                Email = editEmail,
-                FullName = editFullName,
-                EmailConfirmed = true,
-                IsActive = true,
-                MustChangePassword = true
-            };
-            var result = await UserManager.CreateAsync(newUser, editPassword);
-            if (!result.Succeeded) { ErrorMsg = string.Join(" ", result.Errors.Select(e => e.Description)); return; }
-            if (!string.IsNullOrEmpty(editRole)) await UserManager.AddToRoleAsync(newUser, editRole);
-            SuccessMsg = $"Usuario '{editEmail}' creado. Deberá cambiar la contraseña en el primer acceso.";
+            var alta = await UserAdmin.CreateAsync(editUserName, editEmail, editFullName, editRole, editPassword);
+            if (!alta.Ok) { ErrorMsg = alta.Error; return; }
+            SuccessMsg = $"Usuario '{editUserName.Trim()}' creado. Deberá cambiar la contraseña en el primer acceso.";
         }
         else if (modalMode == "edit" && selectedUser != null)
         {
-            selectedUser.FullName = editFullName;
-            var result = await UserManager.UpdateAsync(selectedUser);
-            if (!result.Succeeded) { ErrorMsg = string.Join(" ", result.Errors.Select(e => e.Description)); return; }
+            var anterior = selectedUser.UserName ?? "";
+            var nuevo = (editUserName ?? "").Trim();
+            var renombra = !string.Equals(anterior, nuevo, StringComparison.Ordinal);
 
-            // Update role
-            var currentRoles = await UserManager.GetRolesAsync(selectedUser);
-            await UserManager.RemoveFromRolesAsync(selectedUser, currentRoles);
-            if (!string.IsNullOrEmpty(editRole)) await UserManager.AddToRoleAsync(selectedUser, editRole);
-            SuccessMsg = "Usuario actualizado correctamente.";
+            // El renombrado primero: si falla (nombre ya usado por otra persona), no se queda
+            // el resto aplicado a medias.
+            if (renombra)
+            {
+                var cambio = await UserAdmin.RenameAsync(selectedUser.Id, nuevo);
+                if (!cambio.Ok) { ErrorMsg = cambio.Error; return; }
+            }
+
+            var guardado = await UserAdmin.UpdateAsync(selectedUser.Id, editFullName, editEmail, editRole);
+            if (!guardado.Ok) { ErrorMsg = guardado.Error; return; }
+
+            SuccessMsg = renombra
+                ? $"Usuario renombrado de '{anterior}' a '{nuevo}'. Se le ha cerrado la sesión; «{anterior}» queda reservado."
+                : "Usuario actualizado correctamente.";
         }
 
         await LoadUsers();
@@ -367,12 +410,8 @@
         if (editPassword != editPassword2) { ErrorMsg = "Las contraseñas no coinciden."; return; }
         if (string.IsNullOrWhiteSpace(editPassword)) { ErrorMsg = "Introduce una contraseña."; return; }
 
-        var token = await UserManager.GeneratePasswordResetTokenAsync(selectedUser);
-        var result = await UserManager.ResetPasswordAsync(selectedUser, token, editPassword);
-        if (!result.Succeeded) { ErrorMsg = string.Join(" ", result.Errors.Select(e => e.Description)); return; }
-
-        selectedUser.MustChangePassword = forceChangeOnLogin;
-        await UserManager.UpdateAsync(selectedUser);
+        var resultado = await UserAdmin.ResetPasswordAsync(selectedUser.Id, editPassword, forceChangeOnLogin);
+        if (!resultado.Ok) { ErrorMsg = resultado.Error; return; }
 
         SuccessMsg = $"Contraseña de '{selectedUser.FullName ?? selectedUser.UserName}' actualizada.";
         await LoadUsers();
@@ -382,13 +421,12 @@
     private async Task ToggleActive(ApplicationUser u)
     {
         ClearMessages();
-        u.IsActive = !u.IsActive;
-        await UserManager.UpdateAsync(u);
+        var resultado = await UserAdmin.SetActiveAsync(u.Id, !u.IsActive);
+        if (!resultado.Ok) { ErrorMsg = resultado.Error; return; }
 
-        // Cambiar el sello invalida la cookie de quien estuviera dentro: sin esto, dar de baja
-        // a alguien no le echaba de su sesión abierta, solo le impedía volver a entrar.
-        await UserManager.UpdateSecurityStampAsync(u);
-        SuccessMsg = u.IsActive ? $"Usuario '{u.FullName ?? u.UserName}' activado." : $"Usuario '{u.FullName ?? u.UserName}' desactivado.";
+        SuccessMsg = !u.IsActive
+            ? $"Usuario '{u.FullName ?? u.UserName}' activado."
+            : $"Usuario '{u.FullName ?? u.UserName}' desactivado. Se le ha cerrado la sesión que tuviera abierta.";
         await LoadUsers();
     }
 }
