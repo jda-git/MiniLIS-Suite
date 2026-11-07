@@ -1346,6 +1346,10 @@ namespace MiniLIS.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AcquiredEventsValue")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("AdditionalText")
                         .HasColumnType("TEXT");
 
@@ -1399,6 +1403,9 @@ namespace MiniLIS.Infrastructure.Migrations
 
                     b.Property<string>("GenomicsText")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasAcquiredEvents")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("HasAtypicalCells")
                         .HasColumnType("INTEGER");

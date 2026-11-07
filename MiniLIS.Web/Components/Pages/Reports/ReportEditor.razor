@@ -307,7 +307,7 @@
                 <span>LOD:</span>
             </label>
             <input type="text" class="conc-value" maxlength="10" @bind="report.LodValue"
-                   disabled="@(!report.HasLod)" />
+                   @bind:after="ProponerEventosAdquiridos" disabled="@(!report.HasLod)" />
 
             <label class="conc-check conc-sep">
                 <input type="checkbox" @bind="report.HasLloq" />
@@ -315,6 +315,16 @@
             </label>
             <input type="text" class="conc-value" maxlength="10" @bind="report.LloqValue"
                    disabled="@(!report.HasLloq)" />
+
+            @* Se propone 2000/LOD y se puede corregir: el valor que vale es el que de verdad
+               se adquirió. Ver SampleReport.AcquiredEvents. *@
+            <label class="conc-check conc-sep">
+                <input type="checkbox" @bind="report.HasAcquiredEvents" @bind:after="ProponerEventosAdquiridos" />
+                <span>Eventos adquiridos:</span>
+            </label>
+            <input type="text" class="conc-value conc-value-wide" maxlength="20"
+                   @bind="report.AcquiredEventsValue" disabled="@(!report.HasAcquiredEvents)"
+                   title="@(report.HasLod ? "Se propone 2000 ÷ LOD; puede corregirse a mano." : "Indique el LOD para que se proponga un valor, o escríbalo a mano.")" />
         </div>
 
         @* Limitaciones analíticas: lo marcado sale impreso debajo de la conclusión, una frase
@@ -703,6 +713,8 @@
     .conc-sep { margin-left: 26px; }
     .conc-value { width: 110px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px; font-size: 13px; }
     .conc-value:disabled { background: #f1f5f9; color: #94a3b8; }
+    /* «10.000.000» no cabe en los 110 px de los demás. */
+    .conc-value-wide { width: 130px; }
     .conc-unit { font-size: 13px; color: #334155; }
 
     .conc-quality { margin-top: 16px; }
@@ -976,6 +988,7 @@
         string.Join(",", selectedPreviousStudyIds),
         report.HasAtypicalCells.ToString(), report.AtypicalCellsPercent,
         report.HasLod.ToString(), report.LodValue, report.HasLloq.ToString(), report.LloqValue,
+        report.HasAcquiredEvents.ToString(), report.AcquiredEventsValue,
         report.PopulationCount.ToString(),
         string.Join(",", selectedLimitationIds.OrderBy(x => x)),
         string.Join(";", report.MarkerValues.OrderBy(m => m.PopulationIndex).ThenBy(m => m.MarkerId)
@@ -1112,6 +1125,27 @@
     private string servicioSolicitante = "";
     private string medicoSolicitante = "";
     private string tipoMuestraDisplay = "";
+
+    /// <summary>Último valor que propuso el programa. Sirve para distinguir «lo puso el
+    /// cálculo» de «lo escribió el facultativo»: si lo ha tocado a mano, cambiar el LOD no
+    /// se lo pisa.</summary>
+    private string? eventosPropuestos;
+
+    /// <summary>Propone 2000/LOD en Eventos adquiridos. Se llama al cambiar el LOD y al
+    /// marcar la casilla. Respeta lo escrito a mano: solo rellena si el campo está vacío o
+    /// si sigue conteniendo exactamente lo último que se propuso.</summary>
+    private void ProponerEventosAdquiridos()
+    {
+        var actual = report.AcquiredEventsValue?.Trim();
+        var aMano = !string.IsNullOrEmpty(actual) && actual != eventosPropuestos;
+        if (aMano) return;
+
+        var propuesta = AcquiredEvents.FromLod(report.LodValue);
+        if (propuesta == null) return;
+
+        report.AcquiredEventsValue = propuesta;
+        eventosPropuestos = propuesta;
+    }
 
     protected override async Task OnInitializedAsync()
     {

@@ -67,6 +67,8 @@ namespace MiniLIS.Infrastructure.Services
                 partes.Add($"LOD: {report.LodValue!.Trim()}");
             if (report.HasLloq && !string.IsNullOrWhiteSpace(report.LloqValue))
                 partes.Add($"LLOQ: {report.LloqValue!.Trim()}");
+            if (report.HasAcquiredEvents && !string.IsNullOrWhiteSpace(report.AcquiredEventsValue))
+                partes.Add($"Eventos adquiridos: {report.AcquiredEventsValue!.Trim()}");
 
             return partes.Count == 0 ? null : string.Join("    ", partes);
         }
@@ -420,11 +422,15 @@ namespace MiniLIS.Infrastructure.Services
                             foreach (var limitacion in limitaciones)
                                 col.Item().Text(limitacion).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
 
-                            // La cuantificación cierra el apartado, separada por una línea en
-                            // blanco de las frases de calidad que tenga encima.
+                            // La cuantificación cierra el apartado, separada por una línea en blanco
+                            // de lo que tenga encima —la conclusión, las frases de calidad o las dos—. Sin esa
+                            // separación quedaba pegada al texto de la conclusión y costaba distinguirlas.
                             if (cuantificacion != null)
-                                col.Item().PaddingTop(limitaciones.Any() ? 11 : 4)
+                            {
+                                var hayTextoEncima = !string.IsNullOrWhiteSpace(fullReport.Conclusions) || limitaciones.Any();
+                                col.Item().PaddingTop(hayTextoEncima ? 11 : 0)
                                    .Text(cuantificacion).FontSize(9).FontFamily(monoFont).LineHeight(1.1f);
+                            }
 
                             col.Item().PaddingBottom(15);
                         }
@@ -890,8 +896,10 @@ namespace MiniLIS.Infrastructure.Services
                     sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(limitacion)}</text:p>");
                 if (cuantificacionOdt != null)
                 {
-                    // Línea en blanco entre las frases de calidad y la cuantificación.
-                    if (limitacionesOdt.Any()) sb.Append(@"<text:p text:style-name=""MonoText"" />");
+                    // Línea en blanco entre la cuantificación y lo que tenga encima, sea la
+                    // conclusión, las frases de calidad o las dos.
+                    if (!string.IsNullOrWhiteSpace(report.Conclusions) || limitacionesOdt.Any())
+                        sb.Append(@"<text:p text:style-name=""MonoText"" />");
                     sb.Append($@"<text:p text:style-name=""MonoText"">{EncodeForOdt(cuantificacionOdt)}</text:p>");
                 }
             }

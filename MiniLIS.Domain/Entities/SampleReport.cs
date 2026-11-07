@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using MiniLIS.Domain.Common;
 
 namespace MiniLIS.Domain.Entities
@@ -152,6 +153,15 @@ namespace MiniLIS.Domain.Entities
         [MaxLength(10)]
         public string? LloqValue { get; set; }
 
+        /// <summary>Marcado: el informe incluye los eventos adquiridos.</summary>
+        public bool HasAcquiredEvents { get; set; } = false;
+
+        /// <summary>Eventos adquiridos. Se propone calculado a partir del LOD (ver
+        /// AcquiredEvents.FromLod) y se puede corregir a mano, porque el valor que vale es el
+        /// que realmente se adquirió. Más largo que los otros: «100.000.000» no cabe en 10.</summary>
+        [MaxLength(20)]
+        public string? AcquiredEventsValue { get; set; }
+
         /// <summary>Ids de AnalyticalLimitation marcadas, separadas por coma (mismo patrón
         /// que SelectedSignatures). Salen impresas debajo de la conclusión, una por línea.</summary>
         [MaxLength(500)]
@@ -172,6 +182,46 @@ namespace MiniLIS.Domain.Entities
     /// <summary>Encabezados de población en la lista de marcadores. El texto vive aquí y no
     /// repartido por las vistas porque el informe guardado (MarkersSummary) lo lleva dentro:
     /// quien lo imprime necesita reconocer esas líneas para ponerlas en negrita.</summary>
+    /// <summary>
+    /// Eventos adquiridos propuestos a partir del límite de detección: <b>2000 / LOD</b>.
+    /// Es la cuenta de eventos que hay que adquirir para que ese LOD sea alcanzable.
+    ///
+    /// Solo es una propuesta: el facultativo la corrige si adquirió otra cosa. Por eso el
+    /// campo se guarda como texto, igual que el resto de la cuantificación: lo que se valida
+    /// es lo que se va a imprimir.
+    /// </summary>
+    public static class AcquiredEvents
+    {
+        /// <summary>Numerador de la fórmula. Constante y no configurable: si algún día el
+        /// laboratorio usa otro, es un cambio de versión, no un ajuste de pantalla.</summary>
+        public const int Numerador = 2000;
+
+        /// <summary>
+        /// Devuelve los eventos ya formateados («10.000.000»), o null si el LOD no es un
+        /// número del que se pueda calcular.
+        ///
+        /// El LOD es texto libre y llega como lo escribe el facultativo: admite coma o punto
+        /// decimal, y un «&lt;» delante («&lt;0,001»), que no cambia el cálculo.
+        /// </summary>
+        public static string? FromLod(string? lod)
+        {
+            var t = (lod ?? "").Trim().TrimStart('<', '≤', '=').Trim();
+            if (t.Length == 0) return null;
+
+            // Se prueban las dos convenciones: el mismo texto puede venir con coma o con punto.
+            if (!double.TryParse(t, NumberStyles.Float, CultureInfo.GetCultureInfo("es-ES"), out var valor) &&
+                !double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out valor))
+                return null;
+
+            if (valor <= 0 || double.IsNaN(valor) || double.IsInfinity(valor)) return null;
+
+            var eventos = Numerador / valor;
+            if (eventos > int.MaxValue) return null;   // no cabe en el campo ni tiene sentido
+
+            return Math.Round(eventos).ToString("N0", CultureInfo.GetCultureInfo("es-ES"));
+        }
+    }
+
     public static class MarkerPopulations
     {
         public const int Max = 3;

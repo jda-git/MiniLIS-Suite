@@ -30,6 +30,54 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.11.0
+
+Versión **MENOR**: los **eventos adquiridos** se pueden incluir en el informe, junto al LOD y
+al LLOQ.
+
+### Eventos adquiridos
+
+Casilla y recuadro nuevos en el editor de informes, a la derecha del LLOQ y con el mismo
+funcionamiento: solo sale impreso si se marca. En el informe va al final de la misma línea:
+
+```
+LOD: 0,0002    LLOQ: 0,0005    Eventos adquiridos: 10.000.000
+```
+
+**El valor se propone solo: 2000 ÷ LOD.** Con un LOD de 0,0002 salen 10.000.000. La propuesta
+se recalcula al cambiar el LOD, **pero nunca pisa un valor escrito a mano**: si se ha
+corregido, se respeta. Lo que vale es lo que de verdad se adquirió; el cálculo solo ahorra la
+cuenta.
+
+El LOD es texto libre, así que el cálculo admite coma o punto decimal y un «<» delante
+(`<0,001`), que no cambia el resultado. Si el LOD no es un número del que se pueda calcular
+—vacío, cero, negativo, o tan pequeño que daría más eventos de los que caben— **no se propone
+nada** en lugar de escribir un número inventado.
+
+El campo admite 20 caracteres y no 10 como los otros: «100.000.000» no cabría.
+
+### La cuantificación se separa de la conclusión
+
+La línea de LOD / LLOQ / eventos va ahora **siempre precedida de una línea en blanco**, que
+antes solo se ponía cuando había frases de calidad de la muestra por medio. Sin ella quedaba
+pegada al texto de la conclusión y costaba distinguir una cosa de la otra:
+
+```
+CONCLUSIÓN
+Compatible con LMA
+
+LOD: 0,00021    LLOQ: 0,0005    Eventos adquiridos: 9.523.810
+```
+
+Si no hay nada encima —ni conclusión ni frases de calidad— la línea en blanco no se pone: no
+tendría nada que separar. Afecta igual al PDF y al ODT.
+
+### Al actualizar
+
+La casilla de eventos nace **desmarcada** en los informes existentes, de modo que ninguno
+cambia de contenido. Los informes ya validados conservan su texto congelado, como siempre, así
+que la nueva separación solo aparece en los que se emitan a partir de ahora.
+
 ## v4.10.0
 
 Versión **MENOR**: el nombre de usuario ya no tiene que ser un correo, se puede cambiar

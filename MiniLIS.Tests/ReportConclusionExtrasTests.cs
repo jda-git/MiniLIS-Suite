@@ -117,6 +117,150 @@ namespace MiniLIS.Tests
             contenido.Should().NotContain("Células atípicas");
         }
 
+        // ── Eventos adquiridos (v4.11) ─────────────────────────────────────────────────
+        // Se proponen como 2000/LOD y se pueden corregir: lo que vale es lo que de verdad se
+        // adquirió. En el informe van detrás de LOD y LLOQ, en la misma línea.
+
+        [Theory]
+        [InlineData("0,0002", "10.000.000")]
+        [InlineData("0.0002", "10.000.000")]   // el LOD es texto libre: coma o punto
+        [InlineData("0,002", "1.000.000")]
+        [InlineData("<0,001", "2.000.000")]    // el «menor que» no cambia el cálculo
+        [InlineData("1", "2.000")]
+        public void Los_eventos_se_proponen_como_2000_entre_el_LOD(string lod, string esperado)
+        {
+            AcquiredEvents.FromLod(lod).Should().Be(esperado);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData(null)]
+        [InlineData("no es un número")]
+        [InlineData("0")]          // dividir por cero
+        [InlineData("-0,5")]       // un LOD negativo no existe
+        [InlineData("0,0000000001")] // daría más eventos de los que caben: no se propone nada
+        public void Sin_un_LOD_del_que_calcular_no_se_propone_nada(string? lod)
+        {
+            // Null y no un valor inventado: la pantalla deja el campo como esté en vez de
+            // escribir un número que nadie ha calculado.
+            AcquiredEvents.FromLod(lod).Should().BeNull();
+        }
+
+        [Fact]
+        public async Task Los_eventos_adquiridos_salen_detras_de_LOD_y_LLOQ()
+        {
+            using var db = new TestDb();
+            var report = await SeedReportAsync(db, r =>
+            {
+                r.HasLod = true; r.LodValue = "0,0002";
+                r.HasLloq = true; r.LloqValue = "0,0005";
+                r.HasAcquiredEvents = true; r.AcquiredEventsValue = "10.000.000";
+            });
+
+            using var ctx = db.CreateContext();
+            var contenido = LeerContentXml(await Documents(ctx).GenerateOdtAsync(report));
+
+            // El orden importa: los eventos van los últimos. No se comprueba el espaciado
+            // literal porque ODT codifica los espacios seguidos como <text:s c="3"/>; que la
+            // separación sea la misma que entre LOD y LLOQ se ve en el propio marcado.
+            contenido.Should().Contain("LOD: 0,0002")
+                      .And.Contain("LLOQ: 0,0005")
+                      .And.Contain("Eventos adquiridos: 10.000.000");
+            contenido.IndexOf("Eventos adquiridos").Should().BeGreaterThan(contenido.IndexOf("LLOQ:"));
+            contenido.IndexOf("LLOQ:").Should().BeGreaterThan(contenido.IndexOf("LOD:"));
+
+            // Y la separación entre los tres es la misma (un espacio + tres codificados).
+            contenido.Should().Contain("LOD: 0,0002 <text:s text:c=\"3\" />LLOQ: 0,0005 <text:s text:c=\"3\" />Eventos adquiridos:");
+        }
+
+        [Fact]
+        public async Task Los_eventos_pueden_ir_solos_sin_LOD_ni_LLOQ()
+        {
+            using var db = new TestDb();
+            var report = await SeedReportAsync(db, r =>
+            {
+                r.HasAcquiredEvents = true; r.AcquiredEventsValue = "500.000";
+            });
+
+            using var ctx = db.CreateContext();
+            var contenido = LeerContentXml(await Documents(ctx).GenerateOdtAsync(report));
+
+            contenido.Should().Contain("Eventos adquiridos: 500.000");
+            contenido.Should().NotContain("LOD:");
+        }
+
+        [Fact]
+        public async Task Los_eventos_escritos_pero_sin_marcar_no_salen()
+        {
+            using var db = new TestDb();
+            var report = await SeedReportAsync(db, r =>
+            {
+                r.HasLod = true; r.LodValue = "0,0002";
+                r.HasAcquiredEvents = false; r.AcquiredEventsValue = "10.000.000";
+            });
+
+            using var ctx = db.CreateContext();
+            var contenido = LeerContentXml(await Documents(ctx).GenerateOdtAsync(report));
+
+            contenido.Should().Contain("LOD: 0,0002");
+            contenido.Should().NotContain("Eventos adquiridos");
+        }
+
+        [Fact]
+        public async Task Marcados_pero_sin_valor_no_imprimen_nada()
+        {
+            using var db = new TestDb();
+            var report = await SeedReportAsync(db, r => { r.HasAcquiredEvents = true; r.AcquiredEventsValue = "  "; });
+
+            using var ctx = db.CreateContext();
+            var contenido = LeerContentXml(await Documents(ctx).GenerateOdtAsync(report));
+
+            contenido.Should().NotContain("Eventos adquiridos");
+        }
+
+        [Fact]
+        public async Task La_cuantificacion_va_separada_de_la_conclusion_por_una_linea_en_blanco()
+        {
+            // Pegada al texto de la conclusión costaba distinguir una cosa de la otra. Antes
+            // la línea en blanco solo se ponía si había frases de calidad por medio, y había
+            // una prueba (Sin_frases_de_calidad_la_cuantificacion_no_deja_un_hueco_suelto)
+            // que exigía justo lo contrario: se retiró al cambiar el criterio en la v4.11.
+            using var db = new TestDb();
+            var report = await SeedReportAsync(db, r =>
+            {
+                r.HasLod = true; r.LodValue = "0,0002";
+                r.HasAcquiredEvents = true; r.AcquiredEventsValue = "10.000.000";
+            });
+
+            using var ctx = db.CreateContext();
+            var contenido = LeerContentXml(await Documents(ctx).GenerateOdtAsync(report));
+
+            contenido.Should().Contain(
+                "<text:p text:style-name=\"MonoText\">Compatible con LMA</text:p>" +
+                "<text:p text:style-name=\"MonoText\" />" +
+                "<text:p text:style-name=\"MonoText\">LOD:");
+        }
+
+        [Fact]
+        public async Task Sin_nada_encima_la_cuantificacion_no_lleva_linea_en_blanco_delante()
+        {
+            // Sin conclusión ni frases de calidad, una línea en blanco justo bajo el título
+            // sería un hueco sin motivo.
+            using var db = new TestDb();
+            var report = await SeedReportAsync(db, r =>
+            {
+                r.Conclusions = "";
+                r.HasLod = true; r.LodValue = "0,0002";
+            });
+
+            using var ctx = db.CreateContext();
+            var contenido = LeerContentXml(await Documents(ctx).GenerateOdtAsync(report));
+
+            contenido.Should().Contain(
+                "CONCLUSIÓN</text:p><text:p text:style-name=\"MonoText\">LOD:");
+        }
+
         // ── Calidad de la muestra en el análisis ────────────────────────────────────────
 
         [Fact]
@@ -172,22 +316,6 @@ namespace MiniLIS.Tests
             entre.Should().Contain(@"<text:p text:style-name=""MonoText"" />");
 
             (await Documents(ctx).GeneratePdfAsync(report)).Length.Should().BeGreaterThan(0);
-        }
-
-        [Fact]
-        public async Task Sin_frases_de_calidad_la_cuantificacion_no_deja_un_hueco_suelto()
-        {
-            using var db = new TestDb();
-            var report = await SeedReportAsync(db, r => { r.HasAtypicalCells = true; r.AtypicalCellsPercent = "12"; });
-
-            using var ctx = db.CreateContext();
-            var contenido = LeerContentXml(await Documents(ctx).GenerateOdtAsync(report));
-
-            var entre = contenido.Substring(
-                contenido.IndexOf("Compatible con LMA"),
-                contenido.IndexOf("Células atípicas") - contenido.IndexOf("Compatible con LMA"));
-            entre.Should().NotContain(@"<text:p text:style-name=""MonoText"" />",
-                "sin nada en medio que separar, la línea en blanco sobra");
         }
 
         [Fact]
