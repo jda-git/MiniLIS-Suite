@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Entities;
@@ -274,6 +274,57 @@ namespace MiniLIS.Tests
 
             var updatedSample = await testCtx.Samples.FindAsync(sampleId);
             updatedSample!.Status.Should().Be(SampleStatus.ReportadaParcial);
+        }
+
+        [Fact]
+        public async Task El_filtro_Rechazada_encuentra_las_rechazadas_en_recepcion()
+        {
+            // El caso real: al filtrar la Bandeja Tecnica por "Rechazada" no salia ninguna
+            // muestra habiendolas. El rechazo preanalitico (F-4) se guarda en ReceptionStatus,
+            // y el Status del flujo avanza a Finalizada al emitir el informe de rechazo, asi
+            // que ninguna muestra rechazada tenia Status = Rechazada. El contador del panel de
+            // inicio si las contaba (criterio combinado), de modo que la pantalla de inicio y
+            // la bandeja se contradecian.
+            using var db = new TestDb();
+
+            using (var ctx = db.CreateContext())
+            {
+                var patient = EntityBuilders.NewPatient(nhc: "NHC-RECH");
+                var request = EntityBuilders.NewRequest(patient, "REQ-RECH");
+
+                var rechazadaEnRecepcion = EntityBuilders.NewSample(request, sampleNumber: "26-00008");
+                rechazadaEnRecepcion.ReceptionStatus = ReceptionStatus.Rechazada;
+                rechazadaEnRecepcion.Status = SampleStatus.Finalizada;
+                ctx.Samples.Add(rechazadaEnRecepcion);
+
+                var rechazadaPorFlujo = EntityBuilders.NewSample(request, sampleNumber: "26-00007");
+                rechazadaPorFlujo.ReceptionStatus = ReceptionStatus.Correcta;
+                rechazadaPorFlujo.Status = SampleStatus.Rechazada;
+                ctx.Samples.Add(rechazadaPorFlujo);
+
+                var finalizadaDeVerdad = EntityBuilders.NewSample(request, sampleNumber: "26-00006");
+                finalizadaDeVerdad.ReceptionStatus = ReceptionStatus.Correcta;
+                finalizadaDeVerdad.Status = SampleStatus.Finalizada;
+                ctx.Samples.Add(finalizadaDeVerdad);
+
+                await ctx.SaveChangesAsync();
+            }
+
+            using (var ctx = db.CreateContext())
+            {
+                var numbering = new NumberingService(ctx, Microsoft.Extensions.Logging.Abstractions.NullLogger<NumberingService>.Instance);
+                var service = CreateService(ctx, numbering);
+
+                var rechazadas = await service.GetFilteredSamplesAsync(null, SampleStatus.Rechazada, null, null);
+                rechazadas.Select(s => s.SampleNumber)
+                    .Should().BeEquivalentTo(new[] { "26-00008", "26-00007" },
+                        "cuentan los dos tipos de rechazo, el de recepcion y el del flujo");
+
+                // Y no se cuela por duplicado en el otro cubo: una muestra rechazada en
+                // recepcion no es una muestra finalizada, igual que en el panel de inicio.
+                var finalizadas = await service.GetFilteredSamplesAsync(null, SampleStatus.Finalizada, null, null);
+                finalizadas.Select(s => s.SampleNumber).Should().Equal("26-00006");
+            }
         }
 
         [Fact]

@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
 
   <!--
     Origen único de la versión de MiniLIS Suite.
@@ -25,7 +25,7 @@
   -->
 
   <PropertyGroup>
-    <Version>4.11.0</Version>
+    <Version>4.11.1</Version>
     <Product>MiniLIS Suite</Product>
   </PropertyGroup>
 

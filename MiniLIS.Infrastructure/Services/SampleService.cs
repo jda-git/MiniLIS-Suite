@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Persistence;
@@ -306,7 +306,15 @@ namespace MiniLIS.Infrastructure.Services
 
             if (status.HasValue)
             {
-                query = query.Where(s => s.Status == status.Value);
+                // "Rechazada" se filtra por los DOS estados, igual que el contador del panel
+                // de inicio (DashboardService) y que la etiqueta RECHAZADA de la propia
+                // bandeja, que se pinta desde ReceptionStatus. El rechazo preanalitico (F-4)
+                // vive en ReceptionStatus, y el desplegable de flujo puede haber avanzado a
+                // Finalizada al emitir el informe de rechazo: filtrar solo por Status dejaba
+                // la lista vacia aunque el panel de inicio contara esas muestras.
+                query = status.Value == SampleStatus.Rechazada
+                    ? query.Where(s => s.Status == SampleStatus.Rechazada || s.ReceptionStatus == ReceptionStatus.Rechazada)
+                    : query.Where(s => s.Status == status.Value && s.ReceptionStatus != ReceptionStatus.Rechazada);
             }
 
             if (sampleType.HasValue)

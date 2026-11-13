@@ -1,4 +1,4 @@
-# Registro de cambios
+﻿# Registro de cambios
 
 Cambios relevantes de MiniLIS Suite. El detalle completo está en el historial de git;
 aquí queda lo que afecta al uso, al informe emitido o a la validación del sistema.
@@ -29,6 +29,30 @@ identifica el código en ejecución, cosa que el número de versión por sí sol
 entre despliegues de una misma versión.
 
 ---
+
+## v4.11.1
+
+Versión **PARCHE**: el filtro **Rechazada** de la Bandeja Técnica no devolvía ninguna muestra.
+
+### El filtro de rechazadas no encontraba las rechazadas
+
+Una muestra tiene dos estados y no son lo mismo: **`ReceptionStatus`** es el resultado de la
+verificación al llegar (F-4), donde vive el rechazo preanalítico real, y **`Status`** es la fase
+del flujo de trabajo. La etiqueta `RECHAZADA` que se ve en la bandeja y el contador de
+rechazadas del panel de inicio se leen del primero; el desplegable de filtro, en cambio,
+filtraba solo por el segundo.
+
+Como al emitir el informe de rechazo el flujo avanza a `Finalizada`, ninguna muestra rechazada
+conservaba `Status = Rechazada`, y el filtro salía vacío. En la base de datos de pruebas eran
+cuatro muestras rechazadas en recepción, ninguna con `Status = Rechazada`: el panel de inicio
+contaba cuatro y la bandeja no mostraba ninguna.
+
+Ahora el filtro usa el **mismo criterio combinado que el panel de inicio**: «Rechazada» devuelve
+las rechazadas por cualquiera de los dos estados, y los demás estados excluyen las rechazadas
+en recepción, de modo que una muestra no aparece a la vez como *Finalizada* y como *Rechazada*.
+Las dos pantallas dicen ya lo mismo.
+
+No cambia ningún dato almacenado ni el informe emitido: solo qué filas devuelve el filtro.
 
 ## v4.11.0
 
