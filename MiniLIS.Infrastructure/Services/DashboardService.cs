@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.DTOs;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Entities;
@@ -44,14 +44,17 @@ namespace MiniLIS.Infrastructure.Services
             // solo por el desplegable manual de ESTADO del flujo de trabajo -- el alta nueva
             // (SampleService.RegisterSampleAsync) nunca sincroniza el segundo con el
             // primero, así que antes de este cambio una muestra rechazada en recepción se
-            // contaba (incorrectamente) como "Recibida". Mismo criterio combinado que ya usa
-            // QualityIndicatorService para excluir rechazadas de sus métricas.
+            // contaba (incorrectamente) como "Recibida".
+            //
+            // El criterio ya no se escribe aquí: vive en SampleStatusFilter, compartido con el
+            // filtro de la Bandeja Técnica y con el del Buscador, que lo tenían distinto. Si
+            // estuviera repetido volvería a divergir, que es exactamente lo que pasó.
             int total = await _db.Samples.CountAsync();
-            int rechazada = await _db.Samples.CountAsync(s => s.Status == SampleStatus.Rechazada || s.ReceptionStatus == ReceptionStatus.Rechazada);
-            int recibidas = await _db.Samples.CountAsync(s => s.Status == SampleStatus.Recibida && s.ReceptionStatus != ReceptionStatus.Rechazada);
-            int enProceso = await _db.Samples.CountAsync(s => s.Status == SampleStatus.EnProceso && s.ReceptionStatus != ReceptionStatus.Rechazada);
-            int reportadaParcial = await _db.Samples.CountAsync(s => s.Status == SampleStatus.ReportadaParcial && s.ReceptionStatus != ReceptionStatus.Rechazada);
-            int finalizada = await _db.Samples.CountAsync(s => s.Status == SampleStatus.Finalizada && s.ReceptionStatus != ReceptionStatus.Rechazada);
+            int rechazada = await _db.Samples.CountAsync(SampleStatusFilter.Para(SampleStatus.Rechazada));
+            int recibidas = await _db.Samples.CountAsync(SampleStatusFilter.Para(SampleStatus.Recibida));
+            int enProceso = await _db.Samples.CountAsync(SampleStatusFilter.Para(SampleStatus.EnProceso));
+            int reportadaParcial = await _db.Samples.CountAsync(SampleStatusFilter.Para(SampleStatus.ReportadaParcial));
+            int finalizada = await _db.Samples.CountAsync(SampleStatusFilter.Para(SampleStatus.Finalizada));
 
             // ── Volume ──
             int todayCount = await _db.Samples.CountAsync(s => s.ReceptionDate >= today);

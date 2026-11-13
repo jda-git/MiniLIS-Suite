@@ -1,4 +1,5 @@
-using FluentAssertions;
+﻿using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Services;
@@ -83,6 +84,42 @@ namespace MiniLIS.Tests
         {
             ctx = db.CreateContext();
             return new ReportSearchService(ctx, new LocalTimeService(), new FakeCurrentUserService());
+        }
+
+        [Fact]
+        public async Task Buscar_por_estado_Rechazada_encuentra_las_rechazadas_en_recepcion()
+        {
+            // Mismo defecto que tenia el filtro de la Bandeja Tecnica (v4.11.1): el rechazo
+            // preanalitico vive en ReceptionStatus, y Status ya ha avanzado a Finalizada al
+            // emitir el informe de rechazo, asi que buscar "Rechazada" no devolvia nada.
+            using var db = new TestDb();
+            await SeedAsync(db);
+
+            using (var ctx = db.CreateContext())
+            {
+                var rechazada = await ctx.Samples.SingleAsync(x => x.SampleNumber == "26-00001");
+                rechazada.ReceptionStatus = ReceptionStatus.Rechazada;
+                rechazada.Status = SampleStatus.Finalizada;
+
+                var buena = await ctx.Samples.SingleAsync(x => x.SampleNumber == "26-00002");
+                buena.ReceptionStatus = ReceptionStatus.Correcta;
+                buena.Status = SampleStatus.Finalizada;
+
+                await ctx.SaveChangesAsync();
+            }
+
+            var svc = NewService(db, out var ctx2);
+            using var _ = ctx2;
+
+            var rechazadas = await svc.SearchAsync(new ReportSearchFilter { Estado = SampleStatus.Rechazada });
+            rechazadas.Items.Select(i => i.SampleNumber).Should().Equal("26-00001");
+
+            // Y la columna de estado —que es tambien la del CSV— dice lo mismo que el filtro:
+            // antes ponia "Finalizada" en una muestra que la busqueda da por rechazada.
+            rechazadas.Items.Single().Estado.Should().Be("Rechazada");
+
+            var finalizadas = await svc.SearchAsync(new ReportSearchFilter { Estado = SampleStatus.Finalizada });
+            finalizadas.Items.Select(i => i.SampleNumber).Should().Equal("26-00002");
         }
 
         [Fact]

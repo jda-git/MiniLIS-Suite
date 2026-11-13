@@ -30,6 +30,38 @@ entre despliegues de una misma versión.
 
 ---
 
+## v4.11.2
+
+Versión **PARCHE**: un único criterio de «muestra rechazada» para todas las pantallas.
+
+### El mismo criterio en el Buscador
+
+La v4.11.1 arregló el filtro de la Bandeja Técnica. El **Buscador de estudios** tenía el mismo
+defecto por la misma razón —filtraba solo por `Status`—, así que buscar por estado «Rechazada»
+tampoco devolvía nada.
+
+Ahora el criterio no se escribe en cada pantalla: vive en un solo sitio
+(`SampleStatusFilter`), del que leen la Bandeja Técnica, el Buscador y los contadores del panel
+de inicio. Estaba repetido en tres sitios y había divergido; con una sola definición no puede
+volver a pasar.
+
+### La columna de estado del Buscador y su exportación
+
+**Cambia un valor exportado.** La columna *Estado* del Buscador —y la del CSV que genera— mostraba
+`Status` en crudo, de modo que una muestra rechazada en recepción salía como **«Finalizada»**: el
+mismo dato que el filtro acababa de clasificar como rechazada. Ahora muestra **«Rechazada»**.
+
+Si se ha archivado algún CSV del Buscador anterior a esta versión, las muestras rechazadas en
+recepción figuran en él con el estado del flujo y no con el de recepción. No afecta a ningún
+informe emitido al clínico ni a ningún dato almacenado: solo a lo que muestra y exporta esa
+pantalla.
+
+### Lo que no cambia
+
+El filtro por estado del **almacenamiento de excedentes** usa `StoredSpecimenStatus`
+(Almacenada, Descongelada, Agotada, Eliminada, Cedida), que es el estado de la alícuota y no
+tiene nada que ver con el de la muestra. No había nada que unificar ahí.
+
 ## v4.11.1
 
 Versión **PARCHE**: el filtro **Rechazada** de la Bandeja Técnica no devolvía ninguna muestra.

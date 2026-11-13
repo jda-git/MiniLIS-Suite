@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using MiniLIS.Application.Interfaces;
 using MiniLIS.Domain.Entities;
 using MiniLIS.Infrastructure.Persistence;
@@ -214,7 +214,10 @@ namespace MiniLIS.Infrastructure.Services
             }
             if (filtro.Estado.HasValue)
             {
-                q = q.Where(s => s.Status == filtro.Estado.Value);
+                // Mismo criterio que la Bandeja Tecnica y el panel de inicio: ver
+                // SampleStatusFilter. Buscar "Rechazada" no devolvia nada porque el rechazo
+                // preanalitico vive en ReceptionStatus, no en Status.
+                q = q.Where(SampleStatusFilter.Para(filtro.Estado.Value));
             }
             if (filtro.SoloValidados)
             {
@@ -242,6 +245,7 @@ namespace MiniLIS.Infrastructure.Services
                     Facultativo = s.ClinicalRequest.DoctorName,
                     s.Diagnosis,
                     s.Status,
+                    s.ReceptionStatus,
                     Paneles = s.Panels.Where(sp => sp.Panel != null).Select(sp => sp.Panel!.Name).ToList(),
                     StudyPanelLegacy = s.StudyPanel,
                     TieneInforme = s.Report != null,
@@ -261,7 +265,11 @@ namespace MiniLIS.Infrastructure.Services
                 Facultativo = r.Facultativo ?? "",
                 SospechaClinica = r.Diagnosis ?? "",
                 Paneles = r.Paneles.Any() ? string.Join(", ", r.Paneles) : (r.StudyPanelLegacy ?? ""),
-                Estado = r.Status.ToString(),
+                // El estado que corresponde leer, no el crudo: una muestra rechazada en
+                // recepcion figura como Rechazada y no como Finalizada, que es lo que decia
+                // antes esta columna --y el CSV-- de una muestra que el filtro clasifica como
+                // rechazada. Afecta tambien a la exportacion.
+                Estado = SampleStatusFilter.Visible(r.Status, r.ReceptionStatus).ToString(),
                 TieneInforme = r.TieneInforme,
                 Validado = r.ValidatedAtUtc != null,
                 ValidatedAtUtc = r.ValidatedAtUtc,

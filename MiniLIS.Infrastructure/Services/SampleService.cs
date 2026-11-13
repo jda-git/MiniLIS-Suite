@@ -306,15 +306,10 @@ namespace MiniLIS.Infrastructure.Services
 
             if (status.HasValue)
             {
-                // "Rechazada" se filtra por los DOS estados, igual que el contador del panel
-                // de inicio (DashboardService) y que la etiqueta RECHAZADA de la propia
-                // bandeja, que se pinta desde ReceptionStatus. El rechazo preanalitico (F-4)
-                // vive en ReceptionStatus, y el desplegable de flujo puede haber avanzado a
-                // Finalizada al emitir el informe de rechazo: filtrar solo por Status dejaba
-                // la lista vacia aunque el panel de inicio contara esas muestras.
-                query = status.Value == SampleStatus.Rechazada
-                    ? query.Where(s => s.Status == SampleStatus.Rechazada || s.ReceptionStatus == ReceptionStatus.Rechazada)
-                    : query.Where(s => s.Status == status.Value && s.ReceptionStatus != ReceptionStatus.Rechazada);
+                // Definicion unica, compartida con el panel de inicio y el Buscador: ver
+                // SampleStatusFilter. "Rechazada" abarca el rechazo de recepcion (F-4), que es
+                // donde vive de verdad; filtrar solo por Status dejaba la lista vacia.
+                query = query.Where(SampleStatusFilter.Para(status.Value));
             }
 
             if (sampleType.HasValue)
